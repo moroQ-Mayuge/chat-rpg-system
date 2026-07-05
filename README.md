@@ -59,3 +59,31 @@ npm run dev:server       # または node server/src/index.js
 npm run dev:server   # サーバーのみ起動
 npm run dev:client   # クライアントのみ起動
 ```
+
+## 別フォルダ・別環境への配布（デモデータごと移行）
+
+`data/`（SQLite本体）と`storage/images/`（アップロード・生成済み画像）は`.gitignore`対象のため、gitのクローンだけでは付いてこない。既存のキャラ・部屋・イベントなどのデータごと別フォルダへ移す場合の手順。
+
+1. **プロジェクトフォルダをコピー**（`node_modules/`と`koboldcpp/`は除く。サイズが大きく、後述の通り別途用意するため）
+   - 最低限コピーが必要なもの：リポジトリ一式 ＋ 以下のgit管理外フォルダ・ファイル
+     - `data/`（`chatrpg.sqlite`本体。DBの実データ）
+     - `storage/images/`（キャラ画像・生成済みシーン画像など）
+     - `.env`（作成済みの場合。接続先やパスの設定を引き継ぐ）
+2. **新しいフォルダで依存パッケージをインストール**
+   ```bash
+   npm install
+   ```
+3. **KoboldCppの用意**
+   - モデルファイルは容量が大きいため、`koboldcpp/`フォルダは通常コピーしない。次のいずれかで対応する：
+     - 元の場所で起動済みのKoboldCppをそのまま使う（`.env`の`KOBOLD_BASE_URL`で接続先を指定するだけでよく、複数のアプリフォルダから同じKoboldCppに接続できる）
+     - 新しい場所にも`koboldcpp/`（実行ファイル＋モデル）を別途配置する。その場合`.claude/launch.json`のkoboldcpp設定は相対パス（`koboldcpp/models/...`）前提なので、配置に合わせて調整する
+4. **マイグレーションを確認**
+   ```bash
+   npm run migrate
+   ```
+   `data/chatrpg.sqlite`をコピー済みでも安全に実行できる（適用済みのマイグレーションは`schema_migrations`テーブルにより自動でスキップされ、未適用分だけ追加適用される）。
+5. **起動して確認**
+   ```bash
+   npm run dev
+   ```
+   ブラウザでキャラ一覧・部屋一覧に既存データが表示されること、設定画面（`/settings`）でKoboldCppが接続中になっていることを確認する。
