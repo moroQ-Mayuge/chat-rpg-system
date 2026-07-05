@@ -1,0 +1,689 @@
+# ChatRPG 仕様書
+
+## 1. コンセプト
+
+KoboldCpp（LLM推論＋内蔵Stable Diffusion）を用い、完全ローカル環境で動作する「複数キャラクターとのチャット＋動的画像生成」Webアプリ。
+
+- ユーザーは「部屋」の中で複数の女性キャラクターと会話する。親密な会話や恋愛関係の進行（イチャコラ）を楽しむことを主目的とし、性的表現を含む会話・シーン描写にも対応する
+- 完全ローカル・個人利用のプライベート環境であるため、成人向け表現の生成そのものをアプリ側で制限・検閲する仕組みは設けない。登場キャラクターは成人という前提で運用する（Characterの年齢フィールドで管理）
+- 会話の状況変化やイベント発生に応じて、キャラクターの画像（シーン・表情）が動的に生成・表示される
+- PCで全処理を実行し、同一LAN内のスマートフォンからも画面サイズに応じたレイアウトでアクセスできる
+- 外部クラウドAPIには一切依存しない、プライベートな個人利用アプリ
+
+---
+
+## 2. 要件定義
+
+### 2.1 機能要件
+
+- **部屋（Room）ベースの複数キャラチャット**
+  複数キャラクターが同一の部屋に同席し、会話に参加できる。認証は不要（LAN内利用前提）。
+- **キャラクター管理**
+  キャラクターの人格・口調・外見・衣装・表情差分画像を登録・編集できる。
+- **動的画像生成**
+  - シーン転換検知時：場所・状況が変化したタイミングで背景画像を生成
+  - イベント発火時：条件を満たしたイベントに応じた専用画像を生成
+  - 通常会話中は事前生成済みの表情差分画像を即時表示（生成待ちなし）
+- **イベントシステム（汎用ルールエンジン）**
+  ユーザーが「条件」と「発火内容（アクション）」を自由に組み合わせて定義できる。ハードコードされた固定イベント種別ではなく、条件式とアクションの組み合わせによる汎用設計とする。
+- **部屋テンプレート／セッション分離**
+  部屋の設定（世界観・場所・雰囲気・初期シチュエーション等）はテンプレートとして再利用可能。プレイのたびに新しいセッションとして初期状態からスタートできる。
+- **レスポンシブUI**
+  PC・スマートフォンの両方で閲覧・操作可能。画面サイズに応じてレイアウトを可変にする。
+
+### 2.2 非機能要件
+
+- 完全ローカル完結（外部通信なし）
+- 想定GPU VRAM：12〜16GB（LLMは13B級、画像生成はSDXL系モデルを目安とする。具体モデルは未選定）
+- 画像生成はキューイングし、同時実行を回避（GPU負荷対策）
+- チャット応答はストリーミング表示
+- 画像生成中もチャット操作をブロックしない非同期設計
+
+### 2.3 技術スタック
+
+| 項目 | 選定 |
+|---|---|
+| フロントエンド | React（Vite） |
+| バックエンド | Node.js + Express |
+| AIバックエンド | KoboldCpp（テキスト生成API／内蔵SD画像生成API） |
+| リアルタイム通信 | WebSocket または SSE（ストリーミング応答・画像生成完了通知） |
+| ストレージ | SQLite＋ローカル画像フォルダ |
+
+### 2.4 未確定事項（今後の検討事項）
+
+- KoboldCppで使用する具体的なLLM／SDモデルの選定（成人向け表現・ロールプレイに対応した無検閲系モデルを想定）
+- 会話履歴がコンテキスト長を超えた場合の要約圧縮方式（当面は直近N件カットで開始）
+- イベント定義エディタのUI詳細
+- 部屋・雰囲気の画像生成用タグを部屋ごとに個別管理する現方針の妥当性（共通ライブラリ化する可能性）
+
+---
+
+## 3. 機能仕様
+
+### 3.1 世界（World）
+
+複数の部屋（RoomTemplate）を束ねる上位階層。部屋は必ずいずれか1つのWorldに所属する。
+
+**World**
+- 名前
+- 基本世界観（自由記述。所属する部屋がこの世界観を継承する場合に使われる共通テキスト）
+- `is_unassigned_bucket`：予約フラグ。「未所属」World専用で、削除不可・常に1件だけ存在する（Worldを選ばずに部屋を作った場合の受け皿）
+- **カレンダー設定**（このWorldに属する全てのルート＝Playthroughが共通で使うルール。値そのものはルートごとに独立して進行する）
+  - 時間帯ラベル一覧（順序付き。例：`["朝","昼","放課後","夜"]`。最後まで進むと次の日の先頭に戻る）
+  - 天候候補一覧（例：`["晴れ","曇り","雨","雪"]`。日が変わるたびにこの中からランダム抽選）
+  - 季節ラベル一覧（順序付き。例：`["春","夏","秋","冬"]`。最後まで進むと最初の季節に戻る）
+  - 季節が切り替わる日数間隔（例：15日ごとに季節が1つ進む）
+
+**部屋側の世界観モード（RoomTemplateに付与）**
+- `worldview_mode`：`inherit`（所属Worldの基本世界観をそのまま継承）／`custom`（部屋固有の世界観を独自に設定し、所属Worldの世界観は使わない）
+- 所属World自体はナビゲーション上の階層（世界一覧→部屋一覧）としては`custom`時も維持される。世界観モードが変わるのはLLMに渡すコンテキストの中身だけ
+
+**画面導線**
+- 世界観管理画面：World一覧の閲覧・新規作成・編集・削除（「未所属」は削除不可）
+- 部屋一覧画面：World単位でグルーピングしてカード形式で部屋を表示。各カードは背景イメージのサマリー画像＋名前＋セッション件数を表示し、カードに「編集」ボタンを設けて対象の部屋作成・設定画面へ遷移する。「新規部屋」ボタンは空の部屋作成・設定画面へそのまま遷移する
+- 部屋作成・設定画面：所属Worldの選択（未指定時は自動的に「未所属」）と、世界観モード（継承／独自）の切り替え。継承時は選択中Worldの基本世界観をプレビュー表示、独自時は部屋固有の世界観入力欄が有効化される
+
+### 3.2 ルート（Playthrough）
+
+Worldの下位に位置し、部屋をまたいで状態を共有する単位。同じWorld内に複数のルートを並行して持てる（例：「純愛ルート」「ハーレムルート」を同じ世界観のまま別々に進行させる）。
+
+**Playthrough**
+- 名前（例：「純愛ルート」）
+- 所属World
+- カレンダー状態：現在の日数、現在の時間帯（所属Worldの時間帯ラベル一覧中のインデックス）、現在の天候、現在の季節（所属Worldの季節ラベル一覧中のインデックス）
+- ステータス：`active`（進行中）／`ended`（明示的に終了）
+- このルートに紐づく関係性パラメータ（好感度等）・イベントフラグ・イベント発火履歴は、ルート内でどの部屋を訪れても共通で保持・更新される（3.5/3.6参照）
+
+**時間経過（カレンダー進行）**
+
+時間帯を1つ進める処理は、以下いずれのタイミングでも発生しうる（すべて同じ処理を呼び出す）。
+- 会話ターン数トリガー：RoomTemplateごとに設定する`turns_per_time_slot`（後述）のターン数に達した時点で自動的に進める。未設定の部屋ではこのトリガーは働かない
+- 部屋を退出する操作：ユーザーが部屋から退出する（RoomSessionを終了する）タイミングで進める
+- イベントアクション`advance_time`：既存の条件システムと組み合わせ、任意の条件を満たした際に強制的に進める（3.6.4参照）
+
+「時間帯を1つ進める」処理の内容：
+1. 現在の時間帯インデックスを+1（Worldの時間帯ラベル数を超えたら0に戻し、日数を+1）
+2. 日をまたいだ場合：Worldの天候候補一覧からランダムに天候を再抽選
+3. 日をまたいだ場合：日数がWorldの季節切り替え日数間隔を超えるたびに季節を1つ進める（末尾まで進んだら最初の季節に戻る）
+
+**ルート一覧・切り替えの画面導線**
+- World詳細画面から、そのWorldに属する既存ルート一覧（名前・現在の日数/時間帯/天候・最終更新日時）を表示し、「続きから」で選択したルートを再開、または「新しいルートを始める」で新規ルートを作成する
+- ルートを開くと、現在アクティブなRoomSession（まだ退出していない部屋）があればそのままチャット画面へ、なければ「どの部屋に入るか」を選ぶ画面を表示する（3.3の部屋を開く際のフロー参照）
+
+### 3.3 部屋（Room）
+
+**RoomTemplate（雛形・再利用可能）**
+- 名前
+- 所属World（`world_id`、必須。未指定時は「未所属」World）
+- 世界観モード（`inherit` / `custom`）
+- 開始時のシチュエーション（導入ナラティブ。セッション開始時のLLM初期プロンプトに使用）
+- 場所（自由記述＋任意で画像生成用タグ）
+- 雰囲気（自由記述＋任意で画像生成用タグ）
+- 部屋固有の世界観（自由記述。世界観モードが`custom`の場合のみ使用）
+- 設備・機材：Propライブラリから複数選択＋ライブラリ外の自由記述追加（自由記述分は画像生成プロンプトに含めない）
+- 背景イメージ（固定。「アップロード」と「AIで生成」の2導線を用意する。生成時は場所・雰囲気タグ＋Propタグから3.7のプロンプト合成ロジックに準じて画像生成APIを呼び出す。セッション開始直後、まだシーン転換が起きていない間のデフォルト背景として使用し、動的生成の参照画像としては使わない）
+- **`turns_per_time_slot`**（任意）：この部屋に滞在中、何ターンの会話が進んだら自動的にルートの時間帯を1つ進めるか。長時間の会話が続きやすい部屋とテンポの速い部屋とで個別にチューニングできるようにするため、部屋ごとの設定とする（未設定の場合はこのトリガーを使わず、退出操作／イベントによる時間経過のみに頼る）
+- 初期参加キャラクター一覧
+- 有効化するイベント定義一覧、部屋固有のイベント発生確率など
+
+**部屋作成フロー**
+
+手動フォーム入力に加え、キャラクター作成と同様のLLM自動生成導線を用意する。
+
+- 「方針」欄（自由記述）にどんな部屋にしたいかのヒント（例：「現代学園、放課後の静かな教室、恋愛イベント向け」）を入力し、「この方針でランダム生成」を実行すると、KoboldCppが開始時のシチュエーション・場所・雰囲気（＋世界観モードがcustomの場合は世界観）・画像生成用タグの一次案を生成する
+- 生成結果はフォームに反映されるのみで、確認・修正してからでないと保存されない（キャラクター作成のLLM自動生成と同じ、即確定しない方針）
+- 背景イメージ自体は自動生成対象に含めず、上記の「AIで生成」ボタンから改めて実行する（タグ生成→画像生成を1アクションにまとめない。タグ内容をユーザーが確認できるようにするため）
+
+**RoomSession（部屋への1回の訪問インスタンス）**
+- 参照元テンプレートID、所属Playthrough（ルート）ID
+- この訪問が発生した時点でのルートの日数・時間帯（作成時に固定。例：「1日目 放課後」。会話ログの表示や発言時刻はこのラベルに準じる）
+- 開始日時、最終更新日時
+- 現在の参加キャラクター一覧（イベントにより初期値から変動）
+- 現在のシーン状態（会話中に場所・雰囲気が変化した場合、テンプレート初期値から分岐して保持）と直近のシーン画像
+- 会話履歴
+- ステータス：`active`（この部屋に滞在中）／`ended`（退出済み。退出時にルートの時間経過処理が実行される）
+- 関係性パラメータ・イベントフラグ・イベント発火履歴はこのRoomSessionではなく所属Playthrough側で一元管理する（3.2参照。部屋を移動しても引き継がれる）
+- 1つのRoomTemplateは複数のルート・複数回の訪問から繰り返し利用される（同じ部屋に別の日・別のルートから何度でも入れる）
+
+**部屋を開く際のフロー（改訂）**
+1. World→ルートを選択（または新規作成、3.2参照）
+2. そのルートに現在アクティブなRoomSession（未退出）があれば、そのまま再開してチャット画面へ
+3. なければ、そのWorldに属する部屋（RoomTemplate）一覧から入る部屋を選択し、新規RoomSessionを作成する（作成時点のルートの日数・時間帯をこのセッションに記録）
+4. チャット画面で「部屋を退出する」操作を行うとRoomSessionが`ended`になり、ルートの時間経過処理（3.2）を実行したうえで、再度「どの部屋に入るか」の選択画面（手順3）に戻る
+
+### 3.4 Propライブラリ
+
+- 設備・機材の共通マスターデータ（名前＋danbooruタグ）
+- 複数の部屋テンプレートから使い回し可能
+
+### 3.5 キャラクター
+
+**Character本体（衣装に依存しない情報）**
+
+以下のフォーマットでLLMに注入する（ユーザー指定フォーマット）：
+
+```
+キャラ情報：{名前}/本名：{本名}/あだ名：{あだ名}/職業：{職業}/年齢：{年齢}歳/種族：{種族}/属性：{属性}/容姿特徴：{容姿特徴}/目色形状：{目色形状}/髪型髪色：{髪型髪色}/体型：{体型}/胸大きさ形：{胸}/身体特徴：{身体特徴}/一人称自分呼方『{一人称}』/あなたを『{呼称}』と呼ぶ/他人を『{他人呼称}』と呼ぶ/性格：{性格}/口調：{口調}/語尾：{語尾}/行動原理：{行動原理}/対人傾向：{対人傾向}/癖口癖：{癖}/好物：{好物}/苦手：{苦手}/服装：{現在Outfitの服装}/装備：{現在Outfitの装備}/スキル技能：{スキル}/特殊スキル：{特殊スキル}/弱点：{弱点}/秘密：{秘密}/備考：{備考}
+```
+
+保持フィールド：名前（愛称）／本名（フルネーム＋読み）／あだ名／職業／年齢（実年齢・外見年齢）／種族／属性／容姿特徴／目色形状／髪型髪色／体型／胸大きさ形／身体特徴／一人称／あなたの呼び方／他人の呼び方／性格／口調／語尾／行動原理／対人傾向／癖口癖／好物／苦手／スキル技能／特殊スキル／弱点／秘密／備考／イベント参加重み
+
+「秘密」フィールドはLLMに渡すが、「関係性・状況に応じて慎重に扱い、安易に暴露しない」という指示を添えて注入する。
+
+**Outfit（衣装バリエーション、Characterに紐づく）**
+- 名前（制服／私服／水着など）
+- 服装（テキスト、キャラ情報フォーマットの「服装」に対応）
+- 装備（テキスト、「装備」に対応）
+- 画像生成用danbooruタグ（手動入力が基本だが、後述のキャラ作成フローではLLMが一次案を提案し、ユーザーが確認・修正して確定する。自然文の容姿情報とは独立管理）
+- 立ち絵イメージ（衣装につき1枚の全身画像。表情バリエーションは持たない固定画像）
+- 表情差分画像セット（ExpressionTypeごとに1枚、顔まわりの差分表示用）
+- デフォルト衣装フラグ
+
+衣装切り替えは「部屋テンプレートのデフォルト指定」または「イベントアクション」から発生する。
+
+**ExpressionType（表情マスター・全キャラ共通）**
+- 通常／笑顔／怒り／悲しみ／驚き／照れ／困り／喘ぎ　等
+- ハードコードせず、設定画面から追加・編集・削除できるユーザー管理のマスターデータとする
+- LLM出力の`[EMOTION:xxx]`タグと対応するキー
+
+**RelationshipAxis（関係性軸マスター・全キャラ共通）**
+- 初期セット：好感度／信頼度／恋愛度（恋愛感情）／欲情度（興奮度）／依存度（メンヘラ・共依存的な執着傾向）／淫乱度（他パラメータの状態に関わらず身体的関係に積極的になりやすい度合い）
+- ハードコードせず、ExpressionTypeと同様に設定画面から自由に追加・編集・削除できるユーザー管理のマスターデータとする
+- 軸の定義自体は全キャラ共通、初期値のみキャラごとに設定可能（例：淫乱度は個性を表現するため、キャラごとに初期値を大きく変える想定）
+
+**キャラクター作成フロー**
+
+通常の手動フォーム入力に加え、以下2つの導線を用意する。どちらも最終的にCharacter本体の各フィールド（キャラ情報フォーマットの各項目）とOutfitのdanbooruタグ一次案を埋めた状態で編集フォームに反映し、ユーザーが確認・修正してから保存する（自動生成・貼り付けの結果を即確定はしない）。
+
+1. **LLM自動生成モード**
+   - キャラ編集画面の冒頭に、部屋作成フロー（3.3）と同様の「作成指示」欄（自由記述。例：「勝気な幼馴染、スポーツ少女、方言あり」）を配置し、「この指示でランダム生成」を実行
+   - バックエンドがKoboldCppに「キャラ情報フォーマットで出力せよ」という生成指示を送り、作成指示の内容を踏まえたキャラクターシートを生成させる
+   - あわせて容姿系フィールド（容姿特徴・目色形状・髪型髪色・体型・胸大きさ形・身体特徴等）から、Outfit（デフォルト衣装）のdanbooruタグ一次案もLLMに提案させる
+   - 生成結果をパースしてCharacter編集フォームに反映
+
+**フィールド単位のLLM再生成**
+- キャラ情報フォーマットの各テキストフィールド（名前・性格・口調・容姿特徴等）の入力欄には、そのフィールドだけを個別に再生成する小さなボタンを併設する
+- クリックすると、作成指示欄の内容と現在フォームに入力済みの他フィールドの値を文脈としてKoboldCppに渡し、そのフィールドの値だけを再生成してフォームに反映する（全体を作り直さず、気に入らない項目だけ振り直せるようにするため）
+- 全体生成と同様、フォームに反映されるのみで即保存はされない
+
+2. **フォーマット貼り付け登録モード**
+   - 「キャラ情報：」から始まる指定フォーマットのテキストをそのまま貼り付けるテキストエリアを用意
+   - 外部で作成済みのキャラクターシートを貼り付けるだけで、同じパーサーでCharacter編集フォームに反映（表記ゆれ・項目欠落があってもベストエフォートでパースし、埋まらなかった項目は空欄のまま編集を促す）
+   - danbooruタグは貼り付けテキストに含まれないため、この場合もLLMに一次案を生成させる
+
+両モードとも「キャラ情報フォーマット文字列 → Character構造化フィールド」という共通パーサーを使う（3.4冒頭の組み立てロジックの逆変換）。生成・パース対象は自然文フィールドとdanbooruタグ一次案のみで、立ち絵・表情差分画像や関係性初期値（RelationshipAxisのデフォルト値を使用）は対象外とし、保存後に別途ユーザーが用意する。
+
+**danbooruタグ一次案のレビューUI（タグ選択チップ）**
+- LLMが提案したタグ群は1つのテキストではなく、タグごとに個別のチップとして表示する（初期状態は全チップON）
+- チップをクリックしてON/OFFをトグルでき、OFFにしたタグは最終的なimage_tagsに含まれない
+- チップ一覧の下に「タグを追加」欄を設け、任意のタグを追加チップとして登録できる（追加分も同様にON/OFFトグル可能）
+- 保存時はON状態のチップのタグ名をカンマ区切りで結合してOutfit.image_tagsとする
+- このチップ選択UIはOutfitのdanbooruタグ編集箇所で共通利用する部品とする
+- チップ一覧の下に、ON状態のタグを結合した**最終タグプレビュー**をテキスト欄として表示する。このテキスト欄は直接編集可能で、編集するとチップ側の選択状態（追加・削除・順序）に反映される。チップでの取捨選択では表現しづらい微調整（並び順の変更、重み付け記法`(tag:1.2)`の追加など）を直接編集で行うための逃げ道とする
+
+### 3.6 イベントシステム
+
+イベント定義は「条件（複数可）」＋「アクション（複数可）」の組み合わせで構成する汎用ルールとする。イベント判定はバックエンドが会話状態・関係性数値・フラグを見て行い、LLMの自己申告には依存しない。
+
+#### 3.6.1 評価タイミング
+
+1. ユーザーがメッセージを送信 → `keyword`条件のうち`target: user_message`を評価
+2. LLM呼び出し・応答生成（`[EMOTION]`/`[SCENE_CHANGE]`タグ含む）
+3. `keyword`条件のうち`target: ai_response`を評価
+4. 部屋（セッション）に紐づく有効なイベント定義を全て走査し、残りの条件種別（`probability` `turn_count` `relationship_threshold` `flag_state` `participant_count`）を評価
+5. 条件を満たした（かつcooldown・max_fires・排他制御をクリアした）イベントを`priority`順に実行し、アクションを適用
+6. アクション結果（挿入台詞・生成画像・状態変化）をメッセージ/通知としてクライアントに反映
+
+#### 3.6.2 イベント全体の制御項目（EventDefinition共通）
+
+| 項目 | 型 | 説明 |
+|---|---|---|
+| condition_logic | "AND" \| "OR" | 複数条件の結合方法（デフォルトAND） |
+| priority | int | 同一tickで複数イベントが該当した場合の実行順（小さいほど先） |
+| cooldown_turns | int | このイベントが発火してから再度発火可能になるまでのターン数 |
+| max_fires_per_session | int, nullable | セッション内での最大発火回数（null=無制限、1にすれば一回限りのシナリオイベントに使える） |
+| exclusive_group | text, nullable | 同じグループ名を持つイベント同士は同一tickで排他（優先度が高い方のみ発火）。null なら排他制御なし＝該当イベントは全て発火 |
+
+#### 3.6.3 条件（Condition）パラメータ仕様
+
+**probability** - 確率判定
+```json
+{ "chance": 0.15 }
+```
+- `chance`: 0.0〜1.0。評価timing（ステップ4）ごとにこの確率で真になる
+
+**turn_count** - 経過ターン数
+```json
+{ "reference": "playthrough_start", "comparison": ">=", "turns": 20 }
+```
+- `reference`: `"playthrough_start"`（所属ルート開始からの累計ターン数。部屋を移動してもリセットされない）/ `"flag_set"`（特定フラグが立ってから。`flag_key`を追加指定）/ `"last_fire_of_this_event"`（前回自身が発火してから）
+- `comparison`: `">="` `"=="` `">"`
+- `turns`: int
+- イベント条件のターン数はルート単位の累計であり、3.3の`turns_per_time_slot`（部屋単位・時間帯自動進行専用のターン数）とは別のカウンタ
+
+**keyword** - キーワード検出
+```json
+{ "keywords": ["秘密", "本当のこと"], "match_mode": "any", "target": "user_message", "case_sensitive": false }
+```
+- `keywords`: string配列
+- `match_mode`: `"any"`（いずれか一致） / `"all"`（すべて含む）
+- `target`: `"user_message"`（直近のユーザー発言） / `"ai_response"`（直近のAI応答全体） / `"any"`（両方）
+- `case_sensitive`: bool（デフォルトfalse）
+
+**relationship_threshold** - 関係性閾値
+```json
+{ "character_id": 3, "axis_id": 1, "comparison": ">=", "value": 80 }
+```
+- `character_id`: 対象キャラID（`"any_present"`で同席者のうち誰か1人でも満たせば真、も許容）
+- `axis_id`: RelationshipAxisのID
+- `comparison`: `">="` `"<="` `"=="` `">"` `"<"`
+- `value`: int
+
+**flag_state** - フラグ状態
+```json
+{ "flag_key": "confession_done", "comparison": "==", "value": "true" }
+```
+- `flag_key`: string
+- `comparison`: `"=="` `"!="` `"exists"` `"not_exists"`（exists系は`value`不要）
+- `value`: string（比較対象。数値もstring格納し数値変換して比較）
+
+**participant_count** - 同席人数
+```json
+{ "comparison": "<=", "value": 1 }
+```
+- `comparison`: `">="` `"<="` `"=="`
+- `value`: int
+
+#### 3.6.4 アクション（Action）パラメータ仕様
+
+**character_join** - キャラ参加
+```json
+{ "selection_mode": "random_weighted", "candidate_character_ids": [4,5,6], "outfit_id": null, "entrance_narration": "{character_name}がふらっと顔を出した。" }
+```
+- `selection_mode`: `"specific"`（`character_id`指定） / `"random_weighted"`（Character.event_participation_weightで重み抽選） / `"random_uniform"`（候補から均等抽選）
+- `character_id` または `candidate_character_ids`: 対象
+- `outfit_id`: nullable（未指定はキャラのデフォルト衣装）
+- `entrance_narration`: nullable。テンプレート文字列（`{character_name}`等の置換変数を許可）
+
+**character_leave** - キャラ退出
+```json
+{ "selection_mode": "specific", "character_id": 4, "exit_narration": "{character_name}は静かに部屋を出て行った。" }
+```
+- `selection_mode`: `"specific"` / `"random_from_present"`
+- `exit_narration`: nullable
+
+**insert_dialogue** - 台詞・ナレーション挿入
+```json
+{ "mode": "generated", "character_id": 3, "prompt_hint": "少し照れながら本音を漏らす一言を発言する", "emotion_tag": "blush" }
+```
+- `mode`: `"fixed"`（`text`をそのまま挿入） / `"generated"`（`prompt_hint`をLLMへの追加指示として渡し生成させる）
+- `character_id`: nullable（nullは`[NARRATION]`として扱う）
+- `text`: mode=fixedの場合の固定文
+- `prompt_hint`: mode=generatedの場合の生成ヒント
+- `emotion_tag`: nullable。強制的に使う表情キー
+
+**generate_image** - イベント専用画像生成
+```json
+{ "image_type": "event", "prompt_override": "${みお}, blush, on top of, ${かえで}, lying down", "target_character_ids": [3, 5] }
+```
+- `image_type`: `"scene"` / `"event"`
+- `prompt_override`: nullable。ユーザーがイベントエディタ上で自由入力するdanbooruタグ・文章
+  - `${キャラ名}`というプレースホルダーを埋め込むと、生成時にそのキャラクターの現在Outfitのdanbooruタグに置換される。複数キャラが絡む画像で「誰がどの役割・配置か」を書き分けたい場合に使う
+  - プレースホルダーの中身（性的表現を含む具体的なタグ・文章）はユーザー自身がアプリのイベントエディタ上で入力するものであり、本仕様書や実装側で内容を事前定義・生成することはしない
+- `target_character_ids`: nullable（null=現在同席している全キャラ）。この画像に関係させるキャラの候補を絞り込む。プレースホルダーで参照されなかった候補キャラは、取りこぼし防止のためタグが自動的に末尾追加される（3.6参照）
+
+**set_flag** - フラグ操作
+```json
+{ "flag_key": "confession_done", "operation": "set", "value": "true" }
+```
+- `operation`: `"set"` / `"increment"` / `"decrement"` / `"toggle"`
+- `value`: string（set時に使用。increment/decrementは数値文字列を数値変換して演算）
+
+**change_relationship** - 関係性パラメータ変更
+```json
+{ "character_id": 3, "axis_id": 1, "operation": "add", "value": 5 }
+```
+- `character_id`: 対象（`"all_present"`も許容）
+- `axis_id`: RelationshipAxisのID
+- `operation`: `"add"` / `"subtract"` / `"set"`
+- `value`: int（RelationshipAxisのmin/maxでクランプする）
+
+**change_outfit** - 衣装変更
+```json
+{ "character_id": 3, "outfit_id": 7 }
+```
+- `character_id`: 対象
+- `outfit_id`: 切り替え先Outfit ID
+
+**advance_time** - ルートの時間経過を強制的に進める
+```json
+{ "slots": 1 }
+```
+- `slots`: 進める時間帯の数（int、デフォルト1）。3.2の「時間帯を1つ進める」処理をこの回数分繰り返す（日またぎ・天候再抽選・季節進行もその都度評価される）
+- 対象は、このイベントが発火した部屋（RoomSession）が所属するPlaythrough
+
+### 3.7 画像生成
+
+**トリガー**
+- シーン転換検知（LLM出力の`[SCENE_CHANGE]`タグ）
+- イベント発火（イベントアクション「画像生成」）
+
+**プロンプト合成ロジック**
+1. 場所・雰囲気の画像生成タグ（テンプレート or 現在のシーン状態）
+2. 選択済みPropのdanbooruタグ
+3. イベント発火によるgenerate_imageで`prompt_override`が指定されている場合：その文字列内の`${キャラ名}`プレースホルダーを、該当キャラの現在Outfitのdanbooruタグに置換したものを連結する（プレースホルダー詳細は3.5.4参照）
+4. `target_character_ids`のうちプレースホルダーで明示的に参照されなかったキャラ（シーン転換検知時は同席する全キャラ）の現在Outfitのdanbooruタグを、取りこぼし防止のため末尾に自動追加
+5. 自由記述項目（場所・雰囲気の文章、ライブラリ外の設備）は画像生成タグに含めない（LLMコンテキストのみ）
+
+**制御**
+- 生成中はキューイングし、同時実行を回避
+- 生成完了はWebSocket/SSEでフロントエンドに通知、非同期でチャットをブロックしない
+- 通常会話中の表情表示はOutfitに紐づく事前生成済み差分画像（顔差分・立ち絵）を即時表示
+
+**外見一貫性のための参照アンカーinpainting方式**
+
+画像生成バックエンドはKoboldCpp内蔵SD（stable-diffusion.cpp）を使うため、IP-Adapterは利用できない（SDXLではControlNetも非対応）。そのため、`/sdapi/v1/img2img`のマスク付きinpainting機能（KoboldCpp v1.88以降で対応）を使い、以下の手順でキャラクター外見の一貫性を担保する。
+
+1. 生成対象より広いキャンバスを用意し、キャラのOutfitに登録済みの立ち絵イメージ（3.5参照）を端の固定領域（参照アンカー領域）に配置する
+2. マスクを作成し、参照アンカー領域は保護（生成対象外）、残りの本編領域のみ生成対象にする
+3. `init_images`に上記キャンバス、`mask`に上記マスクを指定し、プロンプトは3.7の合成ロジック通りのdanbooruタグでinpaintingを実行
+4. 生成結果から本編領域のみを切り出し、参照アンカー部分を破棄したものを最終的な生成画像とする
+
+高速化のため、Illustrious XLにSDXL-Lightning系LoRA（`--sdlora`で指定）を適用し、生成ステップ数を4〜8程度に抑える構成を基本とする。denoising_strengthやアンカー領域の配置・マスクの境界処理は実機でのチューニングが必要な項目として残す。
+
+**表示位置**
+- 生成されたシーン・イベント画像は会話ログの流れの中に、発生した時点のメッセージとして割り込み挿入する（別枠パネルへの表示に留めない）
+- セッション開始直後、まだシーン転換が発生していない間はRoomTemplateの固定「背景イメージ」をデフォルト表示する
+
+### 3.8 LLM応答生成
+
+- 部屋に複数キャラが同席する場合、**1回の呼び出しで複数キャラ分の台詞を一括生成**（スクリプト形式）
+- 発言者は基本自動選択（同席キャラのうち自然な範囲で応答）、ユーザーが名指し・UI指名した場合は必ずそのキャラの発言を含める
+- 出力フォーマット：
+  ```
+  [キャラ名]: セリフ本文 [EMOTION:expression_key]
+  [キャラ名2]: セリフ本文 [EMOTION:expression_key]
+  [NARRATION]: 地の文・情景描写（任意）
+  [SCENE_CHANGE]: 場所や状況が変わった場合のみ出力（任意）
+  ```
+- KoboldCppのstop sequenceに「ユーザー:」等を設定し、AIがユーザー発言まで生成することを防止
+- フォーマット逸脱時（EMOTIONタグ省略等）は「通常」表情にフォールバック
+
+### 3.9 UI/UX
+
+- PC：部屋一覧／参加キャラ一覧／チャット／画像表示のマルチカラムレイアウト
+  - 右側の「現在のシーン」パネルは折りたたみ可能とし、開いている間は直近のシーン画像を常時表示する補助として使う（正本の履歴はあくまでチャットのタイムライン内）
+- スマホ：単一カラム＋折り畳みメニュー
+- 画面：世界観管理、部屋一覧・セッション選択（World単位でグルーピング）、部屋作成・設定、キャラ管理（手動フォーム／LLM自動生成／フォーマット貼り付け登録の3導線）、イベント定義エディタ、チャット画面
+
+---
+
+## 4. DB構造
+
+### worlds
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | |
+| worldview | text | 基本世界観（所属部屋がinherit時に使用） |
+| is_unassigned_bucket | bool | 「未所属」予約枠フラグ。true の行は削除不可・常に1件のみ |
+| time_slot_labels | json | 時間帯ラベルの順序付き配列（例：["朝","昼","放課後","夜"]） |
+| weather_options | json | 天候候補の配列（日をまたぐ際にランダム抽選） |
+| season_labels | json | 季節ラベルの順序付き配列（例：["春","夏","秋","冬"]） |
+| days_per_season | int | 季節が1つ進む日数間隔 |
+| created_at | datetime | |
+
+### playthroughs（ルート）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| world_id | FK | 所属World |
+| name | text | 例：「純愛ルート」 |
+| current_day | int | 現在の日数（1始まり） |
+| current_time_slot_index | int | worldsのtime_slot_labels中のインデックス |
+| current_weather | text | 直近で抽選された天候 |
+| current_season_index | int | worldsのseason_labels中のインデックス |
+| status | text | active / ended |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+### room_templates
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| world_id | FK | 所属World。未指定時はis_unassigned_bucket=trueのWorldを指す |
+| worldview_mode | text | inherit / custom |
+| name | text | |
+| initial_situation | text | 開始時シチュエーション |
+| location_text | text | 場所（自由記述） |
+| location_tags | text, nullable | 画像生成用タグ |
+| atmosphere_text | text | 雰囲気（自由記述） |
+| atmosphere_tags | text, nullable | 画像生成用タグ |
+| worldview | text, nullable | 部屋固有の世界観（worldview_mode=customの場合のみ使用） |
+| background_image_path | text, nullable | 固定背景画像（シーン転換前のデフォルト表示用） |
+| turns_per_time_slot | int, nullable | この部屋滞在中、何ターンで自動的にルートの時間帯を1つ進めるか（null=このトリガー無効） |
+| created_at | datetime | |
+
+### room_template_characters
+| カラム | 型 | 備考 |
+|---|---|---|
+| room_template_id | FK | |
+| character_id | FK | |
+| is_default_participant | bool | |
+
+### props（設備・機材マスター）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | |
+| danbooru_tags | text | |
+| category | text, nullable | |
+| description | text, nullable | |
+
+### room_template_props
+| カラム | 型 | 備考 |
+|---|---|---|
+| room_template_id | FK | |
+| prop_id | FK | |
+
+### room_template_free_props（ライブラリ外の自由記述設備）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| room_template_id | FK | |
+| description | text | 画像生成には使わずLLM文脈のみ |
+
+### room_template_events
+| カラム | 型 | 備考 |
+|---|---|---|
+| room_template_id | FK | |
+| event_definition_id | FK | |
+| override_probability | float, nullable | 部屋固有の確率上書き |
+
+### room_sessions
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| room_template_id | FK | |
+| playthrough_id | FK | 所属Playthrough（ルート） |
+| entered_day | int | 訪問開始時点のルートの日数（作成時に固定） |
+| entered_time_slot_index | int | 訪問開始時点のルートの時間帯インデックス（作成時に固定） |
+| started_at | datetime | |
+| updated_at | datetime | 最終メッセージ・状態変化の日時。セッション一覧の並び替え・「続きから」表示に使用 |
+| current_location_text | text | |
+| current_location_tags | text, nullable | |
+| current_atmosphere_text | text | |
+| current_atmosphere_tags | text, nullable | |
+| current_scene_image_id | FK, nullable | generated_imagesを参照。再開時・折りたたみパネルに即表示するための直近シーン画像ポインタ |
+| status | text | active（滞在中）/ ended（退出済み。ended化のタイミングでルートの時間経過処理を実行） |
+
+### room_session_characters
+| カラム | 型 | 備考 |
+|---|---|---|
+| room_session_id | FK | |
+| character_id | FK | |
+| joined_at | datetime | |
+| left_at | datetime, nullable | |
+| current_outfit_id | FK, nullable | 未指定時はデフォルト衣装 |
+| is_active | bool | 現在同席中か |
+
+### characters
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | 名前（愛称） |
+| full_name | text | 本名 |
+| full_name_reading | text | 読み |
+| nickname | text | あだ名 |
+| occupation | text | 職業 |
+| age_real | text | 実年齢 |
+| age_apparent | text | 外見年齢 |
+| race | text | 種族 |
+| attribute | text | 属性 |
+| appearance_features | text | 容姿特徴 |
+| eye_description | text | 目色形状 |
+| hair_description | text | 髪型髪色 |
+| body_type | text | 体型 |
+| bust_description | text | 胸大きさ形 |
+| physical_features | text | 身体特徴 |
+| first_person | text | 一人称 |
+| call_user_as | text | あなたを呼ぶ呼称 |
+| call_others_as | text | 他人を呼ぶ呼称 |
+| personality | text | 性格 |
+| speech_style | text | 口調 |
+| sentence_ending | text | 語尾 |
+| behavior_principle | text | 行動原理 |
+| social_tendency | text | 対人傾向 |
+| habits | text | 癖口癖 |
+| likes | text | 好物 |
+| dislikes | text | 苦手 |
+| skills | text | スキル技能 |
+| special_skills | text | 特殊スキル |
+| weakness | text | 弱点 |
+| secret | text | 秘密 |
+| notes | text | 備考 |
+| event_participation_weight | float | ランダム参加重み |
+| created_at | datetime | |
+
+### outfits
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| character_id | FK | |
+| name | text | 制服／私服／水着等 |
+| clothing_description | text | 服装 |
+| equipment_description | text | 装備 |
+| image_tags | text | danbooruタグ |
+| standing_image_path | text, nullable | 立ち絵（衣装につき1枚、表情バリエーションなし） |
+| is_default | bool | |
+
+### expression_types（表情マスター）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | 通常／笑顔／怒り 等 |
+| llm_tag_key | text | LLM出力の`[EMOTION:xxx]`と対応 |
+
+### outfit_expression_images
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| outfit_id | FK | |
+| expression_type_id | FK | |
+| image_path | text | |
+
+### relationship_axes（関係性軸マスター）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | 好感度／信頼度／恋愛度／欲情度／依存度／淫乱度 等（ユーザー管理のマスターデータ） |
+| min_value | int | |
+| max_value | int | |
+| default_value | int | |
+
+### character_relationship_defaults
+| カラム | 型 | 備考 |
+|---|---|---|
+| character_id | FK | |
+| relationship_axis_id | FK | |
+| initial_value | int | |
+
+### relationship_states（ルート実データ）
+| カラム | 型 | 備考 |
+|---|---|---|
+| playthrough_id | FK | 部屋をまたいでも共有されるルート単位のデータ |
+| character_id | FK | |
+| relationship_axis_id | FK | |
+| current_value | int | |
+
+### event_definitions
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| name | text | |
+| scope | text | global / room_template |
+| room_template_id | FK, nullable | scope=room_templateの場合 |
+| enabled | bool | |
+| condition_logic | text | AND / OR（複数条件の結合方法） |
+| priority | int | 同一tickで複数該当した場合の実行順 |
+| cooldown_turns | int | 連発防止 |
+| max_fires_per_session | int, nullable | セッション内の最大発火回数（null=無制限） |
+| exclusive_group | text, nullable | 同グループ内は排他発火（優先度が高い方のみ） |
+
+### event_conditions
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| event_definition_id | FK | |
+| condition_type | text | probability / turn_count / keyword / relationship_threshold / flag_state / participant_count |
+| params | json | 種別ごとのパラメータ |
+
+### event_actions
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| event_definition_id | FK | |
+| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time |
+| params | json | 種別ごとのパラメータ |
+
+### session_flags（イベント連鎖用フラグ、ルート単位）
+| カラム | 型 | 備考 |
+|---|---|---|
+| playthrough_id | FK | 部屋をまたいでも共有されるルート単位のデータ |
+| flag_key | text | |
+| flag_value | text | |
+
+### event_fire_history（イベント発火履歴、ルート単位）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| playthrough_id | FK | |
+| event_definition_id | FK | |
+| fired_at_turn | int | 発火時のターン番号（ルート内累計） |
+| fired_at | datetime | |
+
+`cooldown_turns`／`max_fires_per_session`／`turn_count`条件の`reference: "last_fire_of_this_event"`は、いずれもイベントの過去の発火履歴を参照する必要があるため、実装フェーズでこのテーブルを追加した。関係性・フラグ・発火履歴をルート単位にまとめたことで、部屋を移動してもこれらの状態は引き継がれる。
+
+### messages
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| room_session_id | FK | |
+| sender_type | text | user / character / narration / system |
+| character_id | FK, nullable | |
+| content_type | text | text / image |
+| content | text, nullable | content_type=textの場合の本文 |
+| image_id | FK, nullable | content_type=imageの場合、generated_imagesを参照。タイムライン内に画像を割り込み挿入するために使用 |
+| emotion_tag | text, nullable | |
+| created_at | datetime | |
+
+### generated_images
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| room_session_id | FK | |
+| type | text | face / scene / event |
+| character_id | FK, nullable | |
+| prompt | text | |
+| file_path | text | |
+| created_at | datetime | |
