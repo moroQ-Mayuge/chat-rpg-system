@@ -6,8 +6,38 @@ import {
   updateCharacter,
   deleteCharacter,
 } from '../db/repositories/charactersRepo.js';
+import { generateCharacterSheet, parseAndSuggestTags, regenerateField } from '../services/characterAssist.js';
 
 export const charactersRouter = Router();
+
+charactersRouter.post('/generate', async (req, res) => {
+  if (!req.body.instruction) return res.status(400).json({ error: 'instruction_required' });
+  try {
+    res.json(await generateCharacterSheet(req.body.instruction));
+  } catch (err) {
+    res.status(502).json({ error: 'generation_failed', message: err.message });
+  }
+});
+
+charactersRouter.post('/parse', async (req, res) => {
+  if (!req.body.text) return res.status(400).json({ error: 'text_required' });
+  try {
+    res.json(await parseAndSuggestTags(req.body.text));
+  } catch (err) {
+    res.status(502).json({ error: 'parse_failed', message: err.message });
+  }
+});
+
+charactersRouter.post('/generate-field', async (req, res) => {
+  const { field, instruction, currentFields } = req.body;
+  if (!field) return res.status(400).json({ error: 'field_required' });
+  try {
+    const value = await regenerateField({ field, instruction, currentFields: currentFields ?? {} });
+    res.json({ value });
+  } catch (err) {
+    res.status(502).json({ error: 'generation_failed', message: err.message });
+  }
+});
 
 charactersRouter.get('/', (req, res) => {
   res.json(listCharacters());

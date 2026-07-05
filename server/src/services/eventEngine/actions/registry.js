@@ -1,0 +1,28 @@
+import { executeCharacterJoin } from './characterJoin.js';
+import { executeCharacterLeave } from './characterLeave.js';
+import { executeInsertDialogue } from './insertDialogue.js';
+import { executeGenerateImage } from './generateImage.js';
+import { executeSetFlag } from './setFlag.js';
+import { executeChangeRelationship } from './changeRelationship.js';
+import { executeChangeOutfit } from './changeOutfit.js';
+import { executeAdvanceTime } from './advanceTime.js';
+
+export const actionRegistry = {
+  character_join: executeCharacterJoin,
+  character_leave: executeCharacterLeave,
+  insert_dialogue: executeInsertDialogue,
+  generate_image: executeGenerateImage,
+  set_flag: executeSetFlag,
+  change_relationship: executeChangeRelationship,
+  change_outfit: executeChangeOutfit,
+  advance_time: executeAdvanceTime,
+};
+
+export async function executeAction(action, execCtx) {
+  const executor = actionRegistry[action.action_type];
+  if (!executor) {
+    console.warn(`Unknown event action_type: ${action.action_type}`);
+    return { skipped: true, reason: 'unknown_action_type' };
+  }
+  return executor(action.params, execCtx);
+}

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useCharacters, useCharacter, useCharacterMutations, useOutfitMutations } from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
+import { charactersApi } from '../api/characters.js';
+import { outfitsApi } from '../api/outfits.js';
 
 const BASIC_FIELDS = [
   ['name', '名前（愛称）'],
@@ -47,7 +49,7 @@ const emptyForm = Object.fromEntries(
   [...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, '']),
 );
 
-function FieldWithRoll({ label, value, onChange }) {
+function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
   return (
     <div>
       <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>{label}</p>
@@ -56,10 +58,11 @@ function FieldWithRoll({ label, value, onChange }) {
         <button
           type="button"
           style={{ flexShrink: 0, fontSize: 11, padding: '4px 6px' }}
-          disabled
-          title="KoboldCpp連携（Phase 5/6）実装後に有効化されます"
+          onClick={onRoll}
+          disabled={rolling}
+          title="この項目だけをLLMで再生成"
         >
-          🎲
+          {rolling ? '…' : '🎲'}
         </button>
       </div>
     </div>
@@ -79,6 +82,24 @@ export default function CharactersPage() {
   const [activeTab, setActiveTab] = useState('basic');
   const [activeOutfitId, setActiveOutfitId] = useState(null);
   const [policyHint, setPolicyHint] = useState('');
+  const [pendingOutfitTags, setPendingOutfitTags] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [showPasteImport, setShowPasteImport] = useState(false);
+  const [unmatchedSegments, setUnmatchedSegments] = useState([]);
+  const [isGeneratingSheet, setIsGeneratingSheet] = useState(false);
+  const [rollingField, setRollingField] = useState(null);
+  const [assistError, setAssistError] = useState(null);
+  const [generatingImageTarget, setGeneratingImageTarget] = useState(null);
+  const [imageGenError, setImageGenError] = useState(null);
+
+  useEffect(() => {
+    setPendingOutfitTags('');
+    setPasteText('');
+    setShowPasteImport(false);
+    setUnmatchedSegments([]);
+    setAssistError(null);
+    if (!isNew) setPolicyHint('');
+  }, [selectedId]);
 
   useEffect(() => {
     if (isNew) {
@@ -105,6 +126,12 @@ export default function CharactersPage() {
   function startNew() {
     setSelectedId('new');
     setActiveTab('basic');
+    setPolicyHint('');
+    setPendingOutfitTags('');
+    setPasteText('');
+    setShowPasteImport(false);
+    setUnmatchedSegments([]);
+    setAssistError(null);
   }
 
   async function save() {
@@ -112,9 +139,63 @@ export default function CharactersPage() {
     payload.relationship_defaults = form.relationship_defaults;
     if (isNew) {
       const created = await create.mutateAsync(payload);
+      if (pendingOutfitTags && created.outfits?.[0]) {
+        await outfitsApi.update(created.outfits[0].id, {
+          name: created.outfits[0].name,
+          clothing_description: created.outfits[0].clothing_description,
+          equipment_description: created.outfits[0].equipment_description,
+          image_tags: pendingOutfitTags,
+          is_default: true,
+        });
+      }
       setSelectedId(created.id);
     } else {
       await update.mutateAsync({ id: selectedId, data: payload });
+    }
+  }
+
+  async function handleGenerateSheet() {
+    if (!policyHint.trim()) return;
+    setIsGeneratingSheet(true);
+    setAssistError(null);
+    try {
+      const result = await charactersApi.generate(policyHint.trim());
+      setForm((f) => ({ ...f, ...result.fields }));
+      setPendingOutfitTags(result.suggestedTags.join(', '));
+      setUnmatchedSegments(result.unmatchedSegments);
+    } catch (err) {
+      setAssistError(err.message);
+    } finally {
+      setIsGeneratingSheet(false);
+    }
+  }
+
+  async function handlePasteImport() {
+    if (!pasteText.trim()) return;
+    setIsGeneratingSheet(true);
+    setAssistError(null);
+    try {
+      const result = await charactersApi.parse(pasteText.trim());
+      setForm((f) => ({ ...f, ...result.fields }));
+      setPendingOutfitTags(result.suggestedTags.join(', '));
+      setUnmatchedSegments(result.unmatchedSegments);
+    } catch (err) {
+      setAssistError(err.message);
+    } finally {
+      setIsGeneratingSheet(false);
+    }
+  }
+
+  async function handleRollField(field) {
+    setRollingField(field);
+    setAssistError(null);
+    try {
+      const result = await charactersApi.generateField(field, policyHint.trim(), form);
+      setField(field, result.value);
+    } catch (err) {
+      setAssistError(err.message);
+    } finally {
+      setRollingField(null);
     }
   }
 
@@ -175,10 +256,41 @@ export default function CharactersPage() {
     await outfitMutations.uploadExpressionImage.mutateAsync({ id: activeOutfit.id, expressionTypeId, file });
   }
 
+  function confirmIfNoTags() {
+    if (activeOutfit.image_tags?.trim()) return true;
+    return window.confirm('服装タグが未設定ですが、このまま画像生成しますか？（意図せず裸体が生成される場合があります）');
+  }
+
+  async function handleGenerateStandingImage() {
+    if (!activeOutfit || !confirmIfNoTags()) return;
+    setGeneratingImageTarget('standing');
+    setImageGenError(null);
+    try {
+      await outfitMutations.generateStandingImage.mutateAsync({ id: activeOutfit.id });
+    } catch (err) {
+      setImageGenError(err.message);
+    } finally {
+      setGeneratingImageTarget(null);
+    }
+  }
+
+  async function handleGenerateExpressionImage(expressionTypeId) {
+    if (!activeOutfit || !confirmIfNoTags()) return;
+    setGeneratingImageTarget(expressionTypeId);
+    setImageGenError(null);
+    try {
+      await outfitMutations.generateExpressionImage.mutateAsync({ id: activeOutfit.id, expressionTypeId });
+    } catch (err) {
+      setImageGenError(err.message);
+    } finally {
+      setGeneratingImageTarget(null);
+    }
+  }
+
   if (loadingList || !expressionTypes) return <p>読み込み中...</p>;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr)', gap: 16 }}>
+    <div className="sidebar-layout" style={{ '--sidebar-width': '180px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #ddd', paddingRight: 12 }}>
         {characters.map((c) => (
           <div
@@ -223,11 +335,49 @@ export default function CharactersPage() {
                 onChange={(e) => setPolicyHint(e.target.value)}
                 placeholder="例：勝気な幼馴染、スポーツ少女、方言あり"
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-                <button disabled title="KoboldCpp連携（Phase 5/6）実装後に有効化されます">
-                  この指示でランダム生成
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                <button onClick={() => setShowPasteImport((v) => !v)}>
+                  {showPasteImport ? '貼り付け登録を閉じる' : 'フォーマットを貼り付けて読み込む'}
+                </button>
+                <button onClick={handleGenerateSheet} disabled={!policyHint.trim() || isGeneratingSheet}>
+                  {isGeneratingSheet ? '生成中...' : 'この指示でランダム生成'}
                 </button>
               </div>
+
+              {showPasteImport && (
+                <div style={{ marginTop: 10, borderTop: '1px solid #ddd', paddingTop: 8 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 12 }}>
+                    「キャラ情報：」から始まる形式のテキストを貼り付け
+                  </p>
+                  <textarea
+                    style={{ width: '100%', height: 60 }}
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    placeholder="キャラ情報：みお/本名：.../..."
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                    <button onClick={handlePasteImport} disabled={!pasteText.trim() || isGeneratingSheet}>
+                      {isGeneratingSheet ? '読み込み中...' : '貼り付けた内容を読み込む'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {assistError && <p style={{ color: 'red', fontSize: 12 }}>エラー: {assistError}</p>}
+              {unmatchedSegments.length > 0 && (
+                <p style={{ fontSize: 11, color: '#a16207' }}>
+                  認識できなかった項目：{unmatchedSegments.join(' / ')}
+                </p>
+              )}
+
+              {pendingOutfitTags !== '' && (
+                <div style={{ marginTop: 10, borderTop: '1px solid #ddd', paddingTop: 8 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 12 }}>
+                    提案されたdanbooruタグ（デフォルト衣装に保存時に適用されます）
+                  </p>
+                  <DanbooruTagEditor value={pendingOutfitTags} onChange={setPendingOutfitTags} />
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #ddd', paddingBottom: 6, flexWrap: 'wrap' }}>
@@ -248,26 +398,47 @@ export default function CharactersPage() {
             </div>
 
             {activeTab === 'basic' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                 {BASIC_FIELDS.map(([key, label]) => (
-                  <FieldWithRoll key={key} label={label} value={form[key]} onChange={(v) => setField(key, v)} />
+                  <FieldWithRoll
+                    key={key}
+                    label={label}
+                    value={form[key]}
+                    onChange={(v) => setField(key, v)}
+                    onRoll={() => handleRollField(key)}
+                    rolling={rollingField === key}
+                  />
                 ))}
               </div>
             )}
 
             {activeTab === 'personality' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                 {PERSONALITY_FIELDS.map(([key, label]) => (
-                  <FieldWithRoll key={key} label={label} value={form[key]} onChange={(v) => setField(key, v)} />
+                  <FieldWithRoll
+                    key={key}
+                    label={label}
+                    value={form[key]}
+                    onChange={(v) => setField(key, v)}
+                    onRoll={() => handleRollField(key)}
+                    rolling={rollingField === key}
+                  />
                 ))}
               </div>
             )}
 
             {activeTab === 'appearance' && (
               <div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginBottom: 16 }}>
                   {APPEARANCE_FIELDS.map(([key, label]) => (
-                    <FieldWithRoll key={key} label={label} value={form[key]} onChange={(v) => setField(key, v)} />
+                    <FieldWithRoll
+                    key={key}
+                    label={label}
+                    value={form[key]}
+                    onChange={(v) => setField(key, v)}
+                    onRoll={() => handleRollField(key)}
+                    rolling={rollingField === key}
+                  />
                   ))}
                 </div>
 
@@ -297,7 +468,7 @@ export default function CharactersPage() {
 
                     {activeOutfit && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                           <label>
                             衣装名
                             <input
@@ -363,17 +534,27 @@ export default function CharactersPage() {
                           >
                             {!activeOutfit.standing_image_path && '未設定'}
                           </div>
-                          <label>
-                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleStandingImageUpload} />
-                            <span style={{ display: 'inline-block', border: '1px solid #ccc', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
-                              アップロード
-                            </span>
-                          </label>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <label>
+                              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleStandingImageUpload} />
+                              <span style={{ display: 'inline-block', border: '1px solid #ccc', borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>
+                                アップロード
+                              </span>
+                            </label>
+                            <button
+                              style={{ fontSize: 12 }}
+                              onClick={handleGenerateStandingImage}
+                              disabled={generatingImageTarget === 'standing'}
+                            >
+                              {generatingImageTarget === 'standing' ? '生成中...' : '画像生成'}
+                            </button>
+                          </div>
+                          {imageGenError && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {imageGenError}</p>}
                         </div>
 
                         <div>
                           <p style={{ fontSize: 12, marginBottom: 4 }}>表情差分画像（この衣装の顔差分）</p>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                          <div className="expression-grid">
                             {expressionTypes.map((et) => {
                               const existingImage = activeOutfit.expression_images?.find(
                                 (img) => img.expression_type_id === et.id,
@@ -394,17 +575,26 @@ export default function CharactersPage() {
                                   >
                                     {!existingImage && et.name}
                                   </div>
-                                  <label>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      style={{ display: 'none' }}
-                                      onChange={(e) => handleExpressionImageUpload(et.id, e)}
-                                    />
-                                    <span style={{ fontSize: 10, cursor: 'pointer', textDecoration: 'underline' }}>
-                                      {existingImage ? '変更' : 'アップロード'}
-                                    </span>
-                                  </label>
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                                    <label>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        style={{ display: 'none' }}
+                                        onChange={(e) => handleExpressionImageUpload(et.id, e)}
+                                      />
+                                      <span style={{ fontSize: 10, cursor: 'pointer', textDecoration: 'underline' }}>
+                                        {existingImage ? '変更' : 'アップロード'}
+                                      </span>
+                                    </label>
+                                    <button
+                                      style={{ fontSize: 10, padding: '1px 4px' }}
+                                      onClick={() => handleGenerateExpressionImage(et.id)}
+                                      disabled={generatingImageTarget === et.id}
+                                    >
+                                      {generatingImageTarget === et.id ? '生成中...' : '画像生成'}
+                                    </button>
+                                  </div>
                                 </div>
                               );
                             })}

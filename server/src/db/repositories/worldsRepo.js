@@ -38,11 +38,12 @@ export function createWorld({
   weather_options = DEFAULT_WEATHER_OPTIONS,
   season_labels = DEFAULT_SEASON_LABELS,
   days_per_season = DEFAULT_DAYS_PER_SEASON,
+  image_style_preset_id = null,
 }) {
   const result = db
     .prepare(
-      `INSERT INTO worlds (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season)
-       VALUES (?, ?, 0, ?, ?, ?, ?)`,
+      `INSERT INTO worlds (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -51,14 +52,18 @@ export function createWorld({
       JSON.stringify(weather_options),
       JSON.stringify(season_labels),
       days_per_season,
+      image_style_preset_id,
     );
   return getWorld(result.lastInsertRowid);
 }
 
-export function updateWorld(id, { name, worldview, time_slot_labels, weather_options, season_labels, days_per_season }) {
+export function updateWorld(
+  id,
+  { name, worldview, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id },
+) {
   db.prepare(
     `UPDATE worlds
-     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?
+     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -67,6 +72,7 @@ export function updateWorld(id, { name, worldview, time_slot_labels, weather_opt
     JSON.stringify(weather_options ?? DEFAULT_WEATHER_OPTIONS),
     JSON.stringify(season_labels ?? DEFAULT_SEASON_LABELS),
     days_per_season ?? DEFAULT_DAYS_PER_SEASON,
+    image_style_preset_id ?? null,
     id,
   );
   return getWorld(id);

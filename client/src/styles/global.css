@@ -1,11 +1,63 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* Form controls (and labels wrapping them) default to an intrinsic min-width
+   that ignores their grid/flex track size, causing overflow in narrow grid
+   columns (e.g. EventsPage's control-fields grid). */
+input,
+select,
+textarea,
+label {
+  min-width: 0;
+}
+
+/* EventsPage's condition/action editors put many <label><span/><input/></label>
+   pairs directly into narrow grid columns; without an explicit width the
+   input keeps its browser-default intrinsic size and overflows the column. */
+.events-form label {
+  display: block;
+}
+.events-form input:not([type='checkbox']),
+.events-form select,
+.events-form textarea {
+  display: block;
+  width: 100%;
+}
+
 body {
   margin: 0;
+  color: #1a1a1a;
+  background: #fff;
+}
+
+/* Shared sidebar + detail layout (Characters/Events pages). Collapses to a
+   single column on narrow viewports instead of forcing horizontal scroll. */
+.sidebar-layout {
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 200px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 700px) {
+  .sidebar-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Expression-image grid (CharactersPage) — 4 columns is too cramped on phones. */
+.expression-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .expression-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

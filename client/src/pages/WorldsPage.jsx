@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
+import { useStylePresets } from '../hooks/useSettings.js';
 import TagChips from '../components/ui/TagChips.jsx';
 
 const emptyForm = {
@@ -10,10 +11,12 @@ const emptyForm = {
   weather_options: ['晴れ', '曇り', '雨'],
   season_labels: ['春', '夏', '秋', '冬'],
   days_per_season: 30,
+  image_style_preset_id: null,
 };
 
 export default function WorldsPage() {
   const { data: worlds, isLoading } = useWorlds();
+  const { data: stylePresets } = useStylePresets();
   const { create, update, remove } = useWorldMutations();
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -29,6 +32,7 @@ export default function WorldsPage() {
         weather_options: world.weather_options,
         season_labels: world.season_labels,
         days_per_season: world.days_per_season,
+        image_style_preset_id: world.image_style_preset_id ?? null,
       });
     }
   }, [editingId, worlds]);
@@ -127,6 +131,22 @@ export default function WorldsPage() {
               value={form.worldview}
               onChange={(e) => setForm({ ...form, worldview: e.target.value })}
             />
+          </label>
+
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            画像スタイルプリセット
+            <select
+              style={{ display: 'block', width: '100%' }}
+              value={form.image_style_preset_id ?? ''}
+              onChange={(e) => setForm({ ...form, image_style_preset_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">既定のプリセットを使用</option>
+              {(stylePresets ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

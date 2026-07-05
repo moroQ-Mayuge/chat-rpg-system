@@ -13,6 +13,18 @@
       "runtimeArgs": ["run", "dev", "--workspace", "client"],
       "port": 5180,
       "autoPort": true
+    },
+    {
+      "name": "koboldcpp",
+      "runtimeExecutable": "koboldcpp/models/koboldcpp.exe",
+      "runtimeArgs": [
+        "--model", "koboldcpp/models/llm/Mistral-nemo-ja-rp-v0.2.Q3_K_M.gguf",
+        "--sdmodel", "koboldcpp/models/sd/zammyIllustrious_zammyV10Turbo.safetensors",
+        "--port", "5001",
+        "--contextsize", "8192",
+        "--gpulayers", "999"
+      ],
+      "port": 5001
     }
   ]
 }

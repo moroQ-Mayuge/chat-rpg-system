@@ -46,5 +46,13 @@ export function useOutfitMutations(characterId) {
       mutationFn: ({ id, expressionTypeId, file }) => outfitsApi.uploadExpressionImage(id, expressionTypeId, file),
       onSuccess: invalidate,
     }),
+    generateStandingImage: useMutation({
+      mutationFn: ({ id, extraHint }) => outfitsApi.generateStandingImage(id, extraHint),
+      onSuccess: invalidate,
+    }),
+    generateExpressionImage: useMutation({
+      mutationFn: ({ id, expressionTypeId, extraHint }) => outfitsApi.generateExpressionImage(id, expressionTypeId, extraHint),
+      onSuccess: invalidate,
+    }),
   };
 }

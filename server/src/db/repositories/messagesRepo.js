@@ -2,10 +2,17 @@ import { db } from '../connection.js';
 import { touchRoomSession } from './roomSessionsRepo.js';
 import { advanceTime } from './playthroughsRepo.js';
 
+function attachImagePath(message) {
+  if (!message || message.content_type !== 'image' || !message.image_id) return message;
+  const image = db.prepare('SELECT file_path FROM generated_images WHERE id = ?').get(message.image_id);
+  return { ...message, image_path: image?.file_path ?? null };
+}
+
 export function listMessagesForSession(sessionId) {
   return db
     .prepare('SELECT * FROM messages WHERE room_session_id = ? ORDER BY id ASC')
-    .all(sessionId);
+    .all(sessionId)
+    .map(attachImagePath);
 }
 
 export function createMessage(sessionId, { sender_type, character_id = null, content_type = 'text', content = null, image_id = null, emotion_tag = null }) {
@@ -17,7 +24,20 @@ export function createMessage(sessionId, { sender_type, character_id = null, con
     .run(sessionId, sender_type, character_id, content_type, content, image_id, emotion_tag);
   touchRoomSession(sessionId);
   maybeAutoAdvanceTime(sessionId);
-  return db.prepare('SELECT * FROM messages WHERE id = ?').get(result.lastInsertRowid);
+  return attachImagePath(db.prepare('SELECT * FROM messages WHERE id = ?').get(result.lastInsertRowid));
+}
+
+// Cumulative user-turn count across every room session belonging to this
+// playthrough (route) — the "playthrough_start" turn_count reference in
+// SPEC.md 3.6.3, distinct from turns_per_time_slot's per-room counter.
+export function countUserTurnsForPlaythrough(playthroughId) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM messages m
+       JOIN room_sessions rs ON rs.id = m.room_session_id
+       WHERE rs.playthrough_id = ? AND m.sender_type = 'user'`,
+    )
+    .get(playthroughId).c;
 }
 
 // Turn-count-based time advancement trigger (SPEC.md 3.2/3.3): if the room template

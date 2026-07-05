@@ -6,6 +6,8 @@ import RoomTemplateEditPage from './pages/RoomTemplateEditPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import ExpressionTypesPage from './pages/ExpressionTypesPage.jsx';
 import RelationshipAxesPage from './pages/RelationshipAxesPage.jsx';
+import EventsPage from './pages/EventsPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 import PlaythroughsPage from './pages/PlaythroughsPage.jsx';
 import RoomPickerPage from './pages/RoomPickerPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
@@ -39,6 +41,12 @@ export default function App() {
           <NavLink to="/relationship-axes" style={navLinkStyle}>
             関係性軸
           </NavLink>
+          <NavLink to="/events" style={navLinkStyle}>
+            イベント
+          </NavLink>
+          <NavLink to="/settings" style={navLinkStyle}>
+            設定
+          </NavLink>
         </nav>
       </header>
       <main style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
@@ -52,6 +60,8 @@ export default function App() {
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/worlds/:worldId/playthroughs" element={<PlaythroughsPage />} />
           <Route path="/playthroughs/:playthroughId/pick-room" element={<RoomPickerPage />} />
           <Route path="/room-sessions/:id/chat" element={<ChatPage />} />

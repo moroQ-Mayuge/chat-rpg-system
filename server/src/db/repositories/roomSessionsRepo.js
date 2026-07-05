@@ -1,7 +1,7 @@
 import { db } from '../connection.js';
 import { getPlaythrough, advanceTime, touchPlaythrough } from './playthroughsRepo.js';
 
-function ensureRelationshipStatesSeeded(playthroughId, characterId) {
+export function ensureRelationshipStatesSeeded(playthroughId, characterId) {
   const alreadySeeded = db
     .prepare('SELECT 1 FROM relationship_states WHERE playthrough_id = ? AND character_id = ? LIMIT 1')
     .get(playthroughId, characterId);
@@ -26,6 +26,20 @@ function attachParticipants(session) {
        WHERE rsc.room_session_id = ? AND rsc.is_active = 1`,
     )
     .all(session.id);
+
+  for (const participant of participants) {
+    participant.expression_images = participant.current_outfit_id
+      ? db
+          .prepare(
+            `SELECT et.llm_tag_key, oei.image_path
+             FROM outfit_expression_images oei
+             JOIN expression_types et ON et.id = oei.expression_type_id
+             WHERE oei.outfit_id = ?`,
+          )
+          .all(participant.current_outfit_id)
+      : [];
+  }
+
   return { ...session, participants };
 }
 
@@ -37,7 +51,15 @@ export function getActiveSessionForPlaythrough(playthroughId) {
 }
 
 export function getRoomSession(id) {
-  const row = db.prepare('SELECT * FROM room_sessions WHERE id = ?').get(id);
+  const row = db
+    .prepare(
+      `SELECT rs.*, rt.background_image_path AS room_background_image_path, gi.file_path AS current_scene_image_path
+       FROM room_sessions rs
+       JOIN room_templates rt ON rt.id = rs.room_template_id
+       LEFT JOIN generated_images gi ON gi.id = rs.current_scene_image_id
+       WHERE rs.id = ?`,
+    )
+    .get(id);
   return attachParticipants(row);
 }
 
@@ -90,4 +112,58 @@ export function exitRoomSession(id) {
 
 export function touchRoomSession(id) {
   db.prepare(`UPDATE room_sessions SET updated_at = datetime('now') WHERE id = ?`).run(id);
+}
+
+// Applies a detected [SCENE_CHANGE] to the session's tracked scene state, so
+// subsequent image-generation prompts (and the LLM's own context on the next
+// turn) reflect the new location rather than the room template's original one.
+export function updateSessionScene(id, { locationText, locationTags }) {
+  db.prepare(
+    `UPDATE room_sessions SET current_location_text = ?, current_location_tags = ?, updated_at = datetime('now') WHERE id = ?`,
+  ).run(locationText, locationTags, id);
+  return getRoomSession(id);
+}
+
+export function setCurrentSceneImage(id, generatedImageId) {
+  db.prepare('UPDATE room_sessions SET current_scene_image_id = ? WHERE id = ?').run(generatedImageId, id);
+}
+
+// Adds a character to a live session (event action character_join), or
+// reactivates one who previously left. Also seeds relationship_states for the
+// playthrough if this is the character's first appearance in this route.
+export function addParticipant(sessionId, characterId, outfitId = null) {
+  const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
+  const resolvedOutfitId = outfitId ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
+  const existing = db
+    .prepare('SELECT 1 FROM room_session_characters WHERE room_session_id = ? AND character_id = ?')
+    .get(sessionId, characterId);
+  if (existing) {
+    db.prepare(
+      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, joined_at = datetime('now'), left_at = NULL
+       WHERE room_session_id = ? AND character_id = ?`,
+    ).run(resolvedOutfitId, sessionId, characterId);
+  } else {
+    db.prepare(
+      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)',
+    ).run(sessionId, characterId, resolvedOutfitId);
+  }
+  ensureRelationshipStatesSeeded(session.playthrough_id, characterId);
+  return getRoomSession(sessionId);
+}
+
+export function removeParticipant(sessionId, characterId) {
+  db.prepare(
+    `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+     WHERE room_session_id = ? AND character_id = ?`,
+  ).run(sessionId, characterId);
+  return getRoomSession(sessionId);
+}
+
+export function updateParticipantOutfit(sessionId, characterId, outfitId) {
+  db.prepare('UPDATE room_session_characters SET current_outfit_id = ? WHERE room_session_id = ? AND character_id = ?').run(
+    outfitId,
+    sessionId,
+    characterId,
+  );
+  return getRoomSession(sessionId);
 }

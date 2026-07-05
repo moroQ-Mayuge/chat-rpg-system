@@ -5,3 +5,4 @@ storage/images/
 dist/
 *.log
 .claude/settings.local.json
+koboldcpp/
