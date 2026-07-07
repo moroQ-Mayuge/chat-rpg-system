@@ -6,6 +6,7 @@ import {
   updateProtagonistSettings,
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession } from '../db/repositories/roomSessionsRepo.js';
+import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
 
 export const playthroughsRouter = Router();
 
@@ -36,4 +37,20 @@ playthroughsRouter.get('/:id/active-session', (req, res) => {
 playthroughsRouter.post('/:id/room-sessions', (req, res) => {
   if (!req.body.room_template_id) return res.status(400).json({ error: 'room_template_id_required' });
   res.status(201).json(createRoomSession(req.params.id, req.body.room_template_id));
+});
+
+// Player inventory only for now (owner_character_id always null) — see
+// playthrough_inventory's schema comment for the future NPC-holder path.
+playthroughsRouter.get('/:id/inventory', (req, res) => {
+  res.json(listInventoryForPlaythrough(req.params.id));
+});
+
+playthroughsRouter.post('/:id/inventory', (req, res) => {
+  if (!req.body.item_id) return res.status(400).json({ error: 'item_id_required' });
+  res.status(201).json(addItemToInventory(req.params.id, req.body.item_id, req.body.quantity ?? 1));
+});
+
+playthroughsRouter.post('/:id/inventory/use', (req, res) => {
+  if (!req.body.item_id) return res.status(400).json({ error: 'item_id_required' });
+  res.json(removeItemFromInventory(req.params.id, req.body.item_id, req.body.quantity ?? 1));
 });

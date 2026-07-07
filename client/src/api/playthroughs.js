@@ -7,4 +7,7 @@ export const playthroughsApi = {
   getActiveSession: (id) => api.get(`/playthroughs/${id}/active-session`),
   createRoomSession: (id, roomTemplateId) => api.post(`/playthroughs/${id}/room-sessions`, { room_template_id: roomTemplateId }),
   updateProtagonist: (id, data) => api.put(`/playthroughs/${id}/protagonist`, data),
+  listInventory: (id) => api.get(`/playthroughs/${id}/inventory`),
+  addInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory`, { item_id: itemId, quantity }),
+  useInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory/use`, { item_id: itemId, quantity }),
 };

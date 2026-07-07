@@ -6,6 +6,8 @@ import { executeSetFlag } from './setFlag.js';
 import { executeChangeRelationship } from './changeRelationship.js';
 import { executeChangeOutfit } from './changeOutfit.js';
 import { executeAdvanceTime } from './advanceTime.js';
+import { executeGrantItem } from './grantItem.js';
+import { executeRemoveItem } from './removeItem.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -16,6 +18,8 @@ export const actionRegistry = {
   change_relationship: executeChangeRelationship,
   change_outfit: executeChangeOutfit,
   advance_time: executeAdvanceTime,
+  grant_item: executeGrantItem,
+  remove_item: executeRemoveItem,
 };
 
 export async function executeAction(action, execCtx) {

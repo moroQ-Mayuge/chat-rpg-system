@@ -3,9 +3,16 @@ import { touchRoomSession } from './roomSessionsRepo.js';
 import { advanceTime } from './playthroughsRepo.js';
 
 function attachImagePath(message) {
-  if (!message || message.content_type !== 'image' || !message.image_id) return message;
-  const image = db.prepare('SELECT file_path FROM generated_images WHERE id = ?').get(message.image_id);
-  return { ...message, image_path: image?.file_path ?? null };
+  if (!message) return message;
+  let result = message;
+  if (result.content_type === 'image' && result.image_id) {
+    const image = db.prepare('SELECT file_path FROM generated_images WHERE id = ?').get(result.image_id);
+    result = { ...result, image_path: image?.file_path ?? null };
+  }
+  if (result.mentioned_character_ids) {
+    result = { ...result, mentioned_character_ids: JSON.parse(result.mentioned_character_ids) };
+  }
+  return result;
 }
 
 export function listMessagesForSession(sessionId) {
@@ -15,13 +22,25 @@ export function listMessagesForSession(sessionId) {
     .map(attachImagePath);
 }
 
-export function createMessage(sessionId, { sender_type, character_id = null, content_type = 'text', content = null, image_id = null, emotion_tag = null }) {
+export function createMessage(
+  sessionId,
+  { sender_type, character_id = null, content_type = 'text', content = null, image_id = null, emotion_tag = null, mentioned_character_ids = null },
+) {
   const result = db
     .prepare(
-      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(sessionId, sender_type, character_id, content_type, content, image_id, emotion_tag);
+    .run(
+      sessionId,
+      sender_type,
+      character_id,
+      content_type,
+      content,
+      image_id,
+      emotion_tag,
+      mentioned_character_ids ? JSON.stringify(mentioned_character_ids) : null,
+    );
   touchRoomSession(sessionId);
   maybeAutoAdvanceTime(sessionId);
   return attachImagePath(db.prepare('SELECT * FROM messages WHERE id = ?').get(result.lastInsertRowid));

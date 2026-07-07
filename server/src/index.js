@@ -19,6 +19,8 @@ import { playthroughsRouter } from './routes/playthroughs.js';
 import { roomSessionsRouter } from './routes/roomSessions.js';
 import { eventsRouter } from './routes/events.js';
 import { settingsRouter } from './routes/settings.js';
+import { itemsRouter } from './routes/items.js';
+import { actionCommandsRouter } from './routes/actionCommands.js';
 import { attachSocketServer } from './ws/socketServer.js';
 
 migrate();
@@ -40,6 +42,8 @@ app.use('/api/playthroughs', playthroughsRouter);
 app.use('/api/room-sessions', roomSessionsRouter);
 app.use('/api', eventsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/items', itemsRouter);
+app.use('/api/action-commands', actionCommandsRouter);
 
 // Serves the built client (npm run build) so the app can run as a single
 // process on the LAN without a separate Vite dev server. No-op in dev, since

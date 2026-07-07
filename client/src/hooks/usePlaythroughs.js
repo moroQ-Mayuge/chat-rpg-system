@@ -31,3 +31,26 @@ export function usePlaythroughMutations(worldId) {
     }),
   };
 }
+
+export function useInventory(playthroughId) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'inventory'],
+    queryFn: () => playthroughsApi.listInventory(playthroughId),
+    enabled: playthroughId != null,
+  });
+}
+
+export function useInventoryMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'inventory'] });
+  return {
+    addItem: useMutation({
+      mutationFn: ({ itemId, quantity }) => playthroughsApi.addInventoryItem(playthroughId, itemId, quantity),
+      onSuccess: invalidate,
+    }),
+    useItem: useMutation({
+      mutationFn: ({ itemId, quantity }) => playthroughsApi.useInventoryItem(playthroughId, itemId, quantity),
+      onSuccess: invalidate,
+    }),
+  };
+}

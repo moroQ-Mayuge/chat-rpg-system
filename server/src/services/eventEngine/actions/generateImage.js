@@ -47,14 +47,18 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
 // { image_type: "scene"|"event", prompt_override?, target_character_ids? }
 export async function executeGenerateImage(params, execCtx) {
   const { image_type = 'event', prompt_override = null, target_character_ids = null } = params;
+  // Falls back to the player's explicit @mention (chat enhancement backlog
+  // item 3c) when the event itself doesn't pin down a target — lets "whoever
+  // I mentioned" resolve without the event author having to hardcode it.
+  const effectiveTargetIds = target_character_ids ?? execCtx.mentionedCharacterIds;
 
   return new Promise((resolve, reject) => {
     enqueueImageJob(async () => {
       try {
         const session = getRoomSession(execCtx.sessionId);
         const participantsByName = new Map(session.participants.map((p) => [p.name, p]));
-        const candidateParticipants = target_character_ids
-          ? session.participants.filter((p) => target_character_ids.includes(p.character_id))
+        const candidateParticipants = effectiveTargetIds
+          ? session.participants.filter((p) => effectiveTargetIds.includes(p.character_id))
           : session.participants;
 
         const settings = getImageGenerationSettings(image_type);

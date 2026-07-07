@@ -39,7 +39,7 @@ function resolveExclusiveGroups(eligibleDefs) {
 // Runs every active event definition for the room template this session belongs
 // to, fires the ones whose conditions + control gates (cooldown/max_fires/
 // exclusive_group) pass, and applies their actions in priority order.
-export async function runEventEngine({ sessionId, playthroughId, roomTemplateId, userMessage, aiResponseText }) {
+export async function runEventEngine({ sessionId, playthroughId, roomTemplateId, userMessage, aiResponseText, mentionedCharacterIds = null }) {
   const session = getRoomSession(sessionId);
   const turnNumber = countUserTurnsForPlaythrough(playthroughId);
   const flags = getAllFlags(playthroughId);
@@ -62,12 +62,17 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
     if (!passesCooldownAndMaxFires(def, playthroughId, turnNumber)) continue;
 
     const override = getOverride(roomTemplateId, def.id);
-    const results = def.conditions.map((condition) =>
-      evaluateCondition(condition, {
-        ...baseCtx,
-        eventDefinitionId: def.id,
-        overrideProbability: condition.condition_type === 'probability' ? override?.override_probability : undefined,
-      }),
+    // 'outcome'-phase conditions are checked separately, after the event has
+    // already fired (see below) — they don't gate whether it fires at all.
+    const triggerConditions = def.conditions.filter((c) => c.phase !== 'outcome');
+    const results = await Promise.all(
+      triggerConditions.map((condition) =>
+        evaluateCondition(condition, {
+          ...baseCtx,
+          eventDefinitionId: def.id,
+          overrideProbability: condition.condition_type === 'probability' ? override?.override_probability : undefined,
+        }),
+      ),
     );
     const passed = def.condition_logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
     if (passed) eligible.push(def);
@@ -78,16 +83,33 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
 
   for (const def of firing) {
     recordFire(playthroughId, def.id, turnNumber);
+
+    // Success/failure outcome branching (chat enhancement backlog item 5):
+    // when enabled, a second condition set (phase='outcome') determines
+    // which of the event's actions actually run. Disabled by default so
+    // pre-existing events keep firing every action unconditionally.
+    let outcome = null;
+    if (def.has_outcome_branch) {
+      const outcomeConditions = def.conditions.filter((c) => c.phase === 'outcome');
+      const outcomeResults = await Promise.all(
+        outcomeConditions.map((condition) => evaluateCondition(condition, { ...baseCtx, eventDefinitionId: def.id })),
+      );
+      const outcomePassed = def.outcome_logic === 'OR' ? outcomeResults.some(Boolean) : outcomeResults.every(Boolean);
+      outcome = outcomePassed ? 'success' : 'failure';
+    }
+
     const actionResults = [];
     for (const action of def.actions) {
+      if (outcome && action.outcome !== 'always' && action.outcome !== outcome) continue;
+
       // Actions run sequentially and re-fetch session state as needed, so a
       // character_join earlier in this same event is visible to a later
       // change_relationship/generate_image action in the same firing.
-      const execCtx = { sessionId, playthroughId, roomTemplateId, session: getRoomSession(sessionId), turnNumber };
+      const execCtx = { sessionId, playthroughId, roomTemplateId, session: getRoomSession(sessionId), turnNumber, mentionedCharacterIds };
       const result = await executeAction(action, execCtx);
       actionResults.push({ actionType: action.action_type, result });
     }
-    fired.push({ eventDefinitionId: def.id, name: def.name, actionResults });
+    fired.push({ eventDefinitionId: def.id, name: def.name, outcome, actionResults });
   }
 
   return fired;

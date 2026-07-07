@@ -5,7 +5,7 @@ import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
-import { parseScriptResponse } from '../services/responseParser.js';
+import { parseScriptLine } from '../services/responseParser.js';
 import { generateChatCompletion, generateImage, generateTxt2Image } from '../services/koboldClient.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, suggestSceneTags } from '../services/imagePromptBuilder.js';
 import { renderPromptTemplate } from '../services/promptTemplate.js';
@@ -29,12 +29,27 @@ roomSessionsRouter.get('/:id/messages', (req, res) => {
   res.json(listMessagesForSession(req.params.id));
 });
 
+// Resolves "@name" tokens against the session's current participants
+// (Teams/Slack-style mention, chat enhancement backlog item 3c) — lets the
+// player explicitly select an action/utterance's target rather than the
+// event engine having to infer it from context.
+function resolveMentions(content, participants) {
+  const ids = participants.filter((p) => content.includes(`@${p.name}`)).map((p) => p.character_id);
+  return ids.length > 0 ? ids : null;
+}
+
 roomSessionsRouter.post('/:id/messages', (req, res) => {
   if (!req.body.content) return res.status(400).json({ error: 'content_required' });
-  const message = createMessage(req.params.id, { sender_type: 'user', content: req.body.content });
+  const session = getRoomSession(req.params.id);
+  const mentionedCharacterIds = resolveMentions(req.body.content, session.participants);
+  const message = createMessage(req.params.id, {
+    sender_type: 'user',
+    content: req.body.content,
+    mentioned_character_ids: mentionedCharacterIds,
+  });
   res.status(201).json(message);
 
-  generateReply(req.params.id, req.body.content).catch((err) => {
+  generateReply(req.params.id, req.body.content, mentionedCharacterIds).catch((err) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
@@ -49,25 +64,12 @@ function fallbackEmotionKey() {
   return row?.llm_tag_key ?? 'normal';
 }
 
-function resolveEmotionKey(rawKey, validKeys, fallback) {
-  return rawKey && validKeys.has(rawKey) ? rawKey : fallback;
-}
-
-async function generateReply(sessionId, userMessageContent) {
+async function generateReply(sessionId, userMessageContent, mentionedCharacterIds = null) {
   const session = getRoomSession(sessionId);
   const built = buildMultiCharacterMessages(session);
   if (!built) return;
 
   broadcast(sessionId, { type: 'generation_start' });
-
-  const fullText = await generateChatCompletion({
-    messages: built.messages,
-    stop: ['ユーザー:', 'User:'],
-    stream: true,
-    onToken: (token) => broadcast(sessionId, { type: 'token', token }),
-  });
-
-  const { turns, sceneChange } = parseScriptResponse(fullText);
 
   const validEmotionKeys = new Set(db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key));
   const fallbackKey = fallbackEmotionKey();
@@ -85,43 +87,76 @@ async function generateReply(sessionId, userMessageContent) {
     protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : [],
   );
 
-  for (const turn of turns) {
-    if (turn.type === 'character' && forbiddenNames.has(turn.characterName.trim())) {
-      continue;
+  // Persists + broadcasts one parsed line as soon as it's recognized, so chat
+  // bubbles reveal one at a time as the response streams in, instead of all
+  // appearing at once after the full response lands.
+  function handleParsedLine(parsed) {
+    if (!parsed) return;
+
+    if (parsed.type === 'scene_change') {
+      broadcast(sessionId, { type: 'scene_change_detected', description: parsed.description });
+      enqueueImageJob(() => generateSceneImage(sessionId, parsed.description));
+      return;
     }
 
-    if (turn.type === 'narration') {
-      const message = createMessage(sessionId, { sender_type: 'narration', content: turn.text });
+    if (parsed.type === 'narration') {
+      const message = createMessage(sessionId, { sender_type: 'narration', content: parsed.text });
       broadcast(sessionId, { type: 'message_complete', message });
-      continue;
+      return;
     }
 
-    const participant = participantsByName.get(turn.characterName);
+    if (forbiddenNames.has(parsed.characterName.trim())) return;
+
+    const participant = participantsByName.get(parsed.characterName);
     if (!participant) {
       // Model hallucinated a name that isn't actually present — keep the line
       // visible as narration rather than silently discarding generated content.
       const message = createMessage(sessionId, {
         sender_type: 'narration',
-        content: `[${turn.characterName}]: ${turn.text}`,
+        content: `[${parsed.characterName}]: ${parsed.text}`,
       });
       broadcast(sessionId, { type: 'message_complete', message });
-      continue;
+      return;
     }
 
-    const emotionTag = resolveEmotionKey(turn.emotionKey, validEmotionKeys, fallbackKey);
+    let content = parsed.text;
+    let emotionTag = fallbackKey;
+    if (parsed.emotionKey) {
+      if (validEmotionKeys.has(parsed.emotionKey)) {
+        emotionTag = parsed.emotionKey;
+      } else {
+        // Unknown emotion tag: fall back to the default expression image, but
+        // keep the model's intended nuance visible by folding it into the
+        // dialogue text instead of discarding the line's content.
+        content = `${content}（${parsed.emotionKey}）`;
+      }
+    }
+
     const message = createMessage(sessionId, {
       sender_type: 'character',
       character_id: participant.character_id,
-      content: turn.text,
+      content,
       emotion_tag: emotionTag,
     });
     broadcast(sessionId, { type: 'message_complete', message });
   }
 
-  if (sceneChange) {
-    broadcast(sessionId, { type: 'scene_change_detected', description: sceneChange });
-    enqueueImageJob(() => generateSceneImage(sessionId, sceneChange));
-  }
+  let lineBuffer = '';
+  const fullText = await generateChatCompletion({
+    messages: built.messages,
+    stop: ['ユーザー:', 'User:'],
+    stream: true,
+    onToken: (token) => {
+      lineBuffer += token;
+      let newlineIndex;
+      while ((newlineIndex = lineBuffer.indexOf('\n')) !== -1) {
+        const line = lineBuffer.slice(0, newlineIndex);
+        lineBuffer = lineBuffer.slice(newlineIndex + 1);
+        handleParsedLine(parseScriptLine(line));
+      }
+    },
+  });
+  handleParsedLine(parseScriptLine(lineBuffer));
 
   try {
     const fired = await runEventEngine({
@@ -130,6 +165,7 @@ async function generateReply(sessionId, userMessageContent) {
       roomTemplateId: session.room_template_id,
       userMessage: userMessageContent,
       aiResponseText: fullText,
+      mentionedCharacterIds,
     });
     for (const event of fired) {
       broadcast(sessionId, { type: 'event_fired', eventDefinitionId: event.eventDefinitionId, name: event.name });

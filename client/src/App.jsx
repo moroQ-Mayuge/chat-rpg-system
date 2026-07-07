@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import WorldsPage from './pages/WorldsPage.jsx';
 import PropsPage from './pages/PropsPage.jsx';
 import RoomTemplatesPage from './pages/RoomTemplatesPage.jsx';
@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage.jsx';
 import PlaythroughsPage from './pages/PlaythroughsPage.jsx';
 import RoomPickerPage from './pages/RoomPickerPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
+import ItemsPage from './pages/ItemsPage.jsx';
 
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
@@ -18,9 +19,15 @@ const navLinkStyle = ({ isActive }) => ({
 });
 
 export default function App() {
+  const location = useLocation();
+  // Chat is the app's primary content surface — while on it, drop the
+  // shared page container's padding/max-width and let it fill the rest of
+  // the viewport height instead of flowing with the document.
+  const isChatPage = /^\/room-sessions\/[^/]+\/chat$/.test(location.pathname);
+
   return (
-    <div style={{ fontFamily: 'sans-serif' }}>
-      <header style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #ddd' }}>
+    <div style={{ fontFamily: 'sans-serif', height: isChatPage ? '100vh' : 'auto', display: isChatPage ? 'flex' : 'block', flexDirection: 'column' }}>
+      <header style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #ddd', flexShrink: 0 }}>
         <h1 style={{ margin: '0 0 8px', fontSize: 20 }}>ChatRPG</h1>
         <nav>
           <NavLink to="/worlds" style={navLinkStyle}>
@@ -31,6 +38,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/props" style={navLinkStyle}>
             設備・機材
+          </NavLink>
+          <NavLink to="/items" style={navLinkStyle}>
+            アイテム
           </NavLink>
           <NavLink to="/characters" style={navLinkStyle}>
             キャラクター
@@ -49,7 +59,13 @@ export default function App() {
           </NavLink>
         </nav>
       </header>
-      <main style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+      <main
+        style={
+          isChatPage
+            ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+            : { padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }
+        }
+      >
         <Routes>
           <Route path="/" element={<RoomTemplatesPage />} />
           <Route path="/worlds" element={<WorldsPage />} />
@@ -57,6 +73,7 @@ export default function App() {
           <Route path="/rooms/new" element={<RoomTemplateEditPage />} />
           <Route path="/rooms/:id/edit" element={<RoomTemplateEditPage />} />
           <Route path="/props" element={<PropsPage />} />
+          <Route path="/items" element={<ItemsPage />} />
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />

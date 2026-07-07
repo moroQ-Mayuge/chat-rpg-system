@@ -4,6 +4,7 @@ import { useCharacters } from '../hooks/useCharacters.js';
 import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
+import { useAllItems } from '../hooks/useItems.js';
 
 const CONDITION_TYPES = [
   { value: 'probability', label: '確率' },
@@ -12,6 +13,8 @@ const CONDITION_TYPES = [
   { value: 'relationship_threshold', label: '関係性閾値' },
   { value: 'flag_state', label: 'フラグ状態' },
   { value: 'participant_count', label: '同席人数' },
+  { value: 'has_item', label: '所持アイテム' },
+  { value: 'llm_judge', label: 'LLM判定' },
 ];
 
 const ACTION_TYPES = [
@@ -23,6 +26,8 @@ const ACTION_TYPES = [
   { value: 'change_relationship', label: '関係性パラメータ変更' },
   { value: 'change_outfit', label: '衣装変更' },
   { value: 'advance_time', label: '時間経過' },
+  { value: 'grant_item', label: 'アイテム付与' },
+  { value: 'remove_item', label: 'アイテム削除' },
 ];
 
 function conditionDefaults(type) {
@@ -39,6 +44,10 @@ function conditionDefaults(type) {
       return { flag_key: '', comparison: '==', value: 'true' };
     case 'participant_count':
       return { comparison: '>=', value: 1 };
+    case 'has_item':
+      return { item_id: null, negate: false };
+    case 'llm_judge':
+      return { question: '' };
     default:
       return {};
   }
@@ -62,6 +71,9 @@ function actionDefaults(type) {
       return { character_id: null, outfit_id: null };
     case 'advance_time':
       return { slots: 1 };
+    case 'grant_item':
+    case 'remove_item':
+      return { item_id: null, quantity: 1 };
     default:
       return {};
   }
@@ -77,6 +89,8 @@ const emptyEvent = {
   cooldown_turns: 0,
   max_fires_per_session: null,
   exclusive_group: null,
+  has_outcome_branch: false,
+  outcome_logic: 'AND',
   conditions: [],
   actions: [],
 };
@@ -86,23 +100,39 @@ const rowHeaderStyle = { display: 'flex', justifyContent: 'space-between', align
 const grid3 = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 };
 const label11 = { fontSize: 11, color: '#888', display: 'block', marginBottom: 2 };
 
-function ConditionEditor({ condition, characters, axes, onChange, onRemove }) {
+function ConditionEditor({ condition, characters, axes, items, hasOutcomeBranch, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
+  const [keywordDraft, setKeywordDraft] = useState('');
+
+  function addKeyword() {
+    const value = keywordDraft.trim();
+    if (!value) return;
+    setParams({ keywords: [...(p.keywords ?? []), value] });
+    setKeywordDraft('');
+  }
 
   return (
     <div style={rowStyle}>
       <div style={rowHeaderStyle}>
-        <select
-          value={condition.condition_type}
-          onChange={(e) => onChange({ condition_type: e.target.value, params: conditionDefaults(e.target.value) })}
-        >
-          {CONDITION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select
+            value={condition.condition_type}
+            onChange={(e) => onChange({ condition_type: e.target.value, params: conditionDefaults(e.target.value) })}
+          >
+            {CONDITION_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          {hasOutcomeBranch && (
+            <select value={condition.phase ?? 'trigger'} onChange={(e) => onChange({ ...condition, phase: e.target.value })}>
+              <option value="trigger">発火条件</option>
+              <option value="outcome">結果判定条件</option>
+            </select>
+          )}
+        </div>
         <button onClick={onRemove}>削除</button>
       </div>
 
@@ -165,16 +195,23 @@ function ConditionEditor({ condition, characters, axes, onChange, onRemove }) {
                 </button>
               </span>
             ))}
-            <input
-              placeholder="キーワードを入力してEnter"
-              style={{ fontSize: 12, width: 160 }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.target.value.trim()) {
-                  setParams({ keywords: [...(p.keywords ?? []), e.target.value.trim()] });
-                  e.target.value = '';
-                }
-              }}
-            />
+            <span style={{ display: 'inline-flex', gap: 4 }}>
+              <input
+                placeholder="キーワードを入力"
+                style={{ fontSize: 12, width: 160 }}
+                value={keywordDraft}
+                onChange={(e) => setKeywordDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addKeyword();
+                  }
+                }}
+              />
+              <button type="button" style={{ fontSize: 12 }} onClick={addKeyword} disabled={!keywordDraft.trim()}>
+                + 追加
+              </button>
+            </span>
           </div>
           <div style={grid3}>
             <label>
@@ -291,11 +328,48 @@ function ConditionEditor({ condition, characters, axes, onChange, onRemove }) {
           </label>
         </div>
       )}
+
+      {condition.condition_type === 'has_item' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>アイテム</span>
+            <select value={p.item_id ?? ''} onChange={(e) => setParams({ item_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(items ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
+          </label>
+        </div>
+      )}
+
+      {condition.condition_type === 'llm_judge' && (
+        <div>
+          <label>
+            <span style={label11}>LLMへの質問（yes/noで判定）</span>
+            <input
+              style={{ width: '100%' }}
+              placeholder="ユーザーはキャラクターに対して友好的な態度を取っているか？"
+              value={p.question ?? ''}
+              onChange={(e) => setParams({ question: e.target.value })}
+            />
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            直近のユーザー発言とAI応答を読み、この質問にyes/noで判定させます。判定コストがかかるため多用は避けてください。
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -307,13 +381,22 @@ function ActionEditor({ action, characters, axes, expressionTypes, onChange, onR
   return (
     <div style={rowStyle}>
       <div style={rowHeaderStyle}>
-        <select value={action.action_type} onChange={(e) => onChange({ action_type: e.target.value, params: actionDefaults(e.target.value) })}>
-          {ACTION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select value={action.action_type} onChange={(e) => onChange({ action_type: e.target.value, params: actionDefaults(e.target.value) })}>
+            {ACTION_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          {hasOutcomeBranch && (
+            <select value={action.outcome ?? 'always'} onChange={(e) => onChange({ ...action, outcome: e.target.value })}>
+              <option value="always">常に実行</option>
+              <option value="success">成功時のみ</option>
+              <option value="failure">失敗時のみ</option>
+            </select>
+          )}
+        </div>
         <button onClick={onRemove}>削除</button>
       </div>
 
@@ -558,6 +641,26 @@ function ActionEditor({ action, characters, axes, expressionTypes, onChange, onR
           <input type="number" min="1" value={p.slots ?? 1} onChange={(e) => setParams({ slots: Number(e.target.value) })} />
         </label>
       )}
+
+      {(action.action_type === 'grant_item' || action.action_type === 'remove_item') && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>アイテム</span>
+            <select value={p.item_id ?? ''} onChange={(e) => setParams({ item_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(items ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>個数</span>
+            <input type="number" min="1" value={p.quantity ?? 1} onChange={(e) => setParams({ quantity: Number(e.target.value) })} />
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -611,6 +714,7 @@ export default function EventsPage() {
   const { data: axes } = useRelationshipAxes();
   const { data: expressionTypes } = useExpressionTypes();
   const { data: roomTemplates } = useRoomTemplates();
+  const { data: items } = useAllItems();
   const { create, update, remove } = useEventDefinitionMutations();
 
   const [selectedId, setSelectedId] = useState(null);
@@ -757,6 +861,31 @@ export default function EventsPage() {
           </div>
 
           <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: draft.has_outcome_branch ? 8 : 0 }}>
+              <input
+                type="checkbox"
+                checked={draft.has_outcome_branch}
+                onChange={(e) => setDraft({ ...draft, has_outcome_branch: e.target.checked })}
+              />
+              成功/失敗分岐を有効にする
+            </label>
+            {draft.has_outcome_branch && (
+              <>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+                  発火後、条件の「結果判定条件」欄に振り分けたものだけで成功/失敗を判定し、アクションの「成功時のみ」「失敗時のみ」欄に応じて実行するアクションを絞り込みます。
+                </p>
+                <label>
+                  <span style={label11}>結果判定条件の結合</span>
+                  <select value={draft.outcome_logic} onChange={(e) => setDraft({ ...draft, outcome_logic: e.target.value })}>
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>条件</p>
             {draft.conditions.map((condition, i) => (
               <ConditionEditor
@@ -764,6 +893,8 @@ export default function EventsPage() {
                 condition={condition}
                 characters={characters}
                 axes={axes}
+                items={items}
+                hasOutcomeBranch={draft.has_outcome_branch}
                 onChange={(next) =>
                   setDraft({ ...draft, conditions: draft.conditions.map((c, idx) => (idx === i ? next : c)) })
                 }
@@ -774,7 +905,10 @@ export default function EventsPage() {
               onClick={() =>
                 setDraft({
                   ...draft,
-                  conditions: [...draft.conditions, { condition_type: 'probability', params: conditionDefaults('probability') }],
+                  conditions: [
+                    ...draft.conditions,
+                    { condition_type: 'probability', params: conditionDefaults('probability'), phase: 'trigger' },
+                  ],
                 })
               }
             >
@@ -791,6 +925,8 @@ export default function EventsPage() {
                 characters={characters}
                 axes={axes}
                 expressionTypes={expressionTypes}
+                items={items}
+                hasOutcomeBranch={draft.has_outcome_branch}
                 onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
                 onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}
               />
@@ -799,7 +935,10 @@ export default function EventsPage() {
               onClick={() =>
                 setDraft({
                   ...draft,
-                  actions: [...draft.actions, { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue') }],
+                  actions: [
+                    ...draft.actions,
+                    { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue'), outcome: 'always' },
+                  ],
                 })
               }
             >
