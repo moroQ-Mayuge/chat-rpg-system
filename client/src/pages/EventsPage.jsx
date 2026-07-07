@@ -91,6 +91,8 @@ const emptyEvent = {
   exclusive_group: null,
   has_outcome_branch: false,
   outcome_logic: 'AND',
+  prerequisite_event_definition_id: null,
+  requires_prerequisite_outcome: 'any',
   conditions: [],
   actions: [],
 };
@@ -882,6 +884,48 @@ export default function EventsPage() {
                   </select>
                 </label>
               </>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>前提イベント（連鎖）</p>
+            <div style={grid3}>
+              <label>
+                <span style={label11}>前提イベント</span>
+                <select
+                  value={draft.prerequisite_event_definition_id ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, prerequisite_event_definition_id: e.target.value ? Number(e.target.value) : null })
+                  }
+                >
+                  <option value="">なし</option>
+                  {(definitions ?? [])
+                    .filter((d) => d.id !== draft.id)
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {draft.prerequisite_event_definition_id != null && (
+                <label>
+                  <span style={label11}>前提イベントの結果条件</span>
+                  <select
+                    value={draft.requires_prerequisite_outcome}
+                    onChange={(e) => setDraft({ ...draft, requires_prerequisite_outcome: e.target.value })}
+                  >
+                    <option value="any">問わない（発火済みであれば可）</option>
+                    <option value="success">成功時のみ</option>
+                    <option value="failure">失敗時のみ</option>
+                  </select>
+                </label>
+              )}
+            </div>
+            {draft.prerequisite_event_definition_id != null && (
+              <p style={{ fontSize: 11, color: '#888', margin: '8px 0 0' }}>
+                前提イベントがこのルート内で（指定した結果条件を満たして）発火するまで、このイベントは発火対象になりません。
+              </p>
             )}
           </div>
 

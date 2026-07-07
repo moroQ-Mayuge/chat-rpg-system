@@ -2,7 +2,7 @@ import { getRoomSession } from '../../db/repositories/roomSessionsRepo.js';
 import { listActiveEventDefinitionsForRoomTemplate } from '../../db/repositories/eventDefinitionsRepo.js';
 import { countUserTurnsForPlaythrough } from '../../db/repositories/messagesRepo.js';
 import { getAllFlags, getFlag } from '../../db/repositories/sessionFlagsRepo.js';
-import { getFireCount, getLastFireTurn, recordFire } from '../../db/repositories/eventFireHistoryRepo.js';
+import { getFireCount, getLastFireTurn, recordFire, hasFiredWithOutcome } from '../../db/repositories/eventFireHistoryRepo.js';
 import { getOverride } from '../../db/repositories/roomTemplateEventsRepo.js';
 import { evaluateCondition } from './conditions/registry.js';
 import { executeAction } from './actions/registry.js';
@@ -21,6 +21,14 @@ function passesCooldownAndMaxFires(def, playthroughId, turnNumber) {
     if (lastFire != null && turnNumber - lastFire < def.cooldown_turns) return false;
   }
   return true;
+}
+
+// Event chaining (chat enhancement backlog item 6): if this event names a
+// prerequisite, it isn't eligible until that prerequisite has fired in this
+// same playthrough — optionally requiring a specific resolved outcome.
+function passesPrerequisite(def, playthroughId) {
+  if (!def.prerequisite_event_definition_id) return true;
+  return hasFiredWithOutcome(playthroughId, def.prerequisite_event_definition_id, def.requires_prerequisite_outcome);
 }
 
 function resolveExclusiveGroups(eligibleDefs) {
@@ -60,6 +68,7 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
   const eligible = [];
   for (const def of defs) {
     if (!passesCooldownAndMaxFires(def, playthroughId, turnNumber)) continue;
+    if (!passesPrerequisite(def, playthroughId)) continue;
 
     const override = getOverride(roomTemplateId, def.id);
     // 'outcome'-phase conditions are checked separately, after the event has
@@ -82,8 +91,6 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
   const fired = [];
 
   for (const def of firing) {
-    recordFire(playthroughId, def.id, turnNumber);
-
     // Success/failure outcome branching (chat enhancement backlog item 5):
     // when enabled, a second condition set (phase='outcome') determines
     // which of the event's actions actually run. Disabled by default so
@@ -97,6 +104,10 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
       const outcomePassed = def.outcome_logic === 'OR' ? outcomeResults.some(Boolean) : outcomeResults.every(Boolean);
       outcome = outcomePassed ? 'success' : 'failure';
     }
+
+    // Recorded with the resolved outcome (if any) so a later event's
+    // prerequisite check can require a specific success/failure result.
+    recordFire(playthroughId, def.id, turnNumber, outcome);
 
     const actionResults = [];
     for (const action of def.actions) {
