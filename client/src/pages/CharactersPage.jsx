@@ -91,6 +91,7 @@ export default function CharactersPage() {
   const [assistError, setAssistError] = useState(null);
   const [generatingImageTarget, setGeneratingImageTarget] = useState(null);
   const [imageGenError, setImageGenError] = useState(null);
+  const [expressionGenMode, setExpressionGenMode] = useState('');
 
   useEffect(() => {
     setPendingOutfitTags('');
@@ -279,7 +280,11 @@ export default function CharactersPage() {
     setGeneratingImageTarget(expressionTypeId);
     setImageGenError(null);
     try {
-      await outfitMutations.generateExpressionImage.mutateAsync({ id: activeOutfit.id, expressionTypeId });
+      await outfitMutations.generateExpressionImage.mutateAsync({
+        id: activeOutfit.id,
+        expressionTypeId,
+        mode: expressionGenMode || undefined,
+      });
     } catch (err) {
       setImageGenError(err.message);
     } finally {
@@ -553,7 +558,21 @@ export default function CharactersPage() {
                         </div>
 
                         <div>
-                          <p style={{ fontSize: 12, marginBottom: 4 }}>表情差分画像（この衣装の顔差分）</p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <p style={{ fontSize: 12, margin: 0 }}>表情差分画像（この衣装の顔差分）</p>
+                            <label style={{ fontSize: 10, color: '#888' }}>
+                              生成方式:{' '}
+                              <select
+                                style={{ fontSize: 10 }}
+                                value={expressionGenMode}
+                                onChange={(e) => setExpressionGenMode(e.target.value)}
+                              >
+                                <option value="">既定を使用</option>
+                                <option value="anchor_i2i">参照画像アンカー（i2i）</option>
+                                <option value="prompt_only">プロンプトのみ</option>
+                              </select>
+                            </label>
+                          </div>
                           <div className="expression-grid">
                             {expressionTypes.map((et) => {
                               const existingImage = activeOutfit.expression_images?.find(

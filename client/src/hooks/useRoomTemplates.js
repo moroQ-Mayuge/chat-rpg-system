@@ -24,5 +24,9 @@ export function useRoomTemplateMutations() {
       mutationFn: ({ id, file }) => roomTemplatesApi.uploadBackgroundImage(id, file),
       onSuccess: invalidate,
     }),
+    generateBackgroundImage: useMutation({
+      mutationFn: ({ id, mode, extraHint }) => roomTemplatesApi.generateBackgroundImage(id, mode, extraHint),
+      onSuccess: invalidate,
+    }),
   };
 }

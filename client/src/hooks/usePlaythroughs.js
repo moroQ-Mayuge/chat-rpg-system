@@ -25,5 +25,9 @@ export function usePlaythroughMutations(worldId) {
     createRoomSession: useMutation({
       mutationFn: ({ playthroughId, roomTemplateId }) => playthroughsApi.createRoomSession(playthroughId, roomTemplateId),
     }),
+    updateProtagonist: useMutation({
+      mutationFn: ({ id, data }) => playthroughsApi.updateProtagonist(id, data),
+      onSuccess: invalidate,
+    }),
   };
 }

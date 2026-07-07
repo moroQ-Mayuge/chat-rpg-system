@@ -1,7 +1,26 @@
 import { Router } from 'express';
-import { listWorlds, getWorld, createWorld, updateWorld, deleteWorld } from '../db/repositories/worldsRepo.js';
+import multer from 'multer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from '../config.js';
+import { listWorlds, getWorld, createWorld, updateWorld, deleteWorld, setThumbnailImage } from '../db/repositories/worldsRepo.js';
+import { generateWorldThumbnail } from '../services/worldThumbnailGenerator.js';
+import { enqueueImageJob } from '../services/imageQueue.js';
 
 export const worldsRouter = Router();
+
+const worldImagesDir = path.join(config.imageStorageDir, 'worlds');
+fs.mkdirSync(worldImagesDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, worldImagesDir),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.png';
+      cb(null, `${req.params.id}-${Date.now()}${ext}`);
+    },
+  }),
+});
 
 worldsRouter.get('/', (req, res) => {
   res.json(listWorlds());
@@ -29,4 +48,24 @@ worldsRouter.delete('/:id', (req, res) => {
   const result = deleteWorld(req.params.id);
   if (!result.deleted) return res.status(400).json({ error: result.reason });
   res.json(result);
+});
+
+worldsRouter.post('/:id/thumbnail-image', upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'image_required' });
+  const relativePath = `/images/worlds/${req.file.filename}`;
+  res.json(setThumbnailImage(req.params.id, relativePath));
+});
+
+worldsRouter.post('/:id/generate-thumbnail-image', (req, res) => {
+  const world = getWorld(req.params.id);
+  if (!world) return res.status(404).json({ error: 'not_found' });
+
+  enqueueImageJob(async () => {
+    try {
+      const imagePath = await generateWorldThumbnail(world, req.body.extra_hint);
+      res.json(setThumbnailImage(req.params.id, imagePath));
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
 });

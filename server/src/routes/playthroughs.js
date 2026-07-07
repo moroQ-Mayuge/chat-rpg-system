@@ -3,6 +3,7 @@ import {
   listPlaythroughsForWorld,
   getPlaythrough,
   createPlaythrough,
+  updateProtagonistSettings,
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession } from '../db/repositories/roomSessionsRepo.js';
 
@@ -22,6 +23,10 @@ playthroughsRouter.get('/:id', (req, res) => {
   const playthrough = getPlaythrough(req.params.id);
   if (!playthrough) return res.status(404).json({ error: 'not_found' });
   res.json(playthrough);
+});
+
+playthroughsRouter.put('/:id/protagonist', (req, res) => {
+  res.json(updateProtagonistSettings(req.params.id, req.body));
 });
 
 playthroughsRouter.get('/:id/active-session', (req, res) => {

@@ -1,25 +1,38 @@
 import { db } from '../../../db/connection.js';
-import { buildSceneTagPrompt, buildReferenceAnchorCanvas, cropMainRegion, MAIN_WIDTH, MAIN_HEIGHT } from '../../imagePromptBuilder.js';
-import { generateImage as generateImageFromKobold } from '../../koboldClient.js';
+import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion } from '../../imagePromptBuilder.js';
+import { renderPromptTemplate } from '../../promptTemplate.js';
+import { generateImage as generateImageFromKobold, generateTxt2Image } from '../../koboldClient.js';
 import { enqueueImageJob } from '../../imageQueue.js';
 import { saveGeneratedImage } from '../../../storage/imageStorage.js';
 import { createGeneratedImage } from '../../../db/repositories/generatedImagesRepo.js';
 import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { setCurrentSceneImage, getRoomSession } from '../../../db/repositories/roomSessionsRepo.js';
 import { resolveStylePromptForWorld } from '../../../db/repositories/imageStylePresetsRepo.js';
+import { getImageGenerationSettings } from '../../../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 
-// Substitutes ${キャラ名} placeholders in prompt_override with that character's
-// current Outfit danbooru tags (SPEC.md 3.6.4/3.7). Content inside the
-// placeholders is authored entirely by the user in the event editor — this
-// module only does string substitution, never generates the tag content itself.
-function substitutePlaceholders(promptOverride, participantsByName) {
+// Substitutes placeholders in prompt_override with a participant's current
+// Outfit danbooru tags (SPEC.md 3.6.4/3.7). Two forms are supported:
+//   ${キャラ名}     — a specific, fixed character by name
+//   ${target1} ${target2} ... — positional, resolving to candidateParticipants
+//                                in order (i.e. target_character_ids' order,
+//                                or all present participants if unset). Lets
+//                                an event reference "whoever ends up here"
+//                                without knowing in advance which character
+//                                that will be (e.g. after a random character_join).
+// Content inside the placeholders is authored entirely by the user in the
+// event editor — this module only does string substitution, never generates
+// the tag content itself.
+function substitutePlaceholders(promptOverride, participantsByName, candidateParticipants) {
   const referencedIds = new Set();
   if (!promptOverride) return { text: '', referencedIds };
 
-  const text = promptOverride.replace(/\$\{([^}]+)\}/g, (match, name) => {
-    const participant = participantsByName.get(name);
+  const text = promptOverride.replace(/\$\{([^}]+)\}/g, (match, token) => {
+    const positionalMatch = token.match(/^target(\d+)$/);
+    const participant = positionalMatch
+      ? candidateParticipants[Number(positionalMatch[1]) - 1]
+      : participantsByName.get(token);
     if (!participant) return '';
     referencedIds.add(participant.character_id);
     const outfit = participant.current_outfit_id
@@ -44,8 +57,13 @@ export async function executeGenerateImage(params, execCtx) {
           ? session.participants.filter((p) => target_character_ids.includes(p.character_id))
           : session.participants;
 
-        const basePrompt = buildSceneTagPrompt(session, session.participants);
-        const { text: overrideText, referencedIds } = substitutePlaceholders(prompt_override, participantsByName);
+        const settings = getImageGenerationSettings(image_type);
+        const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(execCtx.roomTemplateId).world_id;
+        const stylePrompt = resolveStylePromptForWorld(worldId);
+        const tagParts = buildSceneTagParts(session, session.participants);
+        const basePrompt = renderPromptTemplate(settings.prompt_template, { style_preset: stylePrompt, ...tagParts });
+
+        const { text: overrideText, referencedIds } = substitutePlaceholders(prompt_override, participantsByName, candidateParticipants);
 
         // Candidates referenced by target_character_ids but not explicitly used
         // via a ${name} placeholder still get their tags appended, so they
@@ -55,26 +73,47 @@ export async function executeGenerateImage(params, execCtx) {
           .map((p) => db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(p.current_outfit_id)?.image_tags)
           .filter(Boolean);
 
-        const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(execCtx.roomTemplateId).world_id;
-        const stylePrompt = resolveStylePromptForWorld(worldId);
-        const prompt = [stylePrompt, basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
+        const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
 
-        const referencePaths = candidateParticipants
-          .map((p) =>
-            p.current_outfit_id ? db.prepare('SELECT standing_image_path FROM outfits WHERE id = ?').get(p.current_outfit_id)?.standing_image_path : null,
-          )
-          .filter(Boolean);
-
-        const { canvasBase64, maskBase64, anchorOffset } = await buildReferenceAnchorCanvas(referencePaths, MAIN_WIDTH, MAIN_HEIGHT);
-        const resultBuffer = await generateImageFromKobold({
-          initImageBase64: canvasBase64,
-          maskBase64,
-          prompt,
-          width: MAIN_WIDTH + anchorOffset,
-          height: MAIN_HEIGHT,
-        });
-        const finalBuffer = await cropMainRegion(resultBuffer, anchorOffset, MAIN_WIDTH, MAIN_HEIGHT);
         const format = getImageFormat(image_type);
+        let finalBuffer;
+
+        if (settings.default_mode === 'prompt_only') {
+          finalBuffer = await generateTxt2Image({
+            prompt,
+            width: settings.main_width,
+            height: settings.main_height,
+            steps: settings.steps,
+            cfgScale: settings.cfg_scale,
+            samplerName: settings.sampler_name,
+          });
+        } else {
+          const referencePaths = candidateParticipants
+            .map((p) =>
+              p.current_outfit_id ? db.prepare('SELECT standing_image_path FROM outfits WHERE id = ?').get(p.current_outfit_id)?.standing_image_path : null,
+            )
+            .filter(Boolean);
+
+          const { canvasBase64, maskBase64, anchorOffset } = await buildReferenceAnchorCanvas(
+            referencePaths,
+            settings.main_width,
+            settings.main_height,
+            settings.anchor_width,
+          );
+          const resultBuffer = await generateImageFromKobold({
+            initImageBase64: canvasBase64,
+            maskBase64,
+            prompt,
+            width: settings.main_width + anchorOffset,
+            height: settings.main_height,
+            steps: settings.steps,
+            cfgScale: settings.cfg_scale,
+            denoisingStrength: settings.denoising_strength,
+            samplerName: settings.sampler_name,
+          });
+          finalBuffer = await cropMainRegion(resultBuffer, anchorOffset, settings.main_width, settings.main_height);
+        }
+
         const filePath = await saveGeneratedImage(execCtx.sessionId, finalBuffer, format);
         const generatedImage = createGeneratedImage({ roomSessionId: execCtx.sessionId, type: image_type, prompt, filePath });
         if (image_type === 'scene') setCurrentSceneImage(execCtx.sessionId, generatedImage.id);

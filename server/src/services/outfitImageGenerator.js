@@ -1,52 +1,81 @@
 import { generateTxt2Image, generateImage } from './koboldClient.js';
 import { buildReferenceAnchorCanvas, cropMainRegion } from './imagePromptBuilder.js';
+import { renderPromptTemplate } from './promptTemplate.js';
 import { saveCharacterImage } from '../storage/imageStorage.js';
 import { resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsRepo.js';
+import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
-
-const STANDING_WIDTH = 768;
-const STANDING_HEIGHT = 1344;
-const EXPRESSION_SIZE = 1024;
 
 // Outfit assets aren't tied to any particular World (a Character can appear
 // in several), so there's no World to resolve a style preset from — always
-// falls back to whichever preset is_default (SPEC.md-adjacent design note).
-function combinePrompt(outfit, extraTags) {
-  return [resolveDefaultStylePrompt(), outfit.image_tags, extraTags].filter(Boolean).join(', ');
+// falls back to whichever preset is_default.
+function buildPrompt(settings, variables) {
+  return renderPromptTemplate(settings.prompt_template, { style_preset: resolveDefaultStylePrompt(), ...variables });
 }
 
 // Generates a fresh standing image (立ち絵) for an Outfit via plain txt2img —
 // there is no prior reference to stay consistent with yet, since this image
 // itself becomes the reference used everywhere else (SPEC.md 3.7).
 export async function generateOutfitStandingImage(outfit, extraHint) {
-  const prompt = combinePrompt(outfit, extraHint);
-  const buffer = await generateTxt2Image({ prompt, width: STANDING_WIDTH, height: STANDING_HEIGHT });
+  const settings = getImageGenerationSettings('standing');
+  const prompt = buildPrompt(settings, { character_tags: outfit.image_tags, extra_hint: extraHint });
+  const buffer = await generateTxt2Image({
+    prompt,
+    width: settings.main_width,
+    height: settings.main_height,
+    steps: settings.steps,
+    cfgScale: settings.cfg_scale,
+    samplerName: settings.sampler_name,
+  });
   return saveCharacterImage(`outfit${outfit.id}-standing`, buffer, getImageFormat('standing'));
 }
 
-// Generates one expression-differential image for an Outfit. If a standing
-// image already exists, it's used as the reference-anchor image so the face
-// stays consistent with the character's established appearance (same
-// technique as scene generation, SPEC.md 3.7); otherwise falls back to a
-// plain generation from tags alone.
-export async function generateOutfitExpressionImage(outfit, expressionType, extraHint) {
-  const prompt = combinePrompt(outfit, [expressionType.llm_tag_key, extraHint].filter(Boolean).join(', '));
-  const referencePaths = outfit.standing_image_path ? [outfit.standing_image_path] : [];
+// Generates one expression-differential image for an Outfit. mode selects
+// between the reference-anchor i2i technique (keeps the face consistent with
+// the standing image, but the "main" region's composition can vary between
+// generations — see [[image_generation_settings_plan]] memory) and a plain
+// prompt-only generation (no reference, relies on shared danbooru tags alone
+// for consistency, but doesn't have the anchor technique's failure modes).
+export async function generateOutfitExpressionImage(outfit, expressionType, extraHint, mode) {
+  const settings = getImageGenerationSettings('expression');
+  const resolvedMode = mode || settings.default_mode;
+  const prompt = buildPrompt(settings, {
+    character_tags: outfit.image_tags,
+    expression_tag: expressionType.llm_tag_key,
+    extra_hint: extraHint,
+  });
+
+  if (resolvedMode === 'prompt_only' || !outfit.standing_image_path) {
+    const buffer = await generateTxt2Image({
+      prompt,
+      width: settings.main_width,
+      height: settings.main_height,
+      steps: settings.steps,
+      cfgScale: settings.cfg_scale,
+      samplerName: settings.sampler_name,
+    });
+    return saveCharacterImage(`outfit${outfit.id}-${expressionType.llm_tag_key}`, buffer, getImageFormat('expression'));
+  }
 
   const { canvasBase64, maskBase64, anchorOffset } = await buildReferenceAnchorCanvas(
-    referencePaths,
-    EXPRESSION_SIZE,
-    EXPRESSION_SIZE,
+    [outfit.standing_image_path],
+    settings.main_width,
+    settings.main_height,
+    settings.anchor_width,
   );
 
   const resultBuffer = await generateImage({
     initImageBase64: canvasBase64,
     maskBase64,
     prompt,
-    width: EXPRESSION_SIZE + anchorOffset,
-    height: EXPRESSION_SIZE,
+    width: settings.main_width + anchorOffset,
+    height: settings.main_height,
+    steps: settings.steps,
+    cfgScale: settings.cfg_scale,
+    denoisingStrength: settings.denoising_strength,
+    samplerName: settings.sampler_name,
   });
 
-  const finalBuffer = await cropMainRegion(resultBuffer, anchorOffset, EXPRESSION_SIZE, EXPRESSION_SIZE);
+  const finalBuffer = await cropMainRegion(resultBuffer, anchorOffset, settings.main_width, settings.main_height);
   return saveCharacterImage(`outfit${outfit.id}-${expressionType.llm_tag_key}`, finalBuffer, getImageFormat('expression'));
 }

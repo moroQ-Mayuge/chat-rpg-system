@@ -143,3 +143,9 @@ export async function getSdModelStatus() {
   if (!res.ok) return null;
   return res.json();
 }
+
+export async function getSamplers() {
+  const res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/samplers`);
+  if (!res.ok) return null;
+  return res.json();
+}

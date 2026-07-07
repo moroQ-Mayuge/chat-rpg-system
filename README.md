@@ -27,11 +27,14 @@ npm run migrate         # DBスキーマを作成
 
 ## KoboldCppの起動
 
-テキストモデルと画像生成モデルの両方をロードして起動しておく（例）：
+テキストモデルと画像生成モデルの両方をロードして起動しておく。次のいずれかの方法が使える。
 
-```bash
-koboldcpp.exe --model <text-model>.gguf --sdmodel <sd-model>.safetensors --port 5001 --contextsize 8192 --gpulayers 999
-```
+- **`koboldcpp/start-koboldcpp.bat`をダブルクリック**：`koboldcpp/`直下（またはこのリポジトリの構成に合わせて`koboldcpp/models/`）の実行ファイル、`koboldcpp/models/llm/`の`.gguf`、`koboldcpp/models/sd/`の`.safetensors`を自動検出して起動する
+- **設定画面（`/settings`）の「KoboldCppを起動」ボタン**：ChatRPGサーバーと同じPC上で上記と同じ自動検出ロジックによりkoboldcpp.exeをデタッチ起動する（KoboldCpp未接続時のみ表示）
+- **手動起動**（例）：
+  ```bash
+  koboldcpp.exe --model <text-model>.gguf --sdmodel <sd-model>.safetensors --port 5001 --contextsize 8192 --gpulayers 999
+  ```
 
 ## 開発サーバーの起動
 
@@ -89,3 +92,7 @@ npm run dev:client   # クライアントのみ起動
    ブラウザでキャラ一覧・部屋一覧に既存データが表示されること、設定画面（`/settings`）でKoboldCppが接続中になっていることを確認する。
 
 > **同じPCで元の環境と同時に起動する場合の注意**：`.env`を作成していないとサーバーは既定の`PORT=3001`で起動するため、元の環境がすでに動作中だとポートが衝突し `EADDRINUSE` エラーで起動に失敗する。同時に動かしたい場合は、新しい環境の`.env`で`PORT`を別の値（例：`3002`）に変更する。クライアント（Vite, 既定5180）は使用中なら自動的に別ポートへ切り替わるため対応不要。
+
+## 変更履歴
+
+[CHANGELOG.md](CHANGELOG.md) を参照。

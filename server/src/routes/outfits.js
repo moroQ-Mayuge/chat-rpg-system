@@ -63,7 +63,7 @@ outfitsRouter.post('/outfits/:id/generate-expression-image/:expressionTypeId', (
     try {
       const outfit = getOutfit(req.params.id);
       const expressionType = getExpressionType(req.params.expressionTypeId);
-      const imagePath = await generateOutfitExpressionImage(outfit, expressionType, req.body.extra_hint);
+      const imagePath = await generateOutfitExpressionImage(outfit, expressionType, req.body.extra_hint, req.body.mode);
       res.json(setExpressionImage(req.params.id, req.params.expressionTypeId, imagePath));
     } catch (err) {
       res.status(502).json({ error: err.message });

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
 import TagChips from '../components/ui/TagChips.jsx';
+import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 
 const emptyForm = {
   name: '',
@@ -12,14 +13,24 @@ const emptyForm = {
   season_labels: ['春', '夏', '秋', '冬'],
   days_per_season: 30,
   image_style_preset_id: null,
+  image_tags: '',
+  protagonist_name: '',
+  protagonist_nickname: '',
+  protagonist_occupation: '',
+  protagonist_appearance: '',
+  protagonist_gender: '',
+  protagonist_notes: '',
+  protagonist_mode: 'character',
 };
 
 export default function WorldsPage() {
   const { data: worlds, isLoading } = useWorlds();
   const { data: stylePresets } = useStylePresets();
-  const { create, update, remove } = useWorldMutations();
+  const { create, update, remove, uploadThumbnailImage, generateThumbnailImage } = useWorldMutations();
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [thumbGenerating, setThumbGenerating] = useState(false);
+  const [thumbGenerateError, setThumbGenerateError] = useState(null);
 
   useEffect(() => {
     if (editingId == null || !worlds) return;
@@ -33,6 +44,15 @@ export default function WorldsPage() {
         season_labels: world.season_labels,
         days_per_season: world.days_per_season,
         image_style_preset_id: world.image_style_preset_id ?? null,
+        image_tags: world.image_tags ?? '',
+        thumbnail_image_path: world.thumbnail_image_path,
+        protagonist_name: world.protagonist_name ?? '',
+        protagonist_nickname: world.protagonist_nickname ?? '',
+        protagonist_occupation: world.protagonist_occupation ?? '',
+        protagonist_appearance: world.protagonist_appearance ?? '',
+        protagonist_gender: world.protagonist_gender ?? '',
+        protagonist_notes: world.protagonist_notes ?? '',
+        protagonist_mode: world.protagonist_mode ?? 'character',
       });
     }
   }, [editingId, worlds]);
@@ -67,6 +87,25 @@ export default function WorldsPage() {
     if (editingId === world.id) cancelEdit();
   }
 
+  async function handleThumbnailUpload(e) {
+    const file = e.target.files[0];
+    if (!file || editingId === 'new') return;
+    await uploadThumbnailImage.mutateAsync({ id: editingId, file });
+  }
+
+  async function handleGenerateThumbnail() {
+    if (editingId === 'new') return;
+    setThumbGenerating(true);
+    setThumbGenerateError(null);
+    try {
+      await generateThumbnailImage.mutateAsync({ id: editingId });
+    } catch (err) {
+      setThumbGenerateError(err.message);
+    } finally {
+      setThumbGenerating(false);
+    }
+  }
+
   if (isLoading) return <p>読み込み中...</p>;
 
   return (
@@ -90,12 +129,23 @@ export default function WorldsPage() {
               opacity: world.is_unassigned_bucket ? 0.7 : 1,
             }}
           >
-            <span>
-              {world.name}
-              {world.is_unassigned_bucket && (
-                <span style={{ fontSize: 11, marginLeft: 8, color: '#888' }}>削除不可</span>
-              )}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 32,
+                  borderRadius: 4,
+                  flexShrink: 0,
+                  background: world.thumbnail_image_path ? `url(${world.thumbnail_image_path}) center/cover` : '#eee',
+                }}
+              />
+              <span>
+                {world.name}
+                {world.is_unassigned_bucket && (
+                  <span style={{ fontSize: 11, marginLeft: 8, color: '#888' }}>削除不可</span>
+                )}
+              </span>
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Link to={`/worlds/${world.id}/playthroughs`}>
                 <button>ルート一覧</button>
@@ -149,6 +199,54 @@ export default function WorldsPage() {
             </select>
           </label>
 
+          <div style={{ marginBottom: 8 }}>
+            <p style={{ marginBottom: 4 }}>代表画像（一覧のサムネイルなどに使用）</p>
+            <div
+              style={{
+                width: 200,
+                aspectRatio: '16 / 9',
+                background: form.thumbnail_image_path ? `url(${form.thumbnail_image_path}) center/cover` : '#eee',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#999',
+                fontSize: 12,
+                marginBottom: 6,
+              }}
+            >
+              {!form.thumbnail_image_path && '未設定'}
+            </div>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>画像生成用danbooruタグ</p>
+            <DanbooruTagEditor value={form.image_tags} onChange={(v) => setForm({ ...form, image_tags: v })} />
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <label style={{ flex: 1 }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleThumbnailUpload}
+                  disabled={editingId === 'new'}
+                />
+                <span
+                  style={{
+                    display: 'block',
+                    textAlign: 'center',
+                    border: '1px solid #ccc',
+                    borderRadius: 6,
+                    padding: 6,
+                    cursor: editingId === 'new' ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  アップロード{editingId === 'new' && '（先に保存してください）'}
+                </span>
+              </label>
+              <button style={{ flex: 1 }} onClick={handleGenerateThumbnail} disabled={editingId === 'new' || thumbGenerating}>
+                {thumbGenerating ? '生成中...' : 'AIで生成'}
+              </button>
+            </div>
+            {thumbGenerateError && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {thumbGenerateError}</p>}
+          </div>
+
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
             <p style={{ fontWeight: 500 }}>暦設定（このWorldの全ルート共通ルール）</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -186,6 +284,80 @@ export default function WorldsPage() {
                 />
               </div>
             </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>主人公（あなた）設定（このWorldの既定値。ルートごとに上書き可能）</p>
+
+            <label style={{ display: 'block', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>ユーザーの立ち位置</span>
+              <select
+                style={{ width: '100%' }}
+                value={form.protagonist_mode}
+                onChange={(e) => setForm({ ...form, protagonist_mode: e.target.value })}
+              >
+                <option value="character">登場人物として参加する</option>
+                <option value="narrator">ナレーター／神視点（登場人物ではなく場面を直接指示する）</option>
+              </select>
+            </label>
+
+            {form.protagonist_mode === 'character' && (
+              <>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+                  性格・話し方・行動はプレイヤーの発言そのものに委ねられます。ここではNPC側が認識している設定情報のみを入力してください。
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label>
+                    <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
+                    <input
+                      style={{ width: '100%' }}
+                      value={form.protagonist_name}
+                      onChange={(e) => setForm({ ...form, protagonist_name: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ fontSize: 11, color: '#888', display: 'block' }}>あだ名（主な呼ばれ方、未指定なら「あなた」）</span>
+                    <input
+                      style={{ width: '100%' }}
+                      value={form.protagonist_nickname}
+                      onChange={(e) => setForm({ ...form, protagonist_nickname: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ fontSize: 11, color: '#888', display: 'block' }}>性別</span>
+                    <input
+                      style={{ width: '100%' }}
+                      value={form.protagonist_gender}
+                      onChange={(e) => setForm({ ...form, protagonist_gender: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ fontSize: 11, color: '#888', display: 'block' }}>職業・世界観内での立場</span>
+                    <input
+                      style={{ width: '100%' }}
+                      value={form.protagonist_occupation}
+                      onChange={(e) => setForm({ ...form, protagonist_occupation: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span style={{ fontSize: 11, color: '#888', display: 'block' }}>容貌・外見的特徴</span>
+                    <input
+                      style={{ width: '100%' }}
+                      value={form.protagonist_appearance}
+                      onChange={(e) => setForm({ ...form, protagonist_appearance: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <label style={{ display: 'block', marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block' }}>その他情報（家族構成など自由記述）</span>
+                  <textarea
+                    style={{ display: 'block', width: '100%', height: 46 }}
+                    value={form.protagonist_notes}
+                    onChange={(e) => setForm({ ...form, protagonist_notes: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>

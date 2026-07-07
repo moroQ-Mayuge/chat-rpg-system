@@ -463,12 +463,12 @@ function ActionEditor({ action, characters, axes, expressionTypes, onChange, onR
           <textarea
             style={{ width: '100%', marginTop: 8, fontFamily: 'monospace', fontSize: 12 }}
             rows={2}
-            placeholder="${みお}, blush, on top of, ${かえで}, lying down"
+            placeholder="${みお}, blush, on top of, ${target1}, lying down"
             value={p.prompt_override ?? ''}
             onChange={(e) => setParams({ prompt_override: e.target.value })}
           />
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-            ${'{キャラ名}'} でそのキャラの現在衣装のdanbooruタグに置換されます。具体的な性的表現の内容はここで自由入力してください。
+            ${'{キャラ名}'} で固定のキャラを、${'{target1}'} ${'{target2}'} …で「対象キャラ」欄で選んだ順番のキャラを、それぞれ現在衣装のdanbooruタグに置換します（対象キャラ未選択時は同席者全員の順）。具体的な性的表現の内容はここで自由入力してください。
           </p>
         </div>
       )}

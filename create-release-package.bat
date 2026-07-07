@@ -32,13 +32,14 @@ if not exist "%DEST%\koboldcpp" mkdir "%DEST%\koboldcpp"
 
 copy "%SRC%\release-assets\setup-and-start.bat" "%DEST%\" >nul
 copy "%SRC%\release-assets\koboldcpp-README.txt" "%DEST%\koboldcpp\README.txt" >nul
+copy "%SRC%\release-assets\start-koboldcpp.bat" "%DEST%\koboldcpp\" >nul
 
 echo Done. Release package created at:
 echo   %DEST%
 echo.
 echo Next steps on the target machine:
 echo   1. Read koboldcpp\README.txt and place koboldcpp.exe + models there
-echo   2. Start koboldcpp.exe
+echo   2. Run koboldcpp\start-koboldcpp.bat (or start koboldcpp.exe manually)
 echo   3. Run setup-and-start.bat (installs deps, migrates DB, starts the app)
 echo.
 echo NOTE: if you run this alongside another ChatRPG instance on the SAME PC,

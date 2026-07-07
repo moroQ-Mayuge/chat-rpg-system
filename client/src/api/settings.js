@@ -2,11 +2,16 @@ import { api } from './client.js';
 
 export const settingsApi = {
   status: () => api.get('/settings/status'),
+  startKoboldcpp: () => api.post('/settings/start-koboldcpp'),
   listStylePresets: () => api.get('/settings/style-presets'),
   createStylePreset: (data) => api.post('/settings/style-presets', data),
   updateStylePreset: (id, data) => api.put(`/settings/style-presets/${id}`, data),
   removeStylePreset: (id) => api.del(`/settings/style-presets/${id}`),
   listImageFormats: () => api.get('/settings/image-formats'),
   setImageFormat: (kind, format) => api.put(`/settings/image-formats/${kind}`, { format }),
+  listSamplers: () => api.get('/settings/samplers'),
+  listImageGenerationSettings: () => api.get('/settings/image-generation-settings'),
+  updateImageGenerationSettings: (kind, data) => api.put(`/settings/image-generation-settings/${kind}`, data),
+  testGenerateImageGenerationSettings: (kind, data) => api.post(`/settings/image-generation-settings/${kind}/test-generate`, data),
   testGenerateImage: (data) => api.post('/settings/test-generate-image', data),
 };

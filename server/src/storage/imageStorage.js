@@ -40,3 +40,22 @@ export async function saveTestImage(buffer, format = 'png') {
   fs.writeFileSync(path.join(dir, filename), await encode(buffer, format));
   return `/images/test/${filename}`;
 }
+
+// RoomTemplate background image, alongside the existing multer-uploaded ones
+// under storage/images/rooms/ (matches routes/roomTemplates.js's upload naming).
+export async function saveRoomImage(roomTemplateId, buffer, format = 'png') {
+  const dir = path.join(config.imageStorageDir, 'rooms');
+  fs.mkdirSync(dir, { recursive: true });
+  const filename = `${roomTemplateId}-${Date.now()}.${extensionFor(format)}`;
+  fs.writeFileSync(path.join(dir, filename), await encode(buffer, format));
+  return `/images/rooms/${filename}`;
+}
+
+// World representative/thumbnail image.
+export async function saveWorldImage(worldId, buffer, format = 'png') {
+  const dir = path.join(config.imageStorageDir, 'worlds');
+  fs.mkdirSync(dir, { recursive: true });
+  const filename = `${worldId}-${Date.now()}.${extensionFor(format)}`;
+  fs.writeFileSync(path.join(dir, filename), await encode(buffer, format));
+  return `/images/worlds/${filename}`;
+}

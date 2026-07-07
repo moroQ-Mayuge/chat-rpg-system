@@ -42,9 +42,11 @@ export default function RoomTemplateEditPage() {
   const { data: propsLibrary } = useProps();
   const { data: characters } = useCharacters();
   const { data: existing } = useRoomTemplate(isNew ? null : id);
-  const { create, update, uploadBackgroundImage } = useRoomTemplateMutations();
+  const { create, update, uploadBackgroundImage, generateBackgroundImage } = useRoomTemplateMutations();
   const [form, setForm] = useState(emptyForm);
   const [policyHint, setPolicyHint] = useState('');
+  const [bgGenerating, setBgGenerating] = useState(false);
+  const [bgGenerateError, setBgGenerateError] = useState(null);
 
   useEffect(() => {
     if (!existing) return;
@@ -113,6 +115,19 @@ export default function RoomTemplateEditPage() {
     const file = e.target.files[0];
     if (!file || isNew) return;
     await uploadBackgroundImage.mutateAsync({ id, file });
+  }
+
+  async function handleGenerateBackground(mode) {
+    if (isNew) return;
+    setBgGenerating(true);
+    setBgGenerateError(null);
+    try {
+      await generateBackgroundImage.mutateAsync({ id, mode });
+    } catch (err) {
+      setBgGenerateError(err.message);
+    } finally {
+      setBgGenerating(false);
+    }
   }
 
   if (!worlds || !propsLibrary || !characters) return <p>読み込み中...</p>;
@@ -256,10 +271,20 @@ export default function RoomTemplateEditPage() {
                   アップロード{isNew && '（先に保存してください）'}
                 </span>
               </label>
-              <button style={{ flex: 1 }} disabled title="画像生成（Phase 8）実装後に有効化されます">
-                AIで生成
+              <button style={{ flex: 1 }} onClick={() => handleGenerateBackground('fresh')} disabled={isNew || bgGenerating}>
+                {bgGenerating ? '生成中...' : '新規生成'}
+              </button>
+              <button
+                style={{ flex: 1 }}
+                onClick={() => handleGenerateBackground('refine')}
+                disabled={isNew || bgGenerating || !form.background_image_path}
+                title={!form.background_image_path ? '既存の背景画像がある場合のみ使用できます' : '現在の画像を基に調整して再生成'}
+              >
+                {bgGenerating ? '生成中...' : '現在の画像から調整'}
               </button>
             </div>
+            {bgGenerateError && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {bgGenerateError}</p>}
+            {isNew && <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>画像生成は先に保存してから行えます</p>}
           </div>
 
           <div>

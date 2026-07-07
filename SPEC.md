@@ -73,6 +73,10 @@ KoboldCpp（LLM推論＋内蔵Stable Diffusion）を用い、完全ローカル�
   - 天候候補一覧（例：`["晴れ","曇り","雨","雪"]`。日が変わるたびにこの中からランダム抽選）
   - 季節ラベル一覧（順序付き。例：`["春","夏","秋","冬"]`。最後まで進むと最初の季節に戻る）
   - 季節が切り替わる日数間隔（例：15日ごとに季節が1つ進む）
+- **主人公（あなた）の既定設定**：このWorldに属する全ルートの既定値。ルート単位で上書きできる（3.2.1参照）
+  - `protagonist_mode`：`character`（ユーザーは物語内に存在する一人物としてキャラクター参加する）／`narrator`（ユーザーは登場人物ではなく、場面全体を管理する神・ナレーター的視点。3.2.1参照）
+  - `character`モード時の項目：名前／あだ名（NPCからの主な呼ばれ方。未指定時は「あなた」として扱う）／性別／職業・世界観内での立場／容貌・外見的特徴／その他情報（自由記述）
+  - 性格・話し方・行動は意図的に項目化しない。主人公はプレイヤー自身が演じる存在であり、その人格をLLMに規定させないため
 
 **部屋側の世界観モード（RoomTemplateに付与）**
 - `worldview_mode`：`inherit`（所属Worldの基本世界観をそのまま継承）／`custom`（部屋固有の世界観を独自に設定し、所属Worldの世界観は使わない）
@@ -93,6 +97,21 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
 - カレンダー状態：現在の日数、現在の時間帯（所属Worldの時間帯ラベル一覧中のインデックス）、現在の天候、現在の季節（所属Worldの季節ラベル一覧中のインデックス）
 - ステータス：`active`（進行中）／`ended`（明示的に終了）
 - このルートに紐づく関係性パラメータ（好感度等）・イベントフラグ・イベント発火履歴は、ルート内でどの部屋を訪れても共通で保持・更新される（3.5/3.6参照）
+
+#### 3.2.1 主人公（あなた）の設定
+
+Worldの既定設定（3.1）をそのまま継承するか、ルートごとに独自の主人公設定で上書きするかを選べる。
+
+- `use_custom_protagonist`：false（既定・Worldの設定を継承）／true（このルート専用の設定を使う）
+- true時は`protagonist_mode`および`character`モードの各項目（名前／あだ名／性別／職業／容貌／その他情報）をルート単位で個別に保持する
+
+**`protagonist_mode`の2種類**
+- `character`：ユーザーは物語内の一人物として存在する。LLMのシステムプロンプトには、設定済みの項目（空欄の項目は省略。全項目空なら何も注入しない）に加えて「主人公の性格・話し方・行動はプレイヤー自身の発言に委ね、この設定情報を根拠に生成しないこと」という指示を付与する
+- `narrator`：ユーザーは登場人物ではなく、場面全体を管理する神・ナレーター的視点（主人公機能追加前の挙動に相当）。この場合`character`モードの各項目は使用せず、代わりに「ユーザーの発言は特定キャラクターの言動ではなく場面・NPCの言動への直接指示として扱い、可能な限りそのまま反映する」という指示をシステムプロンプトに注入する
+
+**主人公なりすまし対策**
+
+小規模なローカルLLMは否定的な指示だけでは確実に守らないことがある（実機検証で、主人公の名前を教えた結果、モデルが`[名前]: セリフ`という形式で主人公自身の発言を生成してしまう事例を確認）。そのため`character`モードでは、システムプロンプトでの明示的な禁止指示に加えて、LLM出力をパースした後のコード側でも主人公の名前・あだ名に一致するキャラクター発言ターンを検出し、表示前に破棄する（プロンプトでの指示だけに頼らない二重の安全策）。
 
 **時間経過（カレンダー進行）**
 
@@ -408,9 +427,20 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
 
 画像の種類（立ち絵／表情差分／シーン／イベント）ごとに、保存形式（PNG または JPG）を設定画面で指定できる。
 
+**画像種別ごとの生成方式・プロンプトテンプレート設定**
+
+画像の種類（立ち絵／表情差分／シーン／イベント／部屋の背景／World代表画像）ごとに、以下を設定画面で個別に指定できる。前述の参照アンカーinpainting方式は本来キャラの一貫性を保つ狙いだが、本編領域が完全な空白から生成されるため、`steps`/`cfg_scale`が低いとキャラがほとんど描かれず背景だけになる、生成ごとに構図が大きくばらつくといった問題が起きうる。そのため一貫性と安定性のトレードオフをユーザー自身が種別ごとに選べるようにする。
+
+- `default_mode`：`anchor_i2i`（参照アンカーinpainting方式。3.7前半参照）／`prompt_only`（プレーンなtxt2img。参照画像を使わず毎回自由に生成するため一貫性はないが、上記の構図崩れが起きない）。手動生成ボタンを持つ種別（表情差分）では、生成の都度ここをUI上で選び直せる。自動発火する種別（シーン・イベント）は発火時にユーザーが選べないため、この既定値がそのまま使われる
+- `prompt_template`：種別ごとに固定されたプレースホルダー変数（例：`${style_preset}`, `${character_tags}`, `${expression_tag}`, `${location_tags}`, `${atmosphere_tags}`, `${prop_tags}`, `${world_tags}`, `${extra_hint}`）を含むテンプレート文字列。置換後、空になった項目は前後のカンマごと除去される。設定画面では各変数名をタップ/ホバーすると説明が表示される
+- キャンバス・サンプリング設定：`main_width`/`main_height`（出力サイズ）、`anchor_width`（参照アンカー領域の幅、i2i用）、`steps`、`cfg_scale`、`denoising_strength`（i2i用）、`sampler_name`（KoboldCppの`/sdapi/v1/samplers`から取得した一覧、または未接続時は静的フォールバック一覧から選択）
+- イベントの`generate_image`アクションが持つ`prompt_override`の`${target1}`/`${target2}`/`${キャラ名}`プレースホルダー（3.6.4参照）は、ここで設定するテンプレートとは別レイヤーとして、合成後のプロンプト末尾に追加で連結される
+
 **画像生成テスト機能**
 
 キャラクターやRoomSessionに紐づかない、プロンプト直接入力による単発の画像生成機能を設定画面に用意する。スタイルプリセットの効果や、任意のdanbooruタグの見え方を素早く確認する用途。
+
+種別ごとの詳細設定画面には、これとは別に「この設定でテスト生成」機能を用意する。編集中（未保存でも可）の生成方式・プロンプトテンプレート・パラメータをそのまま使い、その種別が参照するデータ（衣装・部屋セッション・部屋テンプレート・Worldなど）のうち最も若いIDのレコードをサンプルとして変数に当てはめ、実際に生成する。生成結果はどのエンティティにも保存しない使い捨てのプレビューで、`anchor_i2i`を指定していてもサンプルに参照画像がない場合は自動的に`prompt_only`にフォールバックする（その場合はUI上に実際の生成方式を明示する）。
 
 ### 3.8 LLM応答生成
 
@@ -432,6 +462,7 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
   - 右側の「現在のシーン」パネルは折りたたみ可能とし、開いている間は直近のシーン画像を常時表示する補助として使う（正本の履歴はあくまでチャットのタイムライン内）
 - スマホ：単一カラム＋折り畳みメニュー
 - 画面：世界観管理、部屋一覧・セッション選択（World単位でグルーピング）、部屋作成・設定、キャラ管理（手動フォーム／LLM自動生成／フォーマット貼り付け登録の3導線）、イベント定義エディタ、チャット画面
+- 設定画面：KoboldCppの接続状況（テキストモデル／SDモデル）表示に加え、未接続時は「KoboldCppを起動」ボタンを表示する。サーバーと同じPC上でkoboldcpp.exeをデタッチ起動し（`koboldcpp/`直下または`koboldcpp/models/`配下の実行ファイル、`koboldcpp/models/llm/`の`.gguf`、`koboldcpp/models/sd/`の`.safetensors`を自動検出）、押下から接続完了まではブラウザを閉じても継続する。同等の手順を手動実行できる起動batファイル（`start-koboldcpp.bat`）も`koboldcpp/`フォルダに同梱する
 
 ---
 
@@ -449,6 +480,15 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
 | season_labels | json | 季節ラベルの順序付き配列（例：["春","夏","秋","冬"]） |
 | days_per_season | int | 季節が1つ進む日数間隔 |
 | image_style_preset_id | FK, nullable | 使用する画像スタイルプリセット（3.7）。null時は既定のプリセットを使用 |
+| image_tags | text | World代表画像（3.7）の生成用danbooruタグ |
+| thumbnail_image_path | text, nullable | World代表画像のファイルパス（アップロードまたはAI生成） |
+| protagonist_mode | text | `character` / `narrator`（3.2.1）。ルート側で上書きしない場合の既定値 |
+| protagonist_name | text | 主人公の名前（既定値） |
+| protagonist_nickname | text | 主人公のあだ名・主な呼ばれ方（既定値。空なら「あなた」として扱う） |
+| protagonist_occupation | text | 主人公の職業・世界観内での立場（既定値） |
+| protagonist_appearance | text | 主人公の容貌・外見的特徴（既定値） |
+| protagonist_gender | text | 主人公の性別（既定値） |
+| protagonist_notes | text | 主人公のその他情報・自由記述（既定値） |
 | created_at | datetime | |
 
 ### playthroughs（ルート）
@@ -462,6 +502,14 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
 | current_weather | text | 直近で抽選された天候 |
 | current_season_index | int | worldsのseason_labels中のインデックス |
 | status | text | active / ended |
+| use_custom_protagonist | bool | false時はworldsの主人公設定一式を継承。true時は以下の列を使用（3.2.1） |
+| protagonist_mode | text | `character` / `narrator`。use_custom_protagonist=true時のみ使用 |
+| protagonist_name | text | ルート専用の主人公名。use_custom_protagonist=true時のみ使用 |
+| protagonist_nickname | text | ルート専用のあだ名。use_custom_protagonist=true時のみ使用 |
+| protagonist_occupation | text | ルート専用の職業・立場。use_custom_protagonist=true時のみ使用 |
+| protagonist_appearance | text | ルート専用の容貌。use_custom_protagonist=true時のみ使用 |
+| protagonist_gender | text | ルート専用の性別。use_custom_protagonist=true時のみ使用 |
+| protagonist_notes | text | ルート専用のその他情報。use_custom_protagonist=true時のみ使用 |
 | created_at | datetime | |
 | updated_at | datetime | |
 
@@ -720,3 +768,17 @@ Worldの下位に位置し、部屋をまたいで状態を共有する単位。
 |---|---|---|
 | image_kind | PK, text | standing / expression / scene / event |
 | format | text | png / jpg |
+
+### image_generation_settings（画像種別ごとの生成方式・プロンプトテンプレート、3.7）
+| カラム | 型 | 備考 |
+|---|---|---|
+| image_kind | PK, text | standing / expression / scene / event / room_background / world_thumbnail |
+| default_mode | text | `anchor_i2i` / `prompt_only`（3.7参照） |
+| prompt_template | text | `${変数名}`形式のプレースホルダーを含むテンプレート文字列。種別ごとに使える変数が固定されている |
+| anchor_width | int | 参照アンカー領域の幅（px）。i2i用 |
+| main_width | int | 出力する本編領域の幅（px） |
+| main_height | int | 出力する本編領域の高さ（px） |
+| steps | int | SDのサンプリングステップ数 |
+| cfg_scale | real | SDのCFGスケール |
+| denoising_strength | real | i2i時のノイズ除去強度（0〜1） |
+| sampler_name | text | KoboldCppのサンプラー名（例：`Euler a`, `DPM++ 2M`） |

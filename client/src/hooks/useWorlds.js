@@ -12,5 +12,13 @@ export function useWorldMutations() {
     create: useMutation({ mutationFn: worldsApi.create, onSuccess: invalidate }),
     update: useMutation({ mutationFn: ({ id, data }) => worldsApi.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: worldsApi.remove, onSuccess: invalidate }),
+    uploadThumbnailImage: useMutation({
+      mutationFn: ({ id, file }) => worldsApi.uploadThumbnailImage(id, file),
+      onSuccess: invalidate,
+    }),
+    generateThumbnailImage: useMutation({
+      mutationFn: ({ id, extraHint }) => worldsApi.generateThumbnailImage(id, extraHint),
+      onSuccess: invalidate,
+    }),
   };
 }

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   useSettingsStatus,
   useStylePresets,
   useStylePresetMutations,
   useImageFormats,
   useImageFormatMutations,
+  useImageGenerationSettings,
+  useImageGenerationSettingsMutations,
+  useSamplers,
 } from '../hooks/useSettings.js';
 import { settingsApi } from '../api/settings.js';
 
@@ -152,7 +155,259 @@ const IMAGE_KIND_LABELS = {
   expression: '表情差分',
   scene: 'シーン画像',
   event: 'イベント画像',
+  room_background: '部屋の背景',
+  world_thumbnail: '世界の代表画像',
 };
+
+const IMAGE_KIND_PLACEHOLDERS = {
+  standing: ['style_preset', 'character_tags', 'extra_hint'],
+  expression: ['style_preset', 'character_tags', 'expression_tag', 'extra_hint'],
+  scene: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'extra_hint'],
+  event: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'extra_hint'],
+  room_background: ['style_preset', 'location_tags', 'atmosphere_tags', 'extra_hint'],
+  world_thumbnail: ['style_preset', 'world_tags', 'extra_hint'],
+};
+
+const MODE_LABELS = {
+  anchor_i2i: '参照画像アンカー方式（i2i・キャラの見た目を維持しやすい）',
+  prompt_only: 'プロンプトのみ（txt2img・毎回自由生成、破綻しにくい）',
+};
+
+const VARIABLE_DESCRIPTIONS = {
+  style_preset: 'World（または既定）に設定されたスタイルプリセットの文言',
+  character_tags: '対象キャラの衣装（Outfit）に設定されたdanbooruタグ',
+  expression_tag: '表情マスターで設定した表情キー（例: smile, angry）',
+  extra_hint: '生成時にその場で入力する自由記述のヒント',
+  location_tags: '部屋テンプレートに設定された場所タグ',
+  atmosphere_tags: 'シーンの雰囲気タグ（天候・時間帯の雰囲気など）',
+  prop_tags: '部屋に配置された設備・小道具のdanbooruタグ',
+  world_tags: 'World単位で設定されたイメージタグ',
+};
+
+// title属性でPCのホバー時にツールチップを出しつつ、タップでも同じ説明を
+// インライン展開できるようにする（スマホはホバーが効かないため）。
+function VariableHintChip({ name, active, onToggle }) {
+  return (
+    <span
+      title={VARIABLE_DESCRIPTIONS[name] ?? ''}
+      onClick={onToggle}
+      style={{
+        display: 'inline-block',
+        cursor: 'pointer',
+        background: active ? '#dbeafe' : '#f0f0f0',
+        border: '1px solid #ddd',
+        borderRadius: 10,
+        padding: '1px 7px',
+        fontSize: 10,
+        fontFamily: 'monospace',
+        marginRight: 4,
+        marginBottom: 4,
+      }}
+    >
+      {`\${${name}}`}
+    </span>
+  );
+}
+
+function ImageGenerationSettingRow({ setting }) {
+  const { update } = useImageGenerationSettingsMutations();
+  const { data: samplers } = useSamplers();
+  const [form, setForm] = useState(setting);
+  const [expanded, setExpanded] = useState(false);
+  const [activeHint, setActiveHint] = useState(null);
+  const [isTestGenerating, setIsTestGenerating] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [testError, setTestError] = useState(null);
+
+  useEffect(() => {
+    setForm(setting);
+  }, [setting]);
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(setting);
+
+  function set(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function save() {
+    await update.mutateAsync({
+      kind: setting.image_kind,
+      data: {
+        default_mode: form.default_mode,
+        prompt_template: form.prompt_template,
+        anchor_width: Number(form.anchor_width),
+        main_width: Number(form.main_width),
+        main_height: Number(form.main_height),
+        steps: Number(form.steps),
+        cfg_scale: Number(form.cfg_scale),
+        denoising_strength: Number(form.denoising_strength),
+        sampler_name: form.sampler_name,
+      },
+    });
+  }
+
+  const samplerOptions = samplers?.includes(form.sampler_name) ? samplers : [form.sampler_name, ...(samplers ?? [])];
+
+  async function testGenerate() {
+    setIsTestGenerating(true);
+    setTestError(null);
+    try {
+      const result = await settingsApi.testGenerateImageGenerationSettings(setting.image_kind, {
+        default_mode: form.default_mode,
+        prompt_template: form.prompt_template,
+        anchor_width: Number(form.anchor_width),
+        main_width: Number(form.main_width),
+        main_height: Number(form.main_height),
+        steps: Number(form.steps),
+        cfg_scale: Number(form.cfg_scale),
+        denoising_strength: Number(form.denoising_strength),
+        sampler_name: form.sampler_name,
+      });
+      setTestResult(result);
+    } catch (err) {
+      setTestError(err.message);
+    } finally {
+      setIsTestGenerating(false);
+    }
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpanded((e) => !e)}>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{IMAGE_KIND_LABELS[setting.image_kind] ?? setting.image_kind}</span>
+        <span style={{ fontSize: 11, color: '#888' }}>{expanded ? '閉じる ▲' : '編集 ▼'}</span>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{ display: 'block' }}>
+            <span style={{ fontSize: 11, color: '#888' }}>生成方式（既定）</span>
+            <select style={{ display: 'block', width: '100%' }} value={form.default_mode} onChange={(e) => set('default_mode', e.target.value)}>
+              {Object.entries(MODE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontSize: 11, color: '#888' }}>プロンプトテンプレート</span>
+            <textarea
+              style={{ display: 'block', width: '100%', height: 46, fontFamily: 'monospace', fontSize: 12 }}
+              value={form.prompt_template}
+              onChange={(e) => set('prompt_template', e.target.value)}
+            />
+            <div style={{ marginTop: 4 }}>
+              <span style={{ fontSize: 10, color: '#aaa' }}>使用可能な変数（タップ/ホバーで説明）: </span>
+              <div style={{ marginTop: 2 }}>
+                {IMAGE_KIND_PLACEHOLDERS[setting.image_kind].map((k) => (
+                  <VariableHintChip
+                    key={k}
+                    name={k}
+                    active={activeHint === k}
+                    onToggle={() => setActiveHint((h) => (h === k ? null : k))}
+                  />
+                ))}
+              </div>
+              {activeHint && (
+                <p style={{ fontSize: 11, color: '#555', margin: '2px 0 0', background: '#f7f7f7', borderRadius: 4, padding: '4px 8px' }}>
+                  <code>{`\${${activeHint}}`}</code>: {VARIABLE_DESCRIPTIONS[activeHint]}
+                </p>
+              )}
+            </div>
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>幅</span>
+              <input type="number" style={{ width: '100%' }} value={form.main_width} onChange={(e) => set('main_width', e.target.value)} />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>高さ</span>
+              <input type="number" style={{ width: '100%' }} value={form.main_height} onChange={(e) => set('main_height', e.target.value)} />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>アンカー幅（i2i用）</span>
+              <input type="number" style={{ width: '100%' }} value={form.anchor_width} onChange={(e) => set('anchor_width', e.target.value)} />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>ステップ数</span>
+              <input type="number" style={{ width: '100%' }} value={form.steps} onChange={(e) => set('steps', e.target.value)} />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>CFGスケール</span>
+              <input type="number" step="0.1" style={{ width: '100%' }} value={form.cfg_scale} onChange={(e) => set('cfg_scale', e.target.value)} />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>サンプラー</span>
+              <select style={{ width: '100%' }} value={form.sampler_name} onChange={(e) => set('sampler_name', e.target.value)}>
+                {samplerOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>ノイズ除去強度（i2i用）</span>
+              <input
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                style={{ width: '100%' }}
+                value={form.denoising_strength}
+                onChange={(e) => set('denoising_strength', e.target.value)}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button onClick={testGenerate} disabled={isTestGenerating}>
+              {isTestGenerating ? 'テスト生成中...' : 'この設定でテスト生成'}
+            </button>
+            <button onClick={save} disabled={!dirty || update.isPending}>
+              {update.isPending ? '保存中...' : '保存'}
+            </button>
+          </div>
+
+          {testError && <p style={{ color: 'red', fontSize: 11 }}>エラー: {testError}</p>}
+
+          {testResult && (
+            <div style={{ borderTop: '1px solid #eee', paddingTop: 8 }}>
+              <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                テスト結果（サンプルデータ使用・保存されません{testResult.usedMode !== form.default_mode && ` / 実際の生成方式: ${MODE_LABELS[testResult.usedMode]}`}）
+              </p>
+              <img src={testResult.imagePath} alt="テスト生成結果" style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 6 }} />
+              <p style={{ fontSize: 10, color: '#aaa', fontFamily: 'monospace', wordBreak: 'break-all' }}>{testResult.prompt}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImageGenerationSettingsSection() {
+  const { data: settings, isLoading } = useImageGenerationSettings();
+
+  if (isLoading) return null;
+
+  return (
+    <div style={cardStyle}>
+      <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>画像生成の詳細設定</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        画像の種類ごとに生成方式・プロンプトテンプレート・キャンバスサイズ・SDパラメータを設定します。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {settings.map((s) => (
+          <ImageGenerationSettingRow key={s.image_kind} setting={s} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function ImageFormatSection() {
   const { data: formats, isLoading } = useImageFormats();
@@ -270,6 +525,36 @@ function TestGenerateSection() {
   );
 }
 
+function StartKoboldcppButton({ onStarted }) {
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleStart() {
+    setIsStarting(true);
+    setError(null);
+    try {
+      await settingsApi.startKoboldcpp();
+      onStarted();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsStarting(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={handleStart} disabled={isStarting}>
+        {isStarting ? '起動しています...' : 'KoboldCppを起動'}
+      </button>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        ChatRPGサーバーと同じPC上でkoboldcpp.exeを起動します（モデル読み込みに数十秒〜数分かかります）。
+      </p>
+      {error && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {error}</p>}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { data: status, isLoading, refetch, isFetching } = useSettingsStatus();
 
@@ -310,6 +595,10 @@ export default function SettingsPage() {
                 {isFetching ? '確認中...' : '再確認'}
               </button>
             </div>
+
+            {!status.textModel.connected && (
+              <StartKoboldcppButton onStarted={() => setTimeout(refetch, 3000)} />
+            )}
           </div>
 
           <div style={cardStyle}>
@@ -342,6 +631,7 @@ export default function SettingsPage() {
 
           <StylePresetsSection />
           <ImageFormatSection />
+          <ImageGenerationSettingsSection />
           <TestGenerateSection />
         </div>
       )}

@@ -34,3 +34,22 @@ export function useImageFormatMutations() {
     set: useMutation({ mutationFn: ({ kind, format }) => settingsApi.setImageFormat(kind, format), onSuccess: invalidate }),
   };
 }
+
+export function useSamplers() {
+  return useQuery({ queryKey: ['samplers'], queryFn: settingsApi.listSamplers, staleTime: 60000 });
+}
+
+export function useImageGenerationSettings() {
+  return useQuery({ queryKey: ['imageGenerationSettings'], queryFn: settingsApi.listImageGenerationSettings });
+}
+
+export function useImageGenerationSettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imageGenerationSettings'] });
+  return {
+    update: useMutation({
+      mutationFn: ({ kind, data }) => settingsApi.updateImageGenerationSettings(kind, data),
+      onSuccess: invalidate,
+    }),
+  };
+}

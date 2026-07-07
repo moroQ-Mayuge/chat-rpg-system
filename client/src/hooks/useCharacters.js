@@ -51,7 +51,7 @@ export function useOutfitMutations(characterId) {
       onSuccess: invalidate,
     }),
     generateExpressionImage: useMutation({
-      mutationFn: ({ id, expressionTypeId, extraHint }) => outfitsApi.generateExpressionImage(id, expressionTypeId, extraHint),
+      mutationFn: ({ id, expressionTypeId, extraHint, mode }) => outfitsApi.generateExpressionImage(id, expressionTypeId, extraHint, mode),
       onSuccess: invalidate,
     }),
   };

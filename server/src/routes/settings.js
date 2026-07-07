@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import os from 'node:os';
 import { config } from '../config.js';
-import { getModelStatus, getSdModelStatus, generateTxt2Image } from '../services/koboldClient.js';
+import { getModelStatus, getSdModelStatus, getSamplers, generateTxt2Image } from '../services/koboldClient.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { saveTestImage } from '../storage/imageStorage.js';
 import {
@@ -13,6 +13,9 @@ import {
   getDefaultStylePreset,
 } from '../db/repositories/imageStylePresetsRepo.js';
 import { listImageFormats, setImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
+import { listImageGenerationSettings, updateImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
+import { launchKoboldcpp } from '../services/koboldcppLauncher.js';
+import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
 
 export const settingsRouter = Router();
 
@@ -55,6 +58,19 @@ settingsRouter.get('/status', async (req, res) => {
   });
 });
 
+// Static fallback so the Settings UI still offers sampler choices when
+// KoboldCpp isn't reachable (e.g. editing settings before starting it).
+const FALLBACK_SAMPLERS = ['Euler a', 'Euler', 'Heun', 'DPM2', 'DPM++ 2M', 'DDIM', 'LCM'];
+
+settingsRouter.get('/samplers', async (req, res) => {
+  try {
+    const samplers = await getSamplers();
+    res.json(samplers?.length ? samplers.map((s) => s.name) : FALLBACK_SAMPLERS);
+  } catch {
+    res.json(FALLBACK_SAMPLERS);
+  }
+});
+
 settingsRouter.get('/style-presets', (req, res) => {
   res.json(listStylePresets());
 });
@@ -83,6 +99,38 @@ settingsRouter.get('/image-formats', (req, res) => {
 settingsRouter.put('/image-formats/:kind', (req, res) => {
   if (!['png', 'jpg'].includes(req.body.format)) return res.status(400).json({ error: 'invalid_format' });
   res.json(setImageFormat(req.params.kind, req.body.format));
+});
+
+settingsRouter.post('/start-koboldcpp', (req, res) => {
+  try {
+    const result = launchKoboldcpp();
+    res.json({ started: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+settingsRouter.get('/image-generation-settings', (req, res) => {
+  res.json(listImageGenerationSettings());
+});
+
+settingsRouter.put('/image-generation-settings/:kind', (req, res) => {
+  res.json(updateImageGenerationSettings(req.params.kind, req.body));
+});
+
+// Test-generates using the settings values currently in the edit form (which
+// may not be saved yet) against a real sample record (lowest id) for that
+// kind's placeholders — lets the user preview a prompt/parameter edit before
+// committing it.
+settingsRouter.post('/image-generation-settings/:kind/test-generate', (req, res) => {
+  enqueueImageJob(async () => {
+    try {
+      const result = await testGenerateForKind(req.params.kind, req.body);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
 });
 
 // Standalone prompt-in/image-out tool (Settings page) for experimenting with

@@ -11,4 +11,6 @@ export const roomTemplatesApi = {
     formData.append('image', file);
     return api.post(`/room-templates/${id}/background-image`, formData);
   },
+  generateBackgroundImage: (id, mode, extraHint) =>
+    api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint }),
 };

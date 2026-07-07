@@ -15,4 +15,6 @@ export const config = {
   koboldBaseUrl: process.env.KOBOLD_BASE_URL || 'http://127.0.0.1:5001',
   dbPath: resolveFromRoot(process.env.DB_PATH || './data/chatrpg.sqlite'),
   imageStorageDir: resolveFromRoot(process.env.IMAGE_STORAGE_DIR || './storage/images'),
+  koboldcppDir: resolveFromRoot(process.env.KOBOLDCPP_DIR || './koboldcpp'),
+  koboldcppLogPath: resolveFromRoot('./data/koboldcpp.log'),
 };

@@ -41,16 +41,14 @@ function webPathToFsPath(webPath) {
   return path.join(config.imageStorageDir, webPath.replace(/^\/images\//, ''));
 }
 
-// Composes the danbooru tag prompt per SPEC.md 3.7 composition order:
-// location/atmosphere tags -> prop tags -> present characters' outfit tags.
+// Splits out the danbooru tag sources for a scene per SPEC.md 3.7 composition
+// order (location/atmosphere tags -> prop tags -> present characters' outfit
+// tags) as separate fields, for substitution into a per-kind prompt template
+// (${location_tags}, ${atmosphere_tags}, ${prop_tags}, ${character_tags}).
 // Free-text-only fields (location/atmosphere prose, library-external props)
 // are intentionally excluded — they're LLM context only, not image tags.
-export function buildSceneTagPrompt(session, participants) {
+export function buildSceneTagParts(session, participants) {
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(session.room_template_id);
-  const parts = [];
-
-  if (session.current_location_tags) parts.push(session.current_location_tags);
-  if (session.current_atmosphere_tags) parts.push(session.current_atmosphere_tags);
 
   const propTags = db
     .prepare(
@@ -60,16 +58,21 @@ export function buildSceneTagPrompt(session, participants) {
     )
     .all(template.id)
     .map((r) => r.danbooru_tags)
-    .filter(Boolean);
-  parts.push(...propTags);
+    .filter(Boolean)
+    .join(', ');
 
-  for (const participant of participants) {
-    if (!participant.current_outfit_id) continue;
-    const outfit = db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(participant.current_outfit_id);
-    if (outfit?.image_tags) parts.push(outfit.image_tags);
-  }
+  const characterTags = participants
+    .filter((p) => p.current_outfit_id)
+    .map((p) => db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(p.current_outfit_id)?.image_tags)
+    .filter(Boolean)
+    .join(', ');
 
-  return parts.filter(Boolean).join(', ');
+  return {
+    location_tags: session.current_location_tags || '',
+    atmosphere_tags: session.current_atmosphere_tags || '',
+    prop_tags: propTags,
+    character_tags: characterTags,
+  };
 }
 
 // Builds the reference-anchor canvas + mask (SPEC.md 3.7): reference standing
@@ -77,9 +80,9 @@ export function buildSceneTagPrompt(session, participants) {
 // target output size) is what actually gets generated. Returns base64 PNG
 // strings ready for koboldClient.generateImage, plus the crop offset needed
 // to extract just the generated region afterward.
-export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWidth = MAIN_WIDTH, mainHeight = MAIN_HEIGHT) {
+export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWidth = MAIN_WIDTH, mainHeight = MAIN_HEIGHT, anchorWidth = ANCHOR_WIDTH) {
   const validPaths = referenceImageWebPaths.filter(Boolean).map(webPathToFsPath).filter((p) => fs.existsSync(p));
-  const anchorOffset = validPaths.length > 0 ? ANCHOR_WIDTH : 0;
+  const anchorOffset = validPaths.length > 0 ? anchorWidth : 0;
   const canvasWidth = mainWidth + anchorOffset;
   const canvasHeight = mainHeight;
 
@@ -89,11 +92,11 @@ export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWid
   if (validPaths.length > 0) {
     const slotHeight = Math.floor(canvasHeight / validPaths.length);
     for (let i = 0; i < validPaths.length; i += 1) {
-      const resized = await sharp(validPaths[i]).resize(ANCHOR_WIDTH, slotHeight, { fit: 'cover' }).toBuffer();
+      const resized = await sharp(validPaths[i]).resize(anchorWidth, slotHeight, { fit: 'cover' }).toBuffer();
       canvasComposites.push({ input: resized, left: 0, top: i * slotHeight });
     }
     const blackColumn = await sharp({
-      create: { width: ANCHOR_WIDTH, height: canvasHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
+      create: { width: anchorWidth, height: canvasHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
     })
       .png()
       .toBuffer();

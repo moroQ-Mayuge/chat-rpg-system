@@ -1,5 +1,6 @@
 import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
+import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -9,6 +10,46 @@ function getCharacterAndOutfit(participant) {
     ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
     : null;
   return { character, outfit };
+}
+
+// Builds a block establishing what "you" (the human user) are to the LLM.
+// Two distinct modes (SPEC-level design, resolved from World/Playthrough
+// settings via resolveProtagonist):
+//   'narrator'  — the user isn't a character at all; a god/GM viewpoint that
+//     can directly dictate the scene and NPC behavior (how the app behaved
+//     before the protagonist feature existed, made explicit again as a
+//     selectable mode rather than an implicit default).
+//   'character' — the user plays a present person. Deliberately omits
+//     personality/speech-style — those are the player's own to control via
+//     what they type, not something the LLM should be told to enforce.
+//     Renders nothing if every field is blank.
+function buildProtagonistBlock(protagonist) {
+  if (protagonist.mode === 'narrator') {
+    return [
+      '[ユーザーの立ち位置について]',
+      'ユーザーはこの物語の登場人物ではなく、場面全体を管理する神・ナレーター的な視点です。',
+      'ユーザーの発言は、特定キャラクターの言動ではなく、場面・状況・NPCの言動を直接指示する内容として扱ってください。',
+      '指示された内容は、キャラクター自身の意思や性格とは独立に、可能な限りそのまま場面に反映してください。',
+    ].join('\n');
+  }
+
+  const hasAnyField = [protagonist.name, protagonist.occupation, protagonist.appearance, protagonist.gender, protagonist.notes].some((v) =>
+    v.trim(),
+  );
+  if (!hasAnyField) return null;
+
+  const lines = [
+    '[主人公（あなた）について — NPCが認識している設定情報]',
+    `呼び方：${protagonist.nickname.trim() || 'あなた'}`,
+  ];
+  if (protagonist.name.trim()) lines.push(`名前：${protagonist.name}`);
+  if (protagonist.gender.trim()) lines.push(`性別：${protagonist.gender}`);
+  if (protagonist.occupation.trim()) lines.push(`職業・立場：${protagonist.occupation}`);
+  if (protagonist.appearance.trim()) lines.push(`容貌：${protagonist.appearance}`);
+  if (protagonist.notes.trim()) lines.push(`補足：${protagonist.notes}`);
+  lines.push('※ この情報はNPC側が主人公について認識している設定であり、主人公自身のセリフ・行動・心情を生成する根拠にしないでください。主人公の性格・話し方・行動は常にプレイヤー自身の発言に委ねてください。');
+
+  return lines.join('\n');
 }
 
 function buildSystemPrompt(session, participants) {
@@ -22,11 +63,30 @@ function buildSystemPrompt(session, participants) {
     .join('\n');
 
   const participantNames = participants.map((p) => p.name).join('、');
+  const protagonist = resolveProtagonist(session.playthrough_id);
+  const protagonistBlock = buildProtagonistBlock(protagonist);
+
+  // The protagonist block above tells the LLM the player's name/nickname —
+  // without an explicit denylist, the model treats that as just another
+  // known character name and starts emitting "[名前]: ..." lines for the
+  // player itself (observed live: setting a protagonist name made the LLM
+  // narrate/voice the player's turns unprompted). Names must be named
+  // explicitly here; the general "don't preempt the user" instruction alone
+  // wasn't enough to stop it once the model had a concrete name to use.
+  const forbiddenNames =
+    protagonist.mode === 'character'
+      ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean)
+      : [];
+  const noSelfSpeechRule =
+    forbiddenNames.length > 0
+      ? `主人公（${forbiddenNames.join('／')}）自身のセリフ・行動・心情は絶対に生成しないでください。[${forbiddenNames.join(']や[')}]という形式の行を出力してはいけません。主人公の発言・行動は必ずユーザー自身の入力に任せてください。`
+      : 'ユーザー（主人公）自身のセリフや行動を先取りして生成しないでください。';
 
   return [
     `場所：${session.current_location_text}`,
     `雰囲気：${session.current_atmosphere_text}`,
     `この部屋に同席しているキャラクター：${participantNames}`,
+    protagonistBlock,
     characterCards,
     '「秘密」の項目は関係性や状況に応じて慎重に扱い、安易に暴露しないでください。',
     '',
@@ -37,6 +97,7 @@ function buildSystemPrompt(session, participants) {
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
+    noSelfSpeechRule,
     '',
     '出力例（場所が変わった場合）：',
     '[SCENE_CHANGE]: 夕暮れの校門前',

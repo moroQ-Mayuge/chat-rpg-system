@@ -70,3 +70,64 @@ export function advanceTime(playthroughId, slots = 1) {
 export function touchPlaythrough(id) {
   db.prepare(`UPDATE playthroughs SET updated_at = datetime('now') WHERE id = ?`).run(id);
 }
+
+export function updateProtagonistSettings(
+  id,
+  {
+    use_custom_protagonist,
+    protagonist_name,
+    protagonist_nickname,
+    protagonist_occupation,
+    protagonist_appearance,
+    protagonist_gender,
+    protagonist_notes,
+    protagonist_mode,
+  },
+) {
+  db.prepare(
+    `UPDATE playthroughs
+     SET use_custom_protagonist = ?, protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?,
+         protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?
+     WHERE id = ?`,
+  ).run(
+    use_custom_protagonist ? 1 : 0,
+    protagonist_name ?? '',
+    protagonist_nickname ?? '',
+    protagonist_occupation ?? '',
+    protagonist_appearance ?? '',
+    protagonist_gender ?? '',
+    protagonist_notes ?? '',
+    protagonist_mode ?? 'character',
+    id,
+  );
+  return getPlaythrough(id);
+}
+
+// Resolves the protagonist ("あなた") setup actually in effect for a
+// playthrough: its own override if use_custom_protagonist is set, otherwise
+// falls back to its World's default. Always returns a { mode, ...fields }
+// object — never null — so the prompt builder decides what (if anything) to
+// render based on mode:
+//   'character' — the protagonist is a present person; renders an identity
+//     block from the fields below, or nothing if every field is blank.
+//   'narrator'  — the human user isn't a character at all (a god/GM
+//     viewpoint that can directly dictate scene/NPC behavior); the fields
+//     below are irrelevant in this mode.
+export function resolveProtagonist(playthroughId) {
+  const playthrough = db.prepare('SELECT * FROM playthroughs WHERE id = ?').get(playthroughId);
+  if (!playthrough) return { mode: 'character', name: '', nickname: '', occupation: '', appearance: '', gender: '', notes: '' };
+
+  const source = playthrough.use_custom_protagonist
+    ? playthrough
+    : getWorld(playthrough.world_id);
+
+  return {
+    mode: source.protagonist_mode ?? 'character',
+    name: source.protagonist_name ?? '',
+    nickname: source.protagonist_nickname ?? '',
+    occupation: source.protagonist_occupation ?? '',
+    appearance: source.protagonist_appearance ?? '',
+    gender: source.protagonist_gender ?? '',
+    notes: source.protagonist_notes ?? '',
+  };
+}

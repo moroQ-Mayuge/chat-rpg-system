@@ -6,4 +6,10 @@ export const worldsApi = {
   create: (data) => api.post('/worlds', data),
   update: (id, data) => api.put(`/worlds/${id}`, data),
   remove: (id) => api.del(`/worlds/${id}`),
+  uploadThumbnailImage: (id, file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post(`/worlds/${id}/thumbnail-image`, formData);
+  },
+  generateThumbnailImage: (id, extraHint) => api.post(`/worlds/${id}/generate-thumbnail-image`, { extra_hint: extraHint }),
 };

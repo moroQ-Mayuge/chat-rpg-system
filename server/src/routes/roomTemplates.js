@@ -11,6 +11,8 @@ import {
   deleteRoomTemplate,
   setBackgroundImage,
 } from '../db/repositories/roomTemplatesRepo.js';
+import { generateRoomBackgroundImage } from '../services/roomBackgroundImageGenerator.js';
+import { enqueueImageJob } from '../services/imageQueue.js';
 
 export const roomTemplatesRouter = Router();
 
@@ -56,4 +58,19 @@ roomTemplatesRouter.post('/:id/background-image', upload.single('image'), (req, 
   if (!req.file) return res.status(400).json({ error: 'image_required' });
   const relativePath = `/images/rooms/${req.file.filename}`;
   res.json(setBackgroundImage(req.params.id, relativePath));
+});
+
+roomTemplatesRouter.post('/:id/generate-background-image', (req, res) => {
+  const template = getRoomTemplate(req.params.id);
+  if (!template) return res.status(404).json({ error: 'not_found' });
+  const mode = req.body.mode === 'refine' ? 'refine' : 'fresh';
+
+  enqueueImageJob(async () => {
+    try {
+      const imagePath = await generateRoomBackgroundImage(template, mode, req.body.extra_hint);
+      res.json(setBackgroundImage(req.params.id, imagePath));
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
 });

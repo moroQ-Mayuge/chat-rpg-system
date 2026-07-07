@@ -39,11 +39,21 @@ export function createWorld({
   season_labels = DEFAULT_SEASON_LABELS,
   days_per_season = DEFAULT_DAYS_PER_SEASON,
   image_style_preset_id = null,
+  image_tags = '',
+  protagonist_name = '',
+  protagonist_nickname = '',
+  protagonist_occupation = '',
+  protagonist_appearance = '',
+  protagonist_gender = '',
+  protagonist_notes = '',
+  protagonist_mode = 'character',
 }) {
   const result = db
     .prepare(
-      `INSERT INTO worlds (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?)`,
+      `INSERT INTO worlds
+        (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id, image_tags,
+         protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -53,17 +63,42 @@ export function createWorld({
       JSON.stringify(season_labels),
       days_per_season,
       image_style_preset_id,
+      image_tags ?? '',
+      protagonist_name ?? '',
+      protagonist_nickname ?? '',
+      protagonist_occupation ?? '',
+      protagonist_appearance ?? '',
+      protagonist_gender ?? '',
+      protagonist_notes ?? '',
+      protagonist_mode ?? 'character',
     );
   return getWorld(result.lastInsertRowid);
 }
 
 export function updateWorld(
   id,
-  { name, worldview, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id },
+  {
+    name,
+    worldview,
+    time_slot_labels,
+    weather_options,
+    season_labels,
+    days_per_season,
+    image_style_preset_id,
+    image_tags,
+    protagonist_name,
+    protagonist_nickname,
+    protagonist_occupation,
+    protagonist_appearance,
+    protagonist_gender,
+    protagonist_notes,
+    protagonist_mode,
+  },
 ) {
   db.prepare(
     `UPDATE worlds
-     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?
+     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?, image_tags = ?,
+         protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -73,8 +108,21 @@ export function updateWorld(
     JSON.stringify(season_labels ?? DEFAULT_SEASON_LABELS),
     days_per_season ?? DEFAULT_DAYS_PER_SEASON,
     image_style_preset_id ?? null,
+    image_tags ?? '',
+    protagonist_name ?? '',
+    protagonist_nickname ?? '',
+    protagonist_occupation ?? '',
+    protagonist_appearance ?? '',
+    protagonist_gender ?? '',
+    protagonist_notes ?? '',
+    protagonist_mode ?? 'character',
     id,
   );
+  return getWorld(id);
+}
+
+export function setThumbnailImage(id, imagePath) {
+  db.prepare('UPDATE worlds SET thumbnail_image_path = ? WHERE id = ?').run(imagePath, id);
   return getWorld(id);
 }
 
