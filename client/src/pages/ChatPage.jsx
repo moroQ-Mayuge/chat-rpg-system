@@ -158,6 +158,41 @@ function ItemUsePanel({ playthroughId, participants, onClose, onUse }) {
   );
 }
 
+function FreeActionPanel({ onClose, onSend }) {
+  const [text, setText] = useState('');
+
+  function submit() {
+    const value = text.trim();
+    if (!value) return;
+    onSend(value);
+    onClose();
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>自由入力</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          style={{ flex: 1 }}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder="決まったコマンドにない行動を自由に記述"
+          autoFocus
+        />
+        <button type="button" onClick={submit} disabled={!text.trim()}>
+          送信
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -333,6 +368,7 @@ export default function ChatPage() {
           onUse={sendText}
         />
       )}
+      {itemPanel === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
 
       {session.participants.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>
