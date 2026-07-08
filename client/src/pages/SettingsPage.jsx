@@ -585,6 +585,31 @@ function KoboldcppLaunchSettingsSection() {
         />
       </label>
 
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成用LoRAのパス（任意）</span>
+        <input
+          style={{ width: '100%' }}
+          placeholder="高速化LoRAを内包していないモデル向け（空欄なら未使用）"
+          value={form.sd_lora_path ?? ''}
+          onChange={(e) => setForm({ ...form, sd_lora_path: e.target.value })}
+        />
+      </label>
+
+      {form.sd_lora_path && (
+        <label style={{ display: 'block', marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>LoRA適用強度</span>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="2"
+            style={{ width: 100 }}
+            value={form.sd_lora_multiplier}
+            onChange={(e) => setForm({ ...form, sd_lora_multiplier: Number(e.target.value) })}
+          />
+        </label>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
         <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
           {update.isPending ? '保存中...' : '保存'}

@@ -31,7 +31,7 @@ export function launchKoboldcpp() {
     throw new Error('koboldcpp.exeが見つかりません。koboldcpp/koboldcpp.exe に配置してください。');
   }
 
-  const { llm_model_path, sd_model_path, sd_quant } = getLaunchSettings();
+  const { llm_model_path, sd_model_path, sd_quant, sd_lora_path, sd_lora_multiplier } = getLaunchSettings();
 
   const llmModel = llm_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'llm'), '.gguf');
   if (!llmModel) {
@@ -45,6 +45,9 @@ export function launchKoboldcpp() {
   if (sd_model_path && !fs.existsSync(sd_model_path)) {
     throw new Error(`指定された画像生成モデルのパスが見つかりません: ${sd_model_path}`);
   }
+  if (sd_lora_path && !fs.existsSync(sd_lora_path)) {
+    throw new Error(`指定されたLoRAのパスが見つかりません: ${sd_lora_path}`);
+  }
 
   const port = new URL(config.koboldBaseUrl).port || '5001';
 
@@ -54,6 +57,9 @@ export function launchKoboldcpp() {
     // KoboldCpp has no fp8 loading mode — --sdquant is the closest equivalent
     // it actually supports (0=off, 1=q8, 2=q4).
     if (sd_quant > 0) args.push('--sdquant', String(sd_quant));
+    // Lets a speed-up LoRA (e.g. an SDXL-Lightning-style checkpoint) be
+    // applied to SD models that don't already bake one in.
+    if (sd_lora_path) args.push('--sdlora', sd_lora_path, '--sdloramult', String(sd_lora_multiplier));
   }
 
   fs.mkdirSync(path.dirname(config.koboldcppLogPath), { recursive: true });

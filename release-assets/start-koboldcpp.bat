@@ -23,6 +23,11 @@ rem set an absolute path here (leave blank to keep auto-detecting).
 set "LLM_MODEL_OVERRIDE="
 set "SD_MODEL_OVERRIDE="
 
+rem Optional speed-up LoRA (e.g. an SDXL-Lightning-style checkpoint) for SD
+rem models that don't already bake one in. Leave blank to skip.
+set "SD_LORA="
+set "SD_LORA_MULT=1.0"
+
 set "LLM_MODEL=%LLM_MODEL_OVERRIDE%"
 if not defined LLM_MODEL (
   if exist "models\llm" (
@@ -65,15 +70,15 @@ echo   If ChatRPG's .env uses a different KOBOLD_BASE_URL port, edit the
 echo   --port value below to match, or edit .env to match this port.
 echo.
 
-if defined SD_MODEL (
-  if "%SD_QUANT%"=="0" (
-    "%EXE%" --model "%LLM_MODEL%" --sdmodel "%SD_MODEL%" --port 5001 --contextsize 8192 --gpulayers 999
-  ) else (
-    "%EXE%" --model "%LLM_MODEL%" --sdmodel "%SD_MODEL%" --sdquant %SD_QUANT% --port 5001 --contextsize 8192 --gpulayers 999
-  )
-) else (
-  "%EXE%" --model "%LLM_MODEL%" --port 5001 --contextsize 8192 --gpulayers 999
-)
+rem Built as separate top-level statements (not one parenthesized block) —
+rem cmd.exe expands %SD_ARGS% once per block, so accumulating it multiple
+rem times inside a single if-block would silently drop earlier appends.
+set "SD_ARGS="
+if defined SD_MODEL set "SD_ARGS=--sdmodel "%SD_MODEL%""
+if defined SD_MODEL if not "%SD_QUANT%"=="0" set "SD_ARGS=%SD_ARGS% --sdquant %SD_QUANT%"
+if defined SD_MODEL if defined SD_LORA set "SD_ARGS=%SD_ARGS% --sdlora "%SD_LORA%" --sdloramult %SD_LORA_MULT%"
+
+"%EXE%" --model "%LLM_MODEL%" %SD_ARGS% --port 5001 --contextsize 8192 --gpulayers 999
 
 echo.
 echo KoboldCpp has stopped.
