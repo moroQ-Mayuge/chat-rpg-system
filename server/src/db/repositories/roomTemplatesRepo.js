@@ -20,7 +20,7 @@ function attachAssociations(row) {
 export function listRoomTemplates() {
   const rows = db
     .prepare(
-      `SELECT rt.*, w.name AS world_name, w.is_unassigned_bucket AS world_is_unassigned_bucket
+      `SELECT rt.*, w.name AS world_name, w.is_unassigned_bucket AS world_is_unassigned_bucket, w.attribute_tags AS world_attribute_tags
        FROM room_templates rt
        JOIN worlds w ON w.id = rt.world_id
        ORDER BY w.is_unassigned_bucket ASC, w.name ASC, rt.name ASC`,
@@ -30,7 +30,14 @@ export function listRoomTemplates() {
 }
 
 export function getRoomTemplate(id) {
-  const row = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(id);
+  const row = db
+    .prepare(
+      `SELECT rt.*, w.attribute_tags AS world_attribute_tags
+       FROM room_templates rt
+       JOIN worlds w ON w.id = rt.world_id
+       WHERE rt.id = ?`,
+    )
+    .get(id);
   return attachAssociations(row);
 }
 
@@ -60,9 +67,9 @@ export function createRoomTemplate(data) {
     .prepare(
       `INSERT INTO room_templates
         (world_id, worldview_mode, name, initial_situation, location_text, location_tags,
-         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot)
+         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags)
        VALUES (@world_id, @worldview_mode, @name, @initial_situation, @location_text, @location_tags,
-         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot)`,
+         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags)`,
     )
     .run({
       world_id: worldId,
@@ -76,6 +83,7 @@ export function createRoomTemplate(data) {
       worldview: data.worldview ?? null,
       background_image_path: data.background_image_path ?? null,
       turns_per_time_slot: data.turns_per_time_slot ?? null,
+      attribute_tags: data.attribute_tags ?? '',
     });
   replaceAssociations(result.lastInsertRowid, data);
   return getRoomTemplate(result.lastInsertRowid);
@@ -88,7 +96,7 @@ export function updateRoomTemplate(id, data) {
        world_id = @world_id, worldview_mode = @worldview_mode, name = @name,
        initial_situation = @initial_situation, location_text = @location_text, location_tags = @location_tags,
        atmosphere_text = @atmosphere_text, atmosphere_tags = @atmosphere_tags, worldview = @worldview,
-       turns_per_time_slot = @turns_per_time_slot
+       turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags
      WHERE id = @id`,
   ).run({
     id,
@@ -102,6 +110,7 @@ export function updateRoomTemplate(id, data) {
     atmosphere_tags: data.atmosphere_tags ?? null,
     worldview: data.worldview ?? null,
     turns_per_time_slot: data.turns_per_time_slot ?? null,
+    attribute_tags: data.attribute_tags ?? '',
   });
   replaceAssociations(id, data);
   return getRoomTemplate(id);

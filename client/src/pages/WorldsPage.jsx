@@ -21,6 +21,7 @@ const emptyForm = {
   protagonist_gender: '',
   protagonist_notes: '',
   protagonist_mode: 'character',
+  attribute_tags: '',
 };
 
 export default function WorldsPage() {
@@ -53,6 +54,7 @@ export default function WorldsPage() {
         protagonist_gender: world.protagonist_gender ?? '',
         protagonist_notes: world.protagonist_notes ?? '',
         protagonist_mode: world.protagonist_mode ?? 'character',
+        attribute_tags: world.attribute_tags ?? '',
       });
     }
   }, [editingId, worlds]);
@@ -245,6 +247,18 @@ export default function WorldsPage() {
               </button>
             </div>
             {thumbGenerateError && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {thumbGenerateError}</p>}
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>属性キー</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              ここに設定したキーとキャラクターの属性キーが一致すると、そのキャラはこのWorldに自動登場できる対象になります
+            </p>
+            <TagChips
+              tags={(form.attribute_tags || '').split(',').map((t) => t.trim()).filter(Boolean)}
+              onChange={(tags) => setForm({ ...form, attribute_tags: tags.join(', ') })}
+              placeholder="例: 学園, 現代"
+            />
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

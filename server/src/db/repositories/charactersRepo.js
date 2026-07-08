@@ -33,6 +33,7 @@ export const CHARACTER_TEXT_FIELDS = [
   'weakness',
   'secret',
   'notes',
+  'attribute_tags',
 ];
 
 function attachAssociations(character) {

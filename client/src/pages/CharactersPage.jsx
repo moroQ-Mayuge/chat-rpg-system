@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCharacters, useCharacter, useCharacterMutations, useOutfitMutations } from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
+import TagChips from '../components/ui/TagChips.jsx';
 import { charactersApi } from '../api/characters.js';
 import { outfitsApi } from '../api/outfits.js';
 
@@ -45,9 +46,10 @@ const PERSONALITY_FIELDS = [
   ['notes', '備考'],
 ];
 
-const emptyForm = Object.fromEntries(
-  [...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, '']),
-);
+const emptyForm = {
+  ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
+  attribute_tags: '',
+};
 
 function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
   return (
@@ -113,6 +115,7 @@ export default function CharactersPage() {
     for (const [key] of [...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS]) {
       fields[key] = existing[key] ?? '';
     }
+    fields.attribute_tags = existing.attribute_tags ?? '';
     setForm({ ...fields, relationship_defaults: existing.relationship_defaults, outfits: existing.outfits });
     if (existing.outfits?.length && !existing.outfits.find((o) => o.id === activeOutfitId)) {
       setActiveOutfitId(existing.outfits.find((o) => o.is_default)?.id ?? existing.outfits[0].id);
@@ -138,6 +141,7 @@ export default function CharactersPage() {
   async function save() {
     const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
     payload.relationship_defaults = form.relationship_defaults;
+    payload.attribute_tags = form.attribute_tags;
     if (isNew) {
       const created = await create.mutateAsync(payload);
       if (pendingOutfitTags && created.outfits?.[0]) {
@@ -403,17 +407,29 @@ export default function CharactersPage() {
             </div>
 
             {activeTab === 'basic' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-                {BASIC_FIELDS.map(([key, label]) => (
-                  <FieldWithRoll
-                    key={key}
-                    label={label}
-                    value={form[key]}
-                    onChange={(v) => setField(key, v)}
-                    onRoll={() => handleRollField(key)}
-                    rolling={rollingField === key}
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                  {BASIC_FIELDS.map(([key, label]) => (
+                    <FieldWithRoll
+                      key={key}
+                      label={label}
+                      value={form[key]}
+                      onChange={(v) => setField(key, v)}
+                      onRoll={() => handleRollField(key)}
+                      rolling={rollingField === key}
+                    />
+                  ))}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                    属性キー（World・部屋の属性キーと一致すると自動登場/同席の対象になる）
+                  </p>
+                  <TagChips
+                    tags={(form.attribute_tags || '').split(',').map((t) => t.trim()).filter(Boolean)}
+                    onChange={(tags) => setField('attribute_tags', tags.join(', '))}
+                    placeholder="例: 学生, 幼馴染"
                   />
-                ))}
+                </div>
               </div>
             )}
 

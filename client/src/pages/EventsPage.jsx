@@ -465,9 +465,10 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, hasOut
                 <option value="specific">指定</option>
                 <option value="random_weighted">重み付き抽選</option>
                 <option value="random_uniform">均等抽選</option>
+                <option value="tag_match">属性キー一致</option>
               </select>
             </label>
-            {p.selection_mode === 'specific' ? (
+            {p.selection_mode === 'specific' && (
               <label>
                 <span style={label11}>対象キャラ</span>
                 <select value={p.character_id ?? ''} onChange={(e) => setParams({ character_id: Number(e.target.value) || null })}>
@@ -475,7 +476,8 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, hasOut
                   {charOptions}
                 </select>
               </label>
-            ) : (
+            )}
+            {(p.selection_mode === 'random_weighted' || p.selection_mode === 'random_uniform') && (
               <label>
                 <span style={label11}>候補キャラ（複数選択）</span>
                 <select
@@ -486,6 +488,11 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, hasOut
                   {charOptions}
                 </select>
               </label>
+            )}
+            {p.selection_mode === 'tag_match' && (
+              <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 2', margin: 0 }}>
+                この部屋またはそのWorldの属性キーと、キャラクター編集画面で設定した属性キーが一致するキャラから重み付き抽選します（候補の手動指定は不要）。
+              </p>
             )}
           </div>
           <input

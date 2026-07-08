@@ -32,6 +32,7 @@ const emptyForm = {
   character_ids: [],
   turns_per_time_slot_enabled: false,
   turns_per_time_slot: 15,
+  attribute_tags: [],
 };
 
 export default function RoomTemplateEditPage() {
@@ -66,10 +67,22 @@ export default function RoomTemplateEditPage() {
       turns_per_time_slot_enabled: existing.turns_per_time_slot != null,
       turns_per_time_slot: existing.turns_per_time_slot ?? 15,
       background_image_path: existing.background_image_path,
+      attribute_tags: tagsToArray(existing.attribute_tags),
     });
   }, [existing]);
 
   const selectedWorld = worlds?.find((w) => w.id === (form.world_id ?? worlds?.find((w2) => w2.is_unassigned_bucket)?.id));
+
+  // Attribute-key auto-matching (chat enhancement backlog item 23): purely a
+  // visual suggestion here — actual "auto include" happens via character_join
+  // event actions using selection_mode 'tag_match'. This just highlights
+  // which characters would already be eligible, to help authoring.
+  const contextTags = new Set([...form.attribute_tags, ...tagsToArray(selectedWorld?.attribute_tags)]);
+  const tagMatchedCharacterIds = new Set(
+    (characters ?? [])
+      .filter((c) => contextTags.size > 0 && tagsToArray(c.attribute_tags).some((t) => contextTags.has(t)))
+      .map((c) => c.id),
+  );
 
   function toggleProp(propId) {
     setForm((f) => ({
@@ -102,6 +115,7 @@ export default function RoomTemplateEditPage() {
       free_props: form.free_props,
       character_ids: form.character_ids,
       turns_per_time_slot: form.turns_per_time_slot_enabled ? form.turns_per_time_slot : null,
+      attribute_tags: tagsToText(form.attribute_tags),
     };
     if (isNew) {
       await create.mutateAsync(payload);
@@ -245,6 +259,18 @@ export default function RoomTemplateEditPage() {
               placeholder="+ 画像生成用タグを追加"
             />
           </div>
+
+          <div>
+            <p style={{ marginBottom: 4 }}>属性キー</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              ここに設定したキーとキャラクターの属性キーが一致すると、そのキャラはこの部屋に自動同席できる対象になります
+            </p>
+            <TagChips
+              tags={form.attribute_tags}
+              onChange={(tags) => setForm({ ...form, attribute_tags: tags })}
+              placeholder="例: 部活, 図書委員"
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -321,15 +347,32 @@ export default function RoomTemplateEditPage() {
 
           <div>
             <p style={{ marginBottom: 4 }}>初期参加キャラクター</p>
+            {tagMatchedCharacterIds.size > 0 && (
+              <p style={{ fontSize: 11, color: '#2563eb', margin: '0 0 4px' }}>
+                ★ = 属性キーが一致（この部屋またはWorldに自動同席可能な候補）
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {characters.map((c) => (
-                <label key={c.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: 11, gap: 2 }}>
+                <label
+                  key={c.id}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    fontSize: 11,
+                    gap: 2,
+                    padding: 4,
+                    borderRadius: 6,
+                    background: tagMatchedCharacterIds.has(c.id) ? '#eff6ff' : 'transparent',
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={form.character_ids.includes(c.id)}
                     onChange={() => toggleCharacter(c.id)}
                   />
-                  {c.name}
+                  {tagMatchedCharacterIds.has(c.id) ? `★ ${c.name}` : c.name}
                 </label>
               ))}
               {characters.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>キャラクターが登録されていません</p>}
