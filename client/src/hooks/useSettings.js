@@ -43,6 +43,18 @@ export function useImageGenerationSettings() {
   return useQuery({ queryKey: ['imageGenerationSettings'], queryFn: settingsApi.listImageGenerationSettings });
 }
 
+export function useKoboldcppLaunchSettings() {
+  return useQuery({ queryKey: ['koboldcppLaunchSettings'], queryFn: settingsApi.getKoboldcppLaunchSettings });
+}
+
+export function useKoboldcppLaunchSettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['koboldcppLaunchSettings'] });
+  return {
+    update: useMutation({ mutationFn: settingsApi.updateKoboldcppLaunchSettings, onSuccess: invalidate }),
+  };
+}
+
 export function useImageGenerationSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imageGenerationSettings'] });

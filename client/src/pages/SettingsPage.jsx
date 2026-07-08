@@ -8,6 +8,8 @@ import {
   useImageGenerationSettings,
   useImageGenerationSettingsMutations,
   useSamplers,
+  useKoboldcppLaunchSettings,
+  useKoboldcppLaunchSettingsMutations,
 } from '../hooks/useSettings.js';
 import { settingsApi } from '../api/settings.js';
 
@@ -525,6 +527,30 @@ function TestGenerateSection() {
   );
 }
 
+function SdQuantSetting() {
+  const { data: launchSettings } = useKoboldcppLaunchSettings();
+  const { update } = useKoboldcppLaunchSettingsMutations();
+
+  if (!launchSettings) return null;
+
+  return (
+    <label style={{ display: 'block', marginTop: 8 }}>
+      <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード（fp8非対応のため代替）</span>
+      <select
+        value={launchSettings.sd_quant}
+        onChange={(e) => update.mutate({ sd_quant: Number(e.target.value) })}
+      >
+        <option value={0}>オフ（フル精度）</option>
+        <option value={1}>q8（軽量化）</option>
+        <option value={2}>q4（さらに軽量化）</option>
+      </select>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        KoboldCppにfp8ロードは無く、対応しているのはこのq8/q4量子化のみです。次回「KoboldCppを起動」時から反映されます。
+      </p>
+    </label>
+  );
+}
+
 function StartKoboldcppButton({ onStarted }) {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
@@ -550,6 +576,7 @@ function StartKoboldcppButton({ onStarted }) {
       <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
         ChatRPGサーバーと同じPC上でkoboldcpp.exeを起動します（モデル読み込みに数十秒〜数分かかります）。
       </p>
+      <SdQuantSetting />
       {error && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {error}</p>}
     </div>
   );

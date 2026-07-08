@@ -15,6 +15,7 @@ import {
 import { listImageFormats, setImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { listImageGenerationSettings, updateImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { launchKoboldcpp } from '../services/koboldcppLauncher.js';
+import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
 
 export const settingsRouter = Router();
@@ -99,6 +100,15 @@ settingsRouter.get('/image-formats', (req, res) => {
 settingsRouter.put('/image-formats/:kind', (req, res) => {
   if (!['png', 'jpg'].includes(req.body.format)) return res.status(400).json({ error: 'invalid_format' });
   res.json(setImageFormat(req.params.kind, req.body.format));
+});
+
+settingsRouter.get('/koboldcpp-launch-settings', (req, res) => {
+  res.json(getLaunchSettings());
+});
+
+settingsRouter.put('/koboldcpp-launch-settings', (req, res) => {
+  if (![0, 1, 2].includes(req.body.sd_quant)) return res.status(400).json({ error: 'invalid_sd_quant' });
+  res.json(updateLaunchSettings(req.body));
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {

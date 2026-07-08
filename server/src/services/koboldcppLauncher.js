@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 
 function findFirstFile(dir, extension) {
   if (!fs.existsSync(dir)) return null;
@@ -39,7 +40,13 @@ export function launchKoboldcpp() {
   const port = new URL(config.koboldBaseUrl).port || '5001';
 
   const args = ['--model', llmModel, '--port', port, '--contextsize', '8192', '--gpulayers', '999'];
-  if (sdModel) args.push('--sdmodel', sdModel);
+  if (sdModel) {
+    args.push('--sdmodel', sdModel);
+    // KoboldCpp has no fp8 loading mode — --sdquant is the closest equivalent
+    // it actually supports (0=off, 1=q8, 2=q4).
+    const { sd_quant } = getLaunchSettings();
+    if (sd_quant > 0) args.push('--sdquant', String(sd_quant));
+  }
 
   fs.mkdirSync(path.dirname(config.koboldcppLogPath), { recursive: true });
   const logFd = fs.openSync(config.koboldcppLogPath, 'a');

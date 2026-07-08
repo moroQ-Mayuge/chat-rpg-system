@@ -30,6 +30,10 @@ if not defined LLM_MODEL (
   exit /b 1
 )
 
+rem KoboldCpp has no fp8 image-model loading mode. The closest it supports is
+rem --sdquant (0=off, 1=q8, 2=q4). Edit the line below to 1 or 2 to enable it.
+set "SD_QUANT=0"
+
 set "SD_MODEL="
 if exist "models\sd" (
   for %%f in ("models\sd\*.safetensors") do if not defined SD_MODEL set "SD_MODEL=%%f"
@@ -53,7 +57,11 @@ echo   --port value below to match, or edit .env to match this port.
 echo.
 
 if defined SD_MODEL (
-  "%EXE%" --model "%LLM_MODEL%" --sdmodel "%SD_MODEL%" --port 5001 --contextsize 8192 --gpulayers 999
+  if "%SD_QUANT%"=="0" (
+    "%EXE%" --model "%LLM_MODEL%" --sdmodel "%SD_MODEL%" --port 5001 --contextsize 8192 --gpulayers 999
+  ) else (
+    "%EXE%" --model "%LLM_MODEL%" --sdmodel "%SD_MODEL%" --sdquant %SD_QUANT% --port 5001 --contextsize 8192 --gpulayers 999
+  )
 ) else (
   "%EXE%" --model "%LLM_MODEL%" --port 5001 --contextsize 8192 --gpulayers 999
 )

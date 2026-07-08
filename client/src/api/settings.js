@@ -3,6 +3,8 @@ import { api } from './client.js';
 export const settingsApi = {
   status: () => api.get('/settings/status'),
   startKoboldcpp: () => api.post('/settings/start-koboldcpp'),
+  getKoboldcppLaunchSettings: () => api.get('/settings/koboldcpp-launch-settings'),
+  updateKoboldcppLaunchSettings: (data) => api.put('/settings/koboldcpp-launch-settings', data),
   listStylePresets: () => api.get('/settings/style-presets'),
   createStylePreset: (data) => api.post('/settings/style-presets', data),
   updateStylePreset: (id, data) => api.put(`/settings/style-presets/${id}`, data),
