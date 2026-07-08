@@ -70,6 +70,17 @@ echo   If ChatRPG's .env uses a different KOBOLD_BASE_URL port, edit the
 echo   --port value below to match, or edit .env to match this port.
 echo.
 
+rem KoboldCpp rejects --sdlora and --sdquant together outright at startup
+rem (confirmed via its own argparse error). Set at most one of SD_LORA /
+rem SD_QUANT above.
+if defined SD_LORA if not "%SD_QUANT%"=="0" (
+  echo LoRA and sdquant cannot be used together ^(KoboldCpp rejects this combination^).
+  echo Set either SD_LORA or SD_QUANT back to its default, not both.
+  echo.
+  pause
+  exit /b 1
+)
+
 rem Built as separate top-level statements (not one parenthesized block) —
 rem cmd.exe expands %SD_ARGS% once per block, so accumulating it multiple
 rem times inside a single if-block would silently drop earlier appends.

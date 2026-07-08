@@ -48,6 +48,13 @@ export function launchKoboldcpp() {
   if (sd_lora_path && !fs.existsSync(sd_lora_path)) {
     throw new Error(`指定されたLoRAのパスが見つかりません: ${sd_lora_path}`);
   }
+  // KoboldCpp rejects this combination outright at startup (confirmed via its
+  // actual argparse error: "argument --sdlora: not allowed with argument
+  // --sdquant") — caught here before spawning so the failure is immediate
+  // and in Japanese, instead of a silent background process crash.
+  if (sd_lora_path && sd_quant > 0) {
+    throw new Error('LoRA使用時は画像生成モデルの量子化ロード（sdquant）を併用できません。設定画面でどちらか一方をオフにしてください。');
+  }
 
   const port = new URL(config.koboldBaseUrl).port || '5001';
 

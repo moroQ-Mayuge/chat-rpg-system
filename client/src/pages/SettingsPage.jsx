@@ -610,6 +610,12 @@ function KoboldcppLaunchSettingsSection() {
         </label>
       )}
 
+      {form.sd_lora_path && form.sd_quant > 0 && (
+        <p style={{ fontSize: 11, color: '#b91c1c', margin: '8px 0 0' }}>
+          ⚠ KoboldCppはLoRAと量子化ロード（sdquant）の同時使用を許可していません（起動時にエラーになります）。どちらか一方をオフにしてください。
+        </p>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
         <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
           {update.isPending ? '保存中...' : '保存'}
