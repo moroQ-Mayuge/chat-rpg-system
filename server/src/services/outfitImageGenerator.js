@@ -63,7 +63,6 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
     [outfit.standing_image_path],
     settings.main_width,
     settings.main_height,
-    settings.anchor_width,
   );
 
   const resultBuffer = await generateImage({

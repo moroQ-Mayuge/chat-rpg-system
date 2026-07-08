@@ -5,8 +5,6 @@ import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
 
-const ANCHOR_WIDTH = 200;
-
 export const MAIN_WIDTH = 1216;
 export const MAIN_HEIGHT = 832;
 
@@ -80,28 +78,46 @@ export function buildSceneTagParts(session, participants) {
 // target output size) is what actually gets generated. Returns base64 PNG
 // strings ready for koboldClient.generateImage, plus the crop offset needed
 // to extract just the generated region afterward.
-export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWidth = MAIN_WIDTH, mainHeight = MAIN_HEIGHT, anchorWidth = ANCHOR_WIDTH) {
+//
+// The anchor column width is derived from each reference image's own
+// dimensions rather than a fixed setting: each image is scaled to its slot
+// height preserving its real aspect ratio (no forced crop), and the column
+// is sized to the widest of those so nothing gets cut off. Narrower images
+// are centered within that shared column.
+export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWidth = MAIN_WIDTH, mainHeight = MAIN_HEIGHT) {
   const validPaths = referenceImageWebPaths.filter(Boolean).map(webPathToFsPath).filter((p) => fs.existsSync(p));
-  const anchorOffset = validPaths.length > 0 ? anchorWidth : 0;
-  const canvasWidth = mainWidth + anchorOffset;
-  const canvasHeight = mainHeight;
 
   const canvasComposites = [];
   const maskComposites = [];
+  let anchorWidth = 0;
 
   if (validPaths.length > 0) {
-    const slotHeight = Math.floor(canvasHeight / validPaths.length);
-    for (let i = 0; i < validPaths.length; i += 1) {
-      const resized = await sharp(validPaths[i]).resize(anchorWidth, slotHeight, { fit: 'cover' }).toBuffer();
-      canvasComposites.push({ input: resized, left: 0, top: i * slotHeight });
+    const slotHeight = Math.floor(mainHeight / validPaths.length);
+    const resizedEntries = [];
+    for (const p of validPaths) {
+      const meta = await sharp(p).metadata();
+      const naturalWidth = Math.max(1, Math.round(slotHeight * (meta.width / meta.height)));
+      const resized = await sharp(p).resize(naturalWidth, slotHeight, { fit: 'fill' }).toBuffer();
+      resizedEntries.push({ resized, width: naturalWidth });
     }
+    anchorWidth = Math.max(...resizedEntries.map((e) => e.width));
+
+    resizedEntries.forEach((entry, i) => {
+      const left = Math.floor((anchorWidth - entry.width) / 2);
+      canvasComposites.push({ input: entry.resized, left, top: i * slotHeight });
+    });
+
     const blackColumn = await sharp({
-      create: { width: anchorWidth, height: canvasHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
+      create: { width: anchorWidth, height: mainHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
     })
       .png()
       .toBuffer();
     maskComposites.push({ input: blackColumn, left: 0, top: 0 });
   }
+
+  const anchorOffset = anchorWidth;
+  const canvasWidth = mainWidth + anchorOffset;
+  const canvasHeight = mainHeight;
 
   const canvasBuffer = await sharp({
     create: { width: canvasWidth, height: canvasHeight, channels: 3, background: { r: 128, g: 128, b: 128 } },

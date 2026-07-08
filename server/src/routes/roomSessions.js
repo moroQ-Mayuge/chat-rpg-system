@@ -215,7 +215,6 @@ async function generateSceneImage(sessionId, sceneChangeDescription) {
       referencePaths,
       settings.main_width,
       settings.main_height,
-      settings.anchor_width,
     );
     const resultBuffer = await generateImage({
       initImageBase64: canvasBase64,

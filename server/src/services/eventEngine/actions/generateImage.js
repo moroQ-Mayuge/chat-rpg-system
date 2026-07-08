@@ -103,7 +103,6 @@ export async function executeGenerateImage(params, execCtx) {
             referencePaths,
             settings.main_width,
             settings.main_height,
-            settings.anchor_width,
           );
           const resultBuffer = await generateImageFromKobold({
             initImageBase64: canvasBase64,

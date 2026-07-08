@@ -109,9 +109,8 @@ export async function testGenerateForKind(kind, settings) {
     return { imagePath, prompt, usedMode: 'prompt_only' };
   }
 
-  const anchorWidth = Number(settings.anchor_width);
   const denoisingStrength = Number(settings.denoising_strength);
-  const { canvasBase64, maskBase64, anchorOffset } = await buildReferenceAnchorCanvas(referencePaths, width, height, anchorWidth);
+  const { canvasBase64, maskBase64, anchorOffset } = await buildReferenceAnchorCanvas(referencePaths, width, height);
   const resultBuffer = await generateImage({
     initImageBase64: canvasBase64,
     maskBase64,
