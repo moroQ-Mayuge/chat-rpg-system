@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEventDefinitions, useEventDefinitionMutations, useEventOverrides, useEventOverrideMutations } from '../hooks/useEvents.js';
 import { useCharacters } from '../hooks/useCharacters.js';
 import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
+import { eventsApi } from '../api/events.js';
 
 const CONDITION_TYPES = [
   { value: 'probability', label: '確率' },
@@ -711,6 +713,7 @@ function OverridesSection({ eventDefinitionId }) {
 }
 
 export default function EventsPage() {
+  const queryClient = useQueryClient();
   const { data: definitions, isLoading } = useEventDefinitions();
   const { data: characters } = useCharacters();
   const { data: axes } = useRelationshipAxes();
@@ -750,14 +753,53 @@ export default function EventsPage() {
     setSelectedId(null);
   }
 
+  async function handleExport() {
+    if (!draft.id) return;
+    const json = await eventsApi.export(draft.id);
+    const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `event-${draft.name.replace(/[^\w-]/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const json = JSON.parse(await file.text());
+      const result = await eventsApi.import(json);
+      const warnings = [];
+      if (result.unresolvedCharacters.length > 0) {
+        warnings.push(`キャラクターが見つかりませんでした（未設定のまま）: ${result.unresolvedCharacters.join('、')}`);
+      }
+      if (!result.roomTemplateResolved) warnings.push('対象部屋が見つからなかったため、スコープをglobalに変更しました。');
+      if (!result.prerequisiteResolved) warnings.push('前提イベントが見つからなかったため、前提設定を解除しました。');
+      if (warnings.length > 0) window.alert(`インポートしました。\n\n${warnings.join('\n')}`);
+      queryClient.invalidateQueries({ queryKey: ['eventDefinitions'] });
+      setSelectedId(result.eventDefinition.id);
+    } catch (err) {
+      window.alert(`インポートに失敗しました: ${err.message}`);
+    }
+  }
+
   return (
     <div>
       <h2>イベント定義</h2>
       <div className="sidebar-layout" style={{ '--sidebar-width': '220px' }}>
         <div>
-          <button style={{ width: '100%', marginBottom: 12 }} onClick={() => setSelectedId(null)}>
+          <button style={{ width: '100%', marginBottom: 8 }} onClick={() => setSelectedId(null)}>
             + 新規イベント
           </button>
+          <label style={{ display: 'block', width: '100%', marginBottom: 12 }}>
+            <span style={{ display: 'block', width: '100%', textAlign: 'center', border: '1px solid #ddd', borderRadius: 6, padding: '4px 0', cursor: 'pointer', fontSize: 13 }}>
+              インポート
+            </span>
+            <input type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+          </label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(definitions ?? []).map((def) => (
               <div
@@ -993,6 +1035,7 @@ export default function EventsPage() {
           {draft.scope === 'global' && draft.id && <OverridesSection eventDefinitionId={draft.id} />}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18, borderTop: '1px solid #eee', paddingTop: 14 }}>
+            {draft.id && <button onClick={handleExport}>エクスポート</button>}
             {draft.id && <button onClick={handleDelete}>削除</button>}
             <button onClick={handleSave} disabled={!draft.name}>
               保存

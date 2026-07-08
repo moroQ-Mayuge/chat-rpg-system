@@ -6,6 +6,8 @@ export const eventsApi = {
   create: (data) => api.post('/event-definitions', data),
   update: (id, data) => api.put(`/event-definitions/${id}`, data),
   remove: (id) => api.del(`/event-definitions/${id}`),
+  export: (id) => api.get(`/event-definitions/${id}/export`),
+  import: (json) => api.post('/event-definitions/import', json),
   listOverrides: (roomTemplateId) => api.get(`/room-templates/${roomTemplateId}/event-overrides`),
   setOverride: (roomTemplateId, eventDefinitionId, overrideProbability) =>
     api.put(`/room-templates/${roomTemplateId}/event-overrides/${eventDefinitionId}`, { override_probability: overrideProbability }),

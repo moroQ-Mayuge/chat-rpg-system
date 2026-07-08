@@ -7,6 +7,7 @@ import {
   deleteEventDefinition,
 } from '../db/repositories/eventDefinitionsRepo.js';
 import { listOverridesForTemplate, setOverride, deleteOverride } from '../db/repositories/roomTemplateEventsRepo.js';
+import { exportEventDefinitionJson, importEventDefinitionJson } from '../services/eventPortability.js';
 
 export const eventsRouter = Router();
 
@@ -31,6 +32,22 @@ eventsRouter.put('/event-definitions/:id', (req, res) => {
 
 eventsRouter.delete('/event-definitions/:id', (req, res) => {
   res.json(deleteEventDefinition(req.params.id));
+});
+
+eventsRouter.get('/event-definitions/:id/export', (req, res) => {
+  try {
+    res.json(exportEventDefinitionJson(req.params.id));
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+eventsRouter.post('/event-definitions/import', (req, res) => {
+  try {
+    res.status(201).json(importEventDefinitionJson(req.body));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 eventsRouter.get('/room-templates/:roomTemplateId/event-overrides', (req, res) => {
