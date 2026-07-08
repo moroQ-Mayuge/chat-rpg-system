@@ -60,7 +60,15 @@ function actionDefaults(type) {
     case 'insert_dialogue':
       return { mode: 'fixed', character_id: null, text: '', prompt_hint: '', emotion_tag: null };
     case 'character_join':
-      return { selection_mode: 'specific', character_id: null, candidate_character_ids: [], outfit_id: null, entrance_narration: '' };
+      return {
+        selection_mode: 'specific',
+        character_id: null,
+        candidate_character_ids: [],
+        outfit_id: null,
+        entrance_narration: '',
+        require_attribute_match: false,
+        rejection_narration: '',
+      };
     case 'character_leave':
       return { selection_mode: 'specific', character_id: null, exit_narration: '' };
     case 'generate_image':
@@ -495,6 +503,26 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, hasOut
               </p>
             )}
           </div>
+          {p.selection_mode === 'specific' && (
+            <div style={{ marginTop: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={p.require_attribute_match ?? false}
+                  onChange={(e) => setParams({ require_attribute_match: e.target.checked })}
+                />
+                対象キャラの属性キーが部屋/Worldと一致しない場合は入室させない
+              </label>
+              {p.require_attribute_match && (
+                <input
+                  style={{ width: '100%', marginTop: 4 }}
+                  placeholder="不一致時のナレーション（{character_name}で置換、空欄で既定文）"
+                  value={p.rejection_narration ?? ''}
+                  onChange={(e) => setParams({ rejection_narration: e.target.value })}
+                />
+              )}
+            </div>
+          )}
           <input
             style={{ width: '100%', marginTop: 8 }}
             placeholder="入室ナレーション（{character_name}で置換）"

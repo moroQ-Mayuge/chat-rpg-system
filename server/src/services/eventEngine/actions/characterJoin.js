@@ -17,16 +17,23 @@ function pickWeighted(candidateIds) {
   return candidateIds[candidateIds.length - 1];
 }
 
-// Candidates whose own attribute_tags overlap with either the current room
-// template's or its World's attribute_tags (chat enhancement backlog item
-// 23): lets a character be authored once with keys like "学生"/"幼馴染" and
-// automatically become eligible everywhere those keys are declared, instead
-// of hand-listing candidate_character_ids per event.
-function tagMatchCandidates(roomTemplateId) {
+// The current room template's attribute_tags plus its World's — the shared
+// "eligible here" tag set used both for tag_match candidate selection and
+// for the require_attribute_match guard below.
+function getContextTags(roomTemplateId) {
   const template = db.prepare('SELECT attribute_tags, world_id FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
   const world = db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(template.world_id);
-  const contextTags = [...parseAttributeTags(template.attribute_tags), ...parseAttributeTags(world?.attribute_tags)];
+  return [...parseAttributeTags(template.attribute_tags), ...parseAttributeTags(world?.attribute_tags)];
+}
+
+// Candidates whose own attribute_tags overlap with the context tags (chat
+// enhancement backlog item 23): lets a character be authored once with keys
+// like "学生"/"幼馴染" and automatically become eligible everywhere those
+// keys are declared, instead of hand-listing candidate_character_ids per
+// event.
+function tagMatchCandidates(roomTemplateId) {
+  const contextTags = getContextTags(roomTemplateId);
   if (contextTags.length === 0) return [];
 
   return db
@@ -36,7 +43,9 @@ function tagMatchCandidates(roomTemplateId) {
     .map((c) => c.id);
 }
 
-// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?, candidate_character_ids?, outfit_id?, entrance_narration? }
+const DEFAULT_REJECTION_NARRATION = '{character_name}は、この場にふさわしくないようで姿を見せなかった。';
+
+// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?, candidate_character_ids?, outfit_id?, entrance_narration?, require_attribute_match?, rejection_narration? }
 export async function executeCharacterJoin(params, execCtx) {
   const { selection_mode, character_id, candidate_character_ids = [], outfit_id = null, entrance_narration } = params;
   const presentIds = new Set(execCtx.session.participants.map((p) => p.character_id));
@@ -44,6 +53,30 @@ export async function executeCharacterJoin(params, execCtx) {
   let targetId;
   if (selection_mode === 'specific') {
     targetId = character_id;
+
+    // Guard against a "summon"-style event naming a fixed character who
+    // doesn't actually belong here (chat enhancement backlog item 23
+    // follow-up): whatever triggered this action — an authored keyword
+    // condition, a player's free action, an @mention — resolves to the same
+    // executeCharacterJoin() call, so gating it here covers all of those
+    // trigger paths at once. Only enforced when the room/World actually
+    // declares attribute tags; untagged rooms are left unrestricted.
+    if (params.require_attribute_match) {
+      const contextTags = getContextTags(execCtx.roomTemplateId);
+      if (contextTags.length > 0) {
+        const target = db.prepare('SELECT name, attribute_tags FROM characters WHERE id = ?').get(targetId);
+        const matches = target && tagsOverlap(parseAttributeTags(target.attribute_tags), contextTags);
+        if (!matches) {
+          const rejectionText = (params.rejection_narration || DEFAULT_REJECTION_NARRATION).replaceAll(
+            '{character_name}',
+            target?.name ?? '???',
+          );
+          const message = createMessage(execCtx.sessionId, { sender_type: 'narration', content: rejectionText });
+          broadcast(execCtx.sessionId, { type: 'message_complete', message });
+          return { skipped: true, reason: 'attribute_mismatch' };
+        }
+      }
+    }
   } else if (selection_mode === 'tag_match') {
     const pool = tagMatchCandidates(execCtx.roomTemplateId).filter((id) => !presentIds.has(id));
     if (pool.length === 0) return { skipped: true, reason: 'no_eligible_candidates' };
