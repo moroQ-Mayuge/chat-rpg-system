@@ -21,6 +21,7 @@ export async function generateOutfitStandingImage(outfit, extraHint) {
   const prompt = buildPrompt(settings, { character_tags: outfit.image_tags, extra_hint: extraHint });
   const buffer = await generateTxt2Image({
     prompt,
+    negativePrompt: settings.negative_prompt,
     width: settings.main_width,
     height: settings.main_height,
     steps: settings.steps,
@@ -48,6 +49,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
   if (resolvedMode === 'prompt_only' || !outfit.standing_image_path) {
     const buffer = await generateTxt2Image({
       prompt,
+      negativePrompt: settings.negative_prompt,
       width: settings.main_width,
       height: settings.main_height,
       steps: settings.steps,
@@ -68,6 +70,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
     initImageBase64: canvasBase64,
     maskBase64,
     prompt,
+    negativePrompt: settings.negative_prompt,
     width: settings.main_width + anchorOffset,
     height: settings.main_height,
     steps: settings.steps,

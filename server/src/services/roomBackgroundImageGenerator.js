@@ -36,6 +36,7 @@ export async function generateRoomBackgroundImage(roomTemplate, mode, extraHint)
     buffer = await generateImage({
       initImageBase64: initBuffer.toString('base64'),
       prompt,
+      negativePrompt: settings.negative_prompt,
       width: settings.main_width,
       height: settings.main_height,
       steps: settings.steps,
@@ -46,6 +47,7 @@ export async function generateRoomBackgroundImage(roomTemplate, mode, extraHint)
   } else {
     buffer = await generateTxt2Image({
       prompt,
+      negativePrompt: settings.negative_prompt,
       width: settings.main_width,
       height: settings.main_height,
       steps: settings.steps,

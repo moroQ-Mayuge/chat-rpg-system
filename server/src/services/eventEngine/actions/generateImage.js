@@ -85,6 +85,7 @@ export async function executeGenerateImage(params, execCtx) {
         if (settings.default_mode === 'prompt_only') {
           finalBuffer = await generateTxt2Image({
             prompt,
+            negativePrompt: settings.negative_prompt,
             width: settings.main_width,
             height: settings.main_height,
             steps: settings.steps,
@@ -108,6 +109,7 @@ export async function executeGenerateImage(params, execCtx) {
             initImageBase64: canvasBase64,
             maskBase64,
             prompt,
+            negativePrompt: settings.negative_prompt,
             width: settings.main_width + anchorOffset,
             height: settings.main_height,
             steps: settings.steps,

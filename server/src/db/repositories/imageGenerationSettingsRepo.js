@@ -10,12 +10,12 @@ export function getImageGenerationSettings(imageKind) {
 
 export function updateImageGenerationSettings(
   imageKind,
-  { default_mode, prompt_template, anchor_width, main_width, main_height, steps, cfg_scale, denoising_strength, sampler_name },
+  { default_mode, prompt_template, negative_prompt, anchor_width, main_width, main_height, steps, cfg_scale, denoising_strength, sampler_name },
 ) {
   db.prepare(
     `UPDATE image_generation_settings
-     SET default_mode = ?, prompt_template = ?, anchor_width = ?, main_width = ?, main_height = ?, steps = ?, cfg_scale = ?, denoising_strength = ?, sampler_name = ?
+     SET default_mode = ?, prompt_template = ?, negative_prompt = ?, anchor_width = ?, main_width = ?, main_height = ?, steps = ?, cfg_scale = ?, denoising_strength = ?, sampler_name = ?
      WHERE image_kind = ?`,
-  ).run(default_mode, prompt_template, anchor_width, main_width, main_height, steps, cfg_scale, denoising_strength, sampler_name, imageKind);
+  ).run(default_mode, prompt_template, negative_prompt, anchor_width, main_width, main_height, steps, cfg_scale, denoising_strength, sampler_name, imageKind);
   return getImageGenerationSettings(imageKind);
 }

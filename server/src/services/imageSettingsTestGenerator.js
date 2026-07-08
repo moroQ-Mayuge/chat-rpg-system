@@ -99,11 +99,12 @@ export async function testGenerateForKind(kind, settings) {
   const steps = Number(settings.steps);
   const cfgScale = Number(settings.cfg_scale);
   const samplerName = settings.sampler_name;
+  const negativePrompt = settings.negative_prompt;
 
   const useAnchor = settings.default_mode === 'anchor_i2i' && referencePaths.length > 0 && !ALWAYS_PROMPT_ONLY_KINDS.has(kind);
 
   if (!useAnchor) {
-    const buffer = await generateTxt2Image({ prompt, width, height, steps, cfgScale, samplerName });
+    const buffer = await generateTxt2Image({ prompt, negativePrompt, width, height, steps, cfgScale, samplerName });
     const imagePath = await saveTestImage(buffer, 'png');
     return { imagePath, prompt, usedMode: 'prompt_only' };
   }
@@ -115,6 +116,7 @@ export async function testGenerateForKind(kind, settings) {
     initImageBase64: canvasBase64,
     maskBase64,
     prompt,
+    negativePrompt,
     width: width + anchorOffset,
     height,
     steps,

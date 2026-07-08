@@ -237,6 +237,7 @@ function ImageGenerationSettingRow({ setting }) {
       data: {
         default_mode: form.default_mode,
         prompt_template: form.prompt_template,
+        negative_prompt: form.negative_prompt,
         anchor_width: Number(form.anchor_width),
         main_width: Number(form.main_width),
         main_height: Number(form.main_height),
@@ -257,6 +258,7 @@ function ImageGenerationSettingRow({ setting }) {
       const result = await settingsApi.testGenerateImageGenerationSettings(setting.image_kind, {
         default_mode: form.default_mode,
         prompt_template: form.prompt_template,
+        negative_prompt: form.negative_prompt,
         anchor_width: Number(form.anchor_width),
         main_width: Number(form.main_width),
         main_height: Number(form.main_height),
@@ -318,6 +320,15 @@ function ImageGenerationSettingRow({ setting }) {
                 </p>
               )}
             </div>
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト</span>
+            <textarea
+              style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
+              value={form.negative_prompt}
+              onChange={(e) => set('negative_prompt', e.target.value)}
+            />
           </label>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>

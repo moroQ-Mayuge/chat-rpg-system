@@ -16,6 +16,7 @@ export async function generateWorldThumbnail(world, extraHint) {
   });
   const buffer = await generateTxt2Image({
     prompt,
+    negativePrompt: settings.negative_prompt,
     width: settings.main_width,
     height: settings.main_height,
     steps: settings.steps,
