@@ -18,9 +18,16 @@ if not exist "%EXE%" (
   exit /b 1
 )
 
-set "LLM_MODEL="
-if exist "models\llm" (
-  for %%f in ("models\llm\*.gguf") do if not defined LLM_MODEL set "LLM_MODEL=%%f"
+rem To use a specific model instead of auto-detecting the first file found,
+rem set an absolute path here (leave blank to keep auto-detecting).
+set "LLM_MODEL_OVERRIDE="
+set "SD_MODEL_OVERRIDE="
+
+set "LLM_MODEL=%LLM_MODEL_OVERRIDE%"
+if not defined LLM_MODEL (
+  if exist "models\llm" (
+    for %%f in ("models\llm\*.gguf") do if not defined LLM_MODEL set "LLM_MODEL=%%f"
+  )
 )
 if not defined LLM_MODEL (
   echo No text model ^(.gguf^) found under models\llm\.
@@ -34,9 +41,11 @@ rem KoboldCpp has no fp8 image-model loading mode. The closest it supports is
 rem --sdquant (0=off, 1=q8, 2=q4). Edit the line below to 1 or 2 to enable it.
 set "SD_QUANT=0"
 
-set "SD_MODEL="
-if exist "models\sd" (
-  for %%f in ("models\sd\*.safetensors") do if not defined SD_MODEL set "SD_MODEL=%%f"
+set "SD_MODEL=%SD_MODEL_OVERRIDE%"
+if not defined SD_MODEL (
+  if exist "models\sd" (
+    for %%f in ("models\sd\*.safetensors") do if not defined SD_MODEL set "SD_MODEL=%%f"
+  )
 )
 if not defined SD_MODEL (
   echo No image model ^(.safetensors^) found under models\sd\.

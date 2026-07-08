@@ -538,27 +538,60 @@ function TestGenerateSection() {
   );
 }
 
-function SdQuantSetting() {
+function KoboldcppLaunchSettingsSection() {
   const { data: launchSettings } = useKoboldcppLaunchSettings();
   const { update } = useKoboldcppLaunchSettingsMutations();
+  const [form, setForm] = useState(null);
 
-  if (!launchSettings) return null;
+  useEffect(() => {
+    if (launchSettings) setForm(launchSettings);
+  }, [launchSettings]);
+
+  if (!form) return null;
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(launchSettings);
 
   return (
-    <label style={{ display: 'block', marginTop: 8 }}>
-      <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード（fp8非対応のため代替）</span>
-      <select
-        value={launchSettings.sd_quant}
-        onChange={(e) => update.mutate({ sd_quant: Number(e.target.value) })}
-      >
-        <option value={0}>オフ（フル精度）</option>
-        <option value={1}>q8（軽量化）</option>
-        <option value={2}>q4（さらに軽量化）</option>
-      </select>
-      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-        KoboldCppにfp8ロードは無く、対応しているのはこのq8/q4量子化のみです。次回「KoboldCppを起動」時から反映されます。
-      </p>
-    </label>
+    <div style={{ marginTop: 8 }}>
+      <label style={{ display: 'block' }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード（fp8非対応のため代替）</span>
+        <select value={form.sd_quant} onChange={(e) => setForm({ ...form, sd_quant: Number(e.target.value) })}>
+          <option value={0}>オフ（フル精度）</option>
+          <option value={1}>q8（軽量化）</option>
+          <option value={2}>q4（さらに軽量化）</option>
+        </select>
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          KoboldCppにfp8ロードは無く、対応しているのはこのq8/q4量子化のみです。
+        </p>
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>テキストモデルのパス（任意）</span>
+        <input
+          style={{ width: '100%' }}
+          placeholder="空欄ならmodels/llm内の最初のファイルを自動使用"
+          value={form.llm_model_path ?? ''}
+          onChange={(e) => setForm({ ...form, llm_model_path: e.target.value })}
+        />
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルのパス（任意）</span>
+        <input
+          style={{ width: '100%' }}
+          placeholder="空欄ならmodels/sd内の最初のファイルを自動使用"
+          value={form.sd_model_path ?? ''}
+          onChange={(e) => setForm({ ...form, sd_model_path: e.target.value })}
+        />
+      </label>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
+          {update.isPending ? '保存中...' : '保存'}
+        </button>
+      </div>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>次回「KoboldCppを起動」時から反映されます。</p>
+    </div>
   );
 }
 
@@ -587,7 +620,7 @@ function StartKoboldcppButton({ onStarted }) {
       <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
         ChatRPGサーバーと同じPC上でkoboldcpp.exeを起動します（モデル読み込みに数十秒〜数分かかります）。
       </p>
-      <SdQuantSetting />
+      <KoboldcppLaunchSettingsSection />
       {error && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {error}</p>}
     </div>
   );

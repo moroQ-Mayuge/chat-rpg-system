@@ -31,12 +31,21 @@ export function launchKoboldcpp() {
     throw new Error('koboldcpp.exeが見つかりません。koboldcpp/koboldcpp.exe に配置してください。');
   }
 
-  const llmModel = findFirstFile(path.join(config.koboldcppDir, 'models', 'llm'), '.gguf');
+  const { llm_model_path, sd_model_path, sd_quant } = getLaunchSettings();
+
+  const llmModel = llm_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'llm'), '.gguf');
   if (!llmModel) {
-    throw new Error('テキストモデル（.gguf）が見つかりません。koboldcpp/models/llm/ に配置してください。');
+    throw new Error('テキストモデル（.gguf）が見つかりません。koboldcpp/models/llm/ に配置するか、設定画面でパスを指定してください。');
+  }
+  if (llm_model_path && !fs.existsSync(llm_model_path)) {
+    throw new Error(`指定されたテキストモデルのパスが見つかりません: ${llm_model_path}`);
   }
 
-  const sdModel = findFirstFile(path.join(config.koboldcppDir, 'models', 'sd'), '.safetensors');
+  const sdModel = sd_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'sd'), '.safetensors');
+  if (sd_model_path && !fs.existsSync(sd_model_path)) {
+    throw new Error(`指定された画像生成モデルのパスが見つかりません: ${sd_model_path}`);
+  }
+
   const port = new URL(config.koboldBaseUrl).port || '5001';
 
   const args = ['--model', llmModel, '--port', port, '--contextsize', '8192', '--gpulayers', '999'];
@@ -44,7 +53,6 @@ export function launchKoboldcpp() {
     args.push('--sdmodel', sdModel);
     // KoboldCpp has no fp8 loading mode — --sdquant is the closest equivalent
     // it actually supports (0=off, 1=q8, 2=q4).
-    const { sd_quant } = getLaunchSettings();
     if (sd_quant > 0) args.push('--sdquant', String(sd_quant));
   }
 
