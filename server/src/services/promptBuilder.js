@@ -152,14 +152,23 @@ function buildHistoryMessages(sessionId) {
 // Builds the messages array for a chat-completions call covering every active
 // participant in one shot (SPEC.md 3.8 — a single call generates all present
 // characters' lines in script format, rather than one call per character).
-export function buildMultiCharacterMessages(session) {
+export function buildMultiCharacterMessages(session, options = {}) {
   if (!session.participants.length) return null;
 
   const systemPrompt = buildSystemPrompt(session, session.participants);
   const history = buildHistoryMessages(session.id);
+  const messages = [{ role: 'system', content: systemPrompt }, ...history];
+
+  // options.ephemeralUserTurn: appended to the array sent to the LLM only —
+  // never persisted to the messages table, never shown in the chat UI. Used
+  // for "continue from here" turns, where history alone would end on an
+  // assistant message (confirmed to produce an empty completion otherwise).
+  if (options.ephemeralUserTurn) {
+    messages.push({ role: 'user', content: options.ephemeralUserTurn });
+  }
 
   return {
-    messages: [{ role: 'system', content: systemPrompt }, ...history],
+    messages,
     participants: session.participants,
   };
 }

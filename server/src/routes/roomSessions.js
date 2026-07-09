@@ -38,18 +38,28 @@ function resolveMentions(content, participants) {
   return ids.length > 0 ? ids : null;
 }
 
+// Empty content is not rejected — it's an explicit "continue from here"
+// request (no user action/speech). No user message row is created for it,
+// so nothing shows up as a player turn; generateReply() below feeds the LLM
+// call a minimal ephemeral turn instead (never persisted, never displayed).
 roomSessionsRouter.post('/:id/messages', (req, res) => {
-  if (!req.body.content) return res.status(400).json({ error: 'content_required' });
+  const content = (req.body.content ?? '').trim();
+  const isContinuation = content.length === 0;
   const session = getRoomSession(req.params.id);
-  const mentionedCharacterIds = resolveMentions(req.body.content, session.participants);
-  const message = createMessage(req.params.id, {
-    sender_type: 'user',
-    content: req.body.content,
-    mentioned_character_ids: mentionedCharacterIds,
-  });
-  res.status(201).json(message);
 
-  generateReply(req.params.id, req.body.content, mentionedCharacterIds).catch((err) => {
+  let message = null;
+  let mentionedCharacterIds = null;
+  if (!isContinuation) {
+    mentionedCharacterIds = resolveMentions(content, session.participants);
+    message = createMessage(req.params.id, {
+      sender_type: 'user',
+      content,
+      mentioned_character_ids: mentionedCharacterIds,
+    });
+  }
+  res.status(201).json(message ?? { continuation: true });
+
+  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation).catch((err) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
@@ -64,9 +74,15 @@ function fallbackEmotionKey() {
   return row?.llm_tag_key ?? 'normal';
 }
 
-async function generateReply(sessionId, userMessageContent, mentionedCharacterIds = null) {
+async function generateReply(sessionId, userMessageContent, mentionedCharacterIds = null, isContinuation = false) {
   const session = getRoomSession(sessionId);
-  const built = buildMultiCharacterMessages(session);
+  // Verified empirically against this project's model: a messages array
+  // ending on role 'assistant' (i.e. no new user turn at all) reliably
+  // returns an EMPTY completion. A lone whitespace user turn reliably
+  // produces a well-formed continuation instead, without reading as an
+  // actual player action/line — this is the minimal content that still
+  // triggers generation.
+  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null });
   if (!built) return;
 
   broadcast(sessionId, { type: 'generation_start' });

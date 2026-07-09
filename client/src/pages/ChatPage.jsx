@@ -222,8 +222,10 @@ export default function ChatPage() {
     enabled: session != null,
   });
 
+  // Submitting with an empty draft is not a no-op: it's an explicit "continue
+  // from here" trigger (no user action/speech), handled server-side by
+  // generating the next turn without inserting a user message at all.
   async function handleSend() {
-    if (!draft.trim()) return;
     await sendMessage.mutateAsync(draft.trim());
     setDraft('');
   }
@@ -393,7 +395,7 @@ export default function ChatPage() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="メッセージを入力"
+          placeholder="メッセージを入力（空欄のまま送信で続きを生成）"
         />
         <button onClick={handleSend}>送信</button>
       </div>
