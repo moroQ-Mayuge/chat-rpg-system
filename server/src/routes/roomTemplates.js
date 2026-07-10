@@ -13,6 +13,7 @@ import {
 } from '../db/repositories/roomTemplatesRepo.js';
 import { generateRoomBackgroundImage } from '../services/roomBackgroundImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
+import { listConnectionsFrom, createConnection } from '../db/repositories/roomConnectionsRepo.js';
 
 export const roomTemplatesRouter = Router();
 
@@ -58,6 +59,18 @@ roomTemplatesRouter.post('/:id/background-image', upload.single('image'), (req, 
   if (!req.file) return res.status(400).json({ error: 'image_required' });
   const relativePath = `/images/rooms/${req.file.filename}`;
   res.json(setBackgroundImage(req.params.id, relativePath));
+});
+
+// Connections are always browsed/created relative to a specific room
+// template (the "from" side); PUT/DELETE on an existing connection go
+// through roomConnectionsRouter instead, since those don't need the
+// from-side context.
+roomTemplatesRouter.get('/:id/connections', (req, res) => {
+  res.json(listConnectionsFrom(req.params.id));
+});
+
+roomTemplatesRouter.post('/:id/connections', (req, res) => {
+  res.status(201).json(createConnection({ ...req.body, from_room_template_id: req.params.id }));
 });
 
 roomTemplatesRouter.post('/:id/generate-background-image', (req, res) => {

@@ -13,4 +13,8 @@ export const roomTemplatesApi = {
   },
   generateBackgroundImage: (id, mode, extraHint) =>
     api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint }),
+  listConnections: (id) => api.get(`/room-templates/${id}/connections`),
+  createConnection: (id, data) => api.post(`/room-templates/${id}/connections`, data),
+  updateConnection: (connectionId, data) => api.put(`/room-connections/${connectionId}`, data),
+  removeConnection: (connectionId) => api.del(`/room-connections/${connectionId}`),
 };

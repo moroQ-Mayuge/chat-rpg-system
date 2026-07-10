@@ -22,6 +22,7 @@ const emptyForm = {
   protagonist_notes: '',
   protagonist_mode: 'character',
   attribute_tags: '',
+  movement_points_per_time_slot: 4,
 };
 
 export default function WorldsPage() {
@@ -55,6 +56,7 @@ export default function WorldsPage() {
         protagonist_notes: world.protagonist_notes ?? '',
         protagonist_mode: world.protagonist_mode ?? 'character',
         attribute_tags: world.attribute_tags ?? '',
+        movement_points_per_time_slot: world.movement_points_per_time_slot ?? 4,
       });
     }
   }, [editingId, worlds]);
@@ -295,6 +297,18 @@ export default function WorldsPage() {
                   min="1"
                   value={form.days_per_season}
                   onChange={(e) => setForm({ ...form, days_per_season: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <p>時間帯ごとの移動サブカウント上限</p>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                  「場所」間の移動で消費する合計カウントがこの値に達すると、時間帯が1つ進みます
+                </p>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.movement_points_per_time_slot}
+                  onChange={(e) => setForm({ ...form, movement_points_per_time_slot: Number(e.target.value) })}
                 />
               </div>
             </div>

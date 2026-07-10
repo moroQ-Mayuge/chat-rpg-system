@@ -30,3 +30,24 @@ export function useRoomTemplateMutations() {
     }),
   };
 }
+
+export function useRoomConnections(roomTemplateId) {
+  return useQuery({
+    queryKey: ['roomTemplates', roomTemplateId, 'connections'],
+    queryFn: () => roomTemplatesApi.listConnections(roomTemplateId),
+    enabled: roomTemplateId != null,
+  });
+}
+
+export function useRoomConnectionMutations(roomTemplateId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['roomTemplates', roomTemplateId, 'connections'] });
+  return {
+    create: useMutation({ mutationFn: (data) => roomTemplatesApi.createConnection(roomTemplateId, data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ connectionId, data }) => roomTemplatesApi.updateConnection(connectionId, data),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({ mutationFn: (connectionId) => roomTemplatesApi.removeConnection(connectionId), onSuccess: invalidate }),
+  };
+}

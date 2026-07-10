@@ -3,7 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useProps } from '../hooks/useProps.js';
 import { useCharacters } from '../hooks/useCharacters.js';
-import { useRoomTemplate, useRoomTemplateMutations } from '../hooks/useRoomTemplates.js';
+import {
+  useRoomTemplates,
+  useRoomTemplate,
+  useRoomTemplateMutations,
+  useRoomConnections,
+  useRoomConnectionMutations,
+} from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
 
 function tagsToArray(text) {
@@ -33,6 +39,7 @@ const emptyForm = {
   turns_per_time_slot_enabled: false,
   turns_per_time_slot: 15,
   attribute_tags: [],
+  is_place: false,
 };
 
 export default function RoomTemplateEditPage() {
@@ -42,12 +49,18 @@ export default function RoomTemplateEditPage() {
   const { data: worlds } = useWorlds();
   const { data: propsLibrary } = useProps();
   const { data: characters } = useCharacters();
+  const { data: allRoomTemplates } = useRoomTemplates();
   const { data: existing } = useRoomTemplate(isNew ? null : id);
   const { create, update, uploadBackgroundImage, generateBackgroundImage } = useRoomTemplateMutations();
+  const { data: connections } = useRoomConnections(isNew ? null : id);
+  const connectionMutations = useRoomConnectionMutations(isNew ? null : id);
   const [form, setForm] = useState(emptyForm);
   const [policyHint, setPolicyHint] = useState('');
   const [bgGenerating, setBgGenerating] = useState(false);
   const [bgGenerateError, setBgGenerateError] = useState(null);
+  const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
+  const [newConnectionLabel, setNewConnectionLabel] = useState('');
+  const [newConnectionCost, setNewConnectionCost] = useState(1);
 
   useEffect(() => {
     if (!existing) return;
@@ -68,6 +81,7 @@ export default function RoomTemplateEditPage() {
       turns_per_time_slot: existing.turns_per_time_slot ?? 15,
       background_image_path: existing.background_image_path,
       attribute_tags: tagsToArray(existing.attribute_tags),
+      is_place: Boolean(existing.is_place),
     });
   }, [existing]);
 
@@ -116,6 +130,7 @@ export default function RoomTemplateEditPage() {
       character_ids: form.character_ids,
       turns_per_time_slot: form.turns_per_time_slot_enabled ? form.turns_per_time_slot : null,
       attribute_tags: tagsToText(form.attribute_tags),
+      is_place: form.is_place,
     };
     if (isNew) {
       await create.mutateAsync(payload);
@@ -123,6 +138,18 @@ export default function RoomTemplateEditPage() {
       await update.mutateAsync({ id, data: payload });
     }
     navigate('/rooms');
+  }
+
+  async function handleAddConnection() {
+    if (!newConnectionTargetId) return;
+    await connectionMutations.create.mutateAsync({
+      to_room_template_id: Number(newConnectionTargetId),
+      label: newConnectionLabel,
+      movement_cost: newConnectionCost,
+    });
+    setNewConnectionTargetId('');
+    setNewConnectionLabel('');
+    setNewConnectionCost(1);
   }
 
   async function handleBackgroundUpload(e) {
@@ -143,6 +170,10 @@ export default function RoomTemplateEditPage() {
       setBgGenerating(false);
     }
   }
+
+  const connectionTargetCandidates = (allRoomTemplates ?? []).filter(
+    (rt) => rt.world_id === form.world_id && rt.id !== Number(id),
+  );
 
   if (!worlds || !propsLibrary || !characters) return <p>読み込み中...</p>;
 
@@ -399,6 +430,82 @@ export default function RoomTemplateEditPage() {
                   onChange={(e) => setForm({ ...form, turns_per_time_slot: Number(e.target.value) })}
                 />
               </div>
+            )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.is_place}
+                onChange={(e) => setForm({ ...form, is_place: e.target.checked })}
+              />
+              他の部屋とつながりのある「場所」として扱う（移動先を設定できます）
+            </label>
+            <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+              オンの部屋はチャット画面で「退出する」の代わりに移動先ボタンが表示され、移動には時間経過（サブカウント）が消費されます
+            </p>
+
+            {form.is_place && !isNew && (
+              <div style={{ marginTop: 10 }}>
+                <p style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>移動先（つながり）</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                  {(connections ?? []).map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 12,
+                        border: '1px solid #eee',
+                        borderRadius: 6,
+                        padding: '4px 8px',
+                      }}
+                    >
+                      <span style={{ flex: 1 }}>
+                        → {c.to_room_name}
+                        {c.label && `（${c.label}）`} / 消費{c.movement_cost}
+                      </span>
+                      <button onClick={() => connectionMutations.remove.mutateAsync(c.id)}>削除</button>
+                    </div>
+                  ))}
+                  {(connections ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ設定されていません</p>}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    style={{ flex: 1 }}
+                    value={newConnectionTargetId}
+                    onChange={(e) => setNewConnectionTargetId(e.target.value)}
+                  >
+                    <option value="">移動先の部屋を選択</option>
+                    {connectionTargetCandidates.map((rt) => (
+                      <option key={rt.id} value={rt.id}>
+                        {rt.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    style={{ width: 100 }}
+                    placeholder="ラベル（任意）"
+                    value={newConnectionLabel}
+                    onChange={(e) => setNewConnectionLabel(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 60 }}
+                    value={newConnectionCost}
+                    onChange={(e) => setNewConnectionCost(Number(e.target.value))}
+                  />
+                  <button onClick={handleAddConnection} disabled={!newConnectionTargetId}>
+                    + 追加
+                  </button>
+                </div>
+              </div>
+            )}
+            {form.is_place && isNew && (
+              <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>移動先の設定は先に保存してから行えます</p>
             )}
           </div>
         </div>
