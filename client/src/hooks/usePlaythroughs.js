@@ -17,6 +17,14 @@ export function useActiveSession(playthroughId) {
   });
 }
 
+export function useSessionsForPlaythrough(playthroughId) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'room-sessions'],
+    queryFn: () => playthroughsApi.listSessions(playthroughId),
+    enabled: playthroughId != null,
+  });
+}
+
 export function usePlaythroughMutations(worldId) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', worldId] });

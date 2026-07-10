@@ -12,6 +12,8 @@ import PlaythroughsPage from './pages/PlaythroughsPage.jsx';
 import RoomPickerPage from './pages/RoomPickerPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
 import ItemsPage from './pages/ItemsPage.jsx';
+import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
+import SessionLogPage from './pages/SessionLogPage.jsx';
 
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
@@ -81,7 +83,9 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/worlds/:worldId/playthroughs" element={<PlaythroughsPage />} />
           <Route path="/playthroughs/:playthroughId/pick-room" element={<RoomPickerPage />} />
+          <Route path="/playthroughs/:playthroughId/history" element={<SessionHistoryPage />} />
           <Route path="/room-sessions/:id/chat" element={<ChatPage />} />
+          <Route path="/room-sessions/:id/log" element={<SessionLogPage />} />
         </Routes>
       </main>
     </div>

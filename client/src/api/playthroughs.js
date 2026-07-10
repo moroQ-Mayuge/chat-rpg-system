@@ -6,6 +6,7 @@ export const playthroughsApi = {
   create: (worldId, name) => api.post('/playthroughs', { world_id: worldId, name }),
   getActiveSession: (id) => api.get(`/playthroughs/${id}/active-session`),
   createRoomSession: (id, roomTemplateId) => api.post(`/playthroughs/${id}/room-sessions`, { room_template_id: roomTemplateId }),
+  listSessions: (id) => api.get(`/playthroughs/${id}/room-sessions`),
   updateProtagonist: (id, data) => api.put(`/playthroughs/${id}/protagonist`, data),
   listInventory: (id) => api.get(`/playthroughs/${id}/inventory`),
   addInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory`, { item_id: itemId, quantity }),

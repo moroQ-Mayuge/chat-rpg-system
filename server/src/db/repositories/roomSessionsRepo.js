@@ -43,6 +43,24 @@ function attachParticipants(session) {
   return { ...session, participants };
 }
 
+// Lists every session (active or ended) a playthrough has ever had, newest
+// first — the browsable "log" of past room/place visits (Room→Place design
+// decision: sessions still reset on each move, but their message history
+// stays reachable afterward rather than becoming permanently invisible).
+export function listSessionsForPlaythrough(playthroughId) {
+  return db
+    .prepare(
+      `SELECT rs.id, rs.room_template_id, rt.name AS room_name, rs.status,
+              rs.entered_day, rs.entered_time_slot_index, rs.started_at, rs.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.room_session_id = rs.id) AS message_count
+       FROM room_sessions rs
+       JOIN room_templates rt ON rt.id = rs.room_template_id
+       WHERE rs.playthrough_id = ?
+       ORDER BY rs.started_at DESC`,
+    )
+    .all(playthroughId);
+}
+
 export function getActiveSessionForPlaythrough(playthroughId) {
   const row = db
     .prepare("SELECT * FROM room_sessions WHERE playthrough_id = ? AND status = 'active'")

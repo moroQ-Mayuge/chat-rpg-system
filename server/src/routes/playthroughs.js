@@ -5,7 +5,7 @@ import {
   createPlaythrough,
   updateProtagonistSettings,
 } from '../db/repositories/playthroughsRepo.js';
-import { getActiveSessionForPlaythrough, createRoomSession } from '../db/repositories/roomSessionsRepo.js';
+import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
 import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
 
 export const playthroughsRouter = Router();
@@ -37,6 +37,10 @@ playthroughsRouter.get('/:id/active-session', (req, res) => {
 playthroughsRouter.post('/:id/room-sessions', (req, res) => {
   if (!req.body.room_template_id) return res.status(400).json({ error: 'room_template_id_required' });
   res.status(201).json(createRoomSession(req.params.id, req.body.room_template_id));
+});
+
+playthroughsRouter.get('/:id/room-sessions', (req, res) => {
+  res.json(listSessionsForPlaythrough(req.params.id));
 });
 
 // Player inventory only for now (owner_character_id always null) — see

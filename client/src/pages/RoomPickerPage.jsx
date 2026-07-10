@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { playthroughsApi } from '../api/playthroughs.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { usePlaythroughMutations } from '../hooks/usePlaythroughs.js';
@@ -25,9 +25,14 @@ export default function RoomPickerPage() {
 
   return (
     <div>
-      <p style={{ fontSize: 12, color: '#888' }}>
-        {playthrough.name} ／ {playthrough.current_day}日目 {playthrough.current_time_slot_label} ／ {playthrough.current_weather}
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: 12, color: '#888' }}>
+          {playthrough.name} ／ {playthrough.current_day}日目 {playthrough.current_time_slot_label} ／ {playthrough.current_weather}
+        </p>
+        <Link to={`/playthroughs/${playthroughId}/history`}>
+          <button>会話ログを見る</button>
+        </Link>
+      </div>
       <h2>どの部屋に入りますか？</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         {roomsInWorld.map((room) => (
