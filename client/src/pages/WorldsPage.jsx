@@ -23,6 +23,7 @@ const emptyForm = {
   protagonist_mode: 'character',
   attribute_tags: '',
   movement_points_per_time_slot: 4,
+  max_response_tokens: '',
 };
 
 export default function WorldsPage() {
@@ -57,6 +58,7 @@ export default function WorldsPage() {
         protagonist_mode: world.protagonist_mode ?? 'character',
         attribute_tags: world.attribute_tags ?? '',
         movement_points_per_time_slot: world.movement_points_per_time_slot ?? 4,
+        max_response_tokens: world.max_response_tokens ?? '',
       });
     }
   }, [editingId, worlds]);
@@ -76,10 +78,14 @@ export default function WorldsPage() {
   }
 
   async function save() {
+    const payload = {
+      ...form,
+      max_response_tokens: form.max_response_tokens === '' ? null : Number(form.max_response_tokens),
+    };
     if (editingId === 'new') {
-      await create.mutateAsync(form);
+      await create.mutateAsync(payload);
     } else {
-      await update.mutateAsync({ id: editingId, data: form });
+      await update.mutateAsync({ id: editingId, data: payload });
     }
     cancelEdit();
   }
@@ -312,6 +318,21 @@ export default function WorldsPage() {
                 />
               </div>
             </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>応答生成設定</p>
+            <p>応答の最大長さ（トークン数）</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              空欄で既定値（512）を使用。キャラクター応答が短すぎる場合はここで増やせます
+            </p>
+            <input
+              type="number"
+              min="1"
+              placeholder="既定（512）"
+              value={form.max_response_tokens}
+              onChange={(e) => setForm({ ...form, max_response_tokens: e.target.value })}
+            />
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

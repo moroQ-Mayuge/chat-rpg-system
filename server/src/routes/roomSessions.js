@@ -10,6 +10,7 @@ import {
   setAccompanying,
 } from '../db/repositories/roomSessionsRepo.js';
 import { resolveProtagonist, applyMovementCost } from '../db/repositories/playthroughsRepo.js';
+import { getWorld } from '../db/repositories/worldsRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
@@ -126,6 +127,9 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null });
   if (!built) return;
 
+  const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
+  const maxTokens = getWorld(worldId).max_response_tokens;
+
   broadcast(sessionId, { type: 'generation_start' });
 
   const validEmotionKeys = new Set(db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key));
@@ -203,6 +207,7 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
     messages: built.messages,
     stop: ['ユーザー:', 'User:'],
     stream: true,
+    ...(maxTokens ? { maxTokens } : {}),
     onToken: (token) => {
       lineBuffer += token;
       let newlineIndex;
