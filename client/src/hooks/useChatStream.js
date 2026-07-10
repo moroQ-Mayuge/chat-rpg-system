@@ -5,12 +5,26 @@ import { useEffect, useRef, useState } from 'react';
 // each one as soon as it completes during streaming (rather than waiting for
 // the whole response), so every message_complete event triggers a refetch
 // and chat bubbles reveal one at a time as they arrive.
+const NOTICE_DURATION_MS = 6000;
+
 export function useChatStream(sessionId, onGenerationDone) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [sceneChangeNotice, setSceneChangeNotice] = useState(null);
+  const [relationshipNotice, setRelationshipNotice] = useState(null);
   const onDoneRef = useRef(onGenerationDone);
   onDoneRef.current = onGenerationDone;
+  const sceneChangeTimerRef = useRef(null);
+  const relationshipTimerRef = useRef(null);
+
+  // Both notices previously persisted forever once set (known gap) — each
+  // now clears itself after NOTICE_DURATION_MS, restarting the timer if a
+  // new notice of the same kind arrives first.
+  function showNotice(setter, timerRef, text) {
+    clearTimeout(timerRef.current);
+    setter(text);
+    timerRef.current = setTimeout(() => setter(null), NOTICE_DURATION_MS);
+  }
 
   useEffect(() => {
     if (sessionId == null) return undefined;
@@ -24,7 +38,9 @@ export function useChatStream(sessionId, onGenerationDone) {
         setIsGenerating(true);
         setError(null);
       } else if (data.type === 'scene_change_detected') {
-        setSceneChangeNotice(data.description);
+        showNotice(setSceneChangeNotice, sceneChangeTimerRef, data.description);
+      } else if (data.type === 'relationship_changed') {
+        showNotice(setRelationshipNotice, relationshipTimerRef, data.description);
       } else if (data.type === 'generation_done') {
         setIsGenerating(false);
         onDoneRef.current?.();
@@ -39,8 +55,12 @@ export function useChatStream(sessionId, onGenerationDone) {
       }
     };
 
-    return () => ws.close();
+    return () => {
+      ws.close();
+      clearTimeout(sceneChangeTimerRef.current);
+      clearTimeout(relationshipTimerRef.current);
+    };
   }, [sessionId]);
 
-  return { isGenerating, error, sceneChangeNotice };
+  return { isGenerating, error, sceneChangeNotice, relationshipNotice };
 }

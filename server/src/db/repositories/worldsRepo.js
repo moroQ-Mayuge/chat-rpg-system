@@ -50,14 +50,15 @@ export function createWorld({
   attribute_tags = '',
   movement_points_per_time_slot = 4,
   max_response_tokens = null,
+  notify_relationship_changes = false,
 }) {
   const result = db
     .prepare(
       `INSERT INTO worlds
         (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id, image_tags,
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
-         movement_points_per_time_slot, max_response_tokens)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         movement_points_per_time_slot, max_response_tokens, notify_relationship_changes)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -78,6 +79,7 @@ export function createWorld({
       attribute_tags ?? '',
       movement_points_per_time_slot ?? 4,
       max_response_tokens ?? null,
+      notify_relationship_changes ? 1 : 0,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -103,13 +105,14 @@ export function updateWorld(
     attribute_tags,
     movement_points_per_time_slot,
     max_response_tokens,
+    notify_relationship_changes,
   },
 ) {
   db.prepare(
     `UPDATE worlds
      SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?, image_tags = ?,
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
-         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?
+         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -130,6 +133,7 @@ export function updateWorld(
     attribute_tags ?? '',
     movement_points_per_time_slot ?? 4,
     max_response_tokens ?? null,
+    notify_relationship_changes ? 1 : 0,
     id,
   );
   return getWorld(id);

@@ -111,6 +111,28 @@ roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res
   res.json(setAccompanying(req.params.id, req.params.characterId, Boolean(req.body.is_accompanying)));
 });
 
+// Surfaces change_relationship action results as a transient in-chat notice
+// (opt-in per World, chat enhancement backlog item 11) — previously these
+// happened completely silently. change_relationship's own result already
+// carries previous_value/axis_name (added alongside this feature) so no
+// extra DB lookups are needed here beyond the character's display name.
+function broadcastRelationshipChanges(sessionId, fired) {
+  for (const event of fired) {
+    for (const actionResult of event.actionResults) {
+      if (actionResult.actionType !== 'change_relationship') continue;
+      for (const change of actionResult.result?.changes ?? []) {
+        if (change.new_value === change.previous_value) continue;
+        const character = db.prepare('SELECT name FROM characters WHERE id = ?').get(change.character_id);
+        const direction = change.new_value > change.previous_value ? '上がった' : '下がった';
+        broadcast(sessionId, {
+          type: 'relationship_changed',
+          description: `${character?.name ?? '???'}との${change.axis_name}が${direction}`,
+        });
+      }
+    }
+  }
+}
+
 function fallbackEmotionKey() {
   const row = db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get();
   return row?.llm_tag_key ?? 'normal';
@@ -128,7 +150,8 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   if (!built) return;
 
   const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
-  const maxTokens = getWorld(worldId).max_response_tokens;
+  const world = getWorld(worldId);
+  const maxTokens = world.max_response_tokens;
 
   broadcast(sessionId, { type: 'generation_start' });
 
@@ -231,6 +254,9 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
     });
     for (const event of fired) {
       broadcast(sessionId, { type: 'event_fired', eventDefinitionId: event.eventDefinitionId, name: event.name });
+    }
+    if (world.notify_relationship_changes) {
+      broadcastRelationshipChanges(sessionId, fired);
     }
   } catch (err) {
     console.error('Event engine run failed:', err);

@@ -205,7 +205,7 @@ export default function ChatPage() {
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
 
-  const { isGenerating, error: streamError, sceneChangeNotice } = useChatStream(id, () => {
+  const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice } = useChatStream(id, () => {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
   });
 
@@ -396,6 +396,13 @@ export default function ChatPage() {
           <div style={{ textAlign: 'center', margin: '6px 0' }}>
             <span style={{ fontSize: 10, color: '#a16207', border: '1px dashed #a16207', borderRadius: 4, padding: '2px 6px' }}>
               [SCENE_CHANGE] {sceneChangeNotice}
+            </span>
+          </div>
+        )}
+        {relationshipNotice && (
+          <div style={{ textAlign: 'center', margin: '6px 0' }}>
+            <span style={{ fontSize: 10, color: '#be185d', border: '1px dashed #be185d', borderRadius: 4, padding: '2px 6px' }}>
+              💗 {relationshipNotice}
             </span>
           </div>
         )}

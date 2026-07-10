@@ -24,6 +24,7 @@ const emptyForm = {
   attribute_tags: '',
   movement_points_per_time_slot: 4,
   max_response_tokens: '',
+  notify_relationship_changes: false,
 };
 
 export default function WorldsPage() {
@@ -59,6 +60,7 @@ export default function WorldsPage() {
         attribute_tags: world.attribute_tags ?? '',
         movement_points_per_time_slot: world.movement_points_per_time_slot ?? 4,
         max_response_tokens: world.max_response_tokens ?? '',
+        notify_relationship_changes: Boolean(world.notify_relationship_changes),
       });
     }
   }, [editingId, worlds]);
@@ -333,6 +335,15 @@ export default function WorldsPage() {
               value={form.max_response_tokens}
               onChange={(e) => setForm({ ...form, max_response_tokens: e.target.value })}
             />
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.notify_relationship_changes}
+                onChange={(e) => setForm({ ...form, notify_relationship_changes: e.target.checked })}
+              />
+              関係性の変化をチャット画面に通知する
+            </label>
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
