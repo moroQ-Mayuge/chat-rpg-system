@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRoomSession, useRoomSessionMutations } from '../hooks/useRoomSession.js';
+import { useRoomConnections } from '../hooks/useRoomTemplates.js';
 import { useChatStream } from '../hooks/useChatStream.js';
 import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
@@ -198,7 +199,8 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: session, isLoading } = useRoomSession(id);
-  const { sendMessage, exit } = useRoomSessionMutations(id);
+  const { sendMessage, exit, move, setAccompanying } = useRoomSessionMutations(id);
+  const { data: connections } = useRoomConnections(session?.room_is_place ? session.room_template_id : null);
   const [draft, setDraft] = useState('');
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
@@ -243,6 +245,15 @@ export default function ChatPage() {
     navigate(`/playthroughs/${session.playthrough_id}/pick-room`);
   }
 
+  async function handleMove(connectionId) {
+    const result = await move.mutateAsync(connectionId);
+    navigate(`/room-sessions/${result.session.id}/chat`);
+  }
+
+  async function toggleAccompanying(characterId, current) {
+    await setAccompanying.mutateAsync({ characterId, isAccompanying: !current });
+  }
+
   if (isLoading || !session || !playthrough) return <p>読み込み中...</p>;
 
   return (
@@ -252,11 +263,49 @@ export default function ChatPage() {
           {playthrough.name} ／ {playthrough.current_day}日目 {playthrough.current_time_slot_label} ／{' '}
           {playthrough.current_weather} ／ {session.current_location_text}
         </p>
-        <button onClick={handleExit}>部屋を退出する</button>
+        {!session.room_is_place && <button onClick={handleExit}>部屋を退出する</button>}
       </div>
 
+      {session.room_is_place && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6, flexShrink: 0 }}>
+          {(connections ?? []).map((c) => (
+            <button key={c.id} onClick={() => handleMove(c.id)} style={{ fontSize: 12 }}>
+              → {c.to_room_name}
+              {c.label && `（${c.label}）`} [消費{c.movement_cost}]
+            </button>
+          ))}
+          {connections?.length === 0 && <span style={{ fontSize: 11, color: '#888' }}>移動先が設定されていません</span>}
+        </div>
+      )}
+
       <p style={{ fontSize: 11, color: '#888', flexShrink: 0, margin: '0 0 4px' }}>
-        参加キャラ: {session.participants.map((p) => p.name).join('、') || 'なし'}
+        参加キャラ:{' '}
+        {session.participants.length === 0
+          ? 'なし'
+          : session.participants.map((p) => (
+              <span key={p.character_id} style={{ marginRight: 8 }}>
+                {p.name}
+                {session.room_is_place && (
+                  <button
+                    type="button"
+                    onClick={() => toggleAccompanying(p.character_id, p.is_accompanying)}
+                    style={{
+                      fontSize: 10,
+                      marginLeft: 3,
+                      padding: '1px 5px',
+                      borderRadius: 8,
+                      border: '1px solid #ccc',
+                      background: p.is_accompanying ? '#dbeafe' : 'transparent',
+                      color: p.is_accompanying ? '#2563eb' : '#888',
+                      cursor: 'pointer',
+                    }}
+                    title="移動時に同行させるか"
+                  >
+                    {p.is_accompanying ? '同行中' : '同行させる'}
+                  </button>
+                )}
+              </span>
+            ))}
       </p>
 
       <div style={{ marginBottom: 6, flexShrink: 0 }}>

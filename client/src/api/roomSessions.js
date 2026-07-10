@@ -4,4 +4,7 @@ export const roomSessionsApi = {
   get: (id) => api.get(`/room-sessions/${id}`),
   sendMessage: (id, content) => api.post(`/room-sessions/${id}/messages`, { content }),
   exit: (id) => api.post(`/room-sessions/${id}/exit`, {}),
+  move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),
+  setAccompanying: (id, characterId, isAccompanying) =>
+    api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, { is_accompanying: isAccompanying }),
 };

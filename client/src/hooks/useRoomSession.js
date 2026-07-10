@@ -20,5 +20,10 @@ export function useRoomSessionMutations(id) {
   return {
     sendMessage: useMutation({ mutationFn: (content) => roomSessionsApi.sendMessage(id, content), onSuccess: invalidate }),
     exit: useMutation({ mutationFn: () => roomSessionsApi.exit(id), onSuccess: invalidate }),
+    move: useMutation({ mutationFn: (connectionId) => roomSessionsApi.move(id, connectionId), onSuccess: invalidate }),
+    setAccompanying: useMutation({
+      mutationFn: ({ characterId, isAccompanying }) => roomSessionsApi.setAccompanying(id, characterId, isAccompanying),
+      onSuccess: invalidate,
+    }),
   };
 }
