@@ -67,9 +67,9 @@ export function createRoomTemplate(data) {
     .prepare(
       `INSERT INTO room_templates
         (world_id, worldview_mode, name, initial_situation, location_text, location_tags,
-         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags)
+         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place)
        VALUES (@world_id, @worldview_mode, @name, @initial_situation, @location_text, @location_tags,
-         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags)`,
+         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place)`,
     )
     .run({
       world_id: worldId,
@@ -84,6 +84,7 @@ export function createRoomTemplate(data) {
       background_image_path: data.background_image_path ?? null,
       turns_per_time_slot: data.turns_per_time_slot ?? null,
       attribute_tags: data.attribute_tags ?? '',
+      is_place: data.is_place ? 1 : 0,
     });
   replaceAssociations(result.lastInsertRowid, data);
   return getRoomTemplate(result.lastInsertRowid);
@@ -96,7 +97,7 @@ export function updateRoomTemplate(id, data) {
        world_id = @world_id, worldview_mode = @worldview_mode, name = @name,
        initial_situation = @initial_situation, location_text = @location_text, location_tags = @location_tags,
        atmosphere_text = @atmosphere_text, atmosphere_tags = @atmosphere_tags, worldview = @worldview,
-       turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags
+       turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags, is_place = @is_place
      WHERE id = @id`,
   ).run({
     id,
@@ -111,6 +112,7 @@ export function updateRoomTemplate(id, data) {
     worldview: data.worldview ?? null,
     turns_per_time_slot: data.turns_per_time_slot ?? null,
     attribute_tags: data.attribute_tags ?? '',
+    is_place: data.is_place ? 1 : 0,
   });
   replaceAssociations(id, data);
   return getRoomTemplate(id);

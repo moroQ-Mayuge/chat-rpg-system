@@ -20,7 +20,7 @@ function attachParticipants(session) {
   if (!session) return session;
   const participants = db
     .prepare(
-      `SELECT rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active
+      `SELECT rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active, rsc.is_accompanying
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
        WHERE rsc.room_session_id = ? AND rsc.is_active = 1`,
@@ -63,7 +63,13 @@ export function getRoomSession(id) {
   return attachParticipants(row);
 }
 
-export function createRoomSession(playthroughId, roomTemplateId) {
+// options.carryOverParticipants: participants from a session being left via
+// a move-to-connected-place action (room移動), whose is_accompanying flag was
+// set — they join the new session's cast alongside its own default
+// participants, keeping the accompanying flag so they continue to follow
+// through further moves. Unflagged participants from the old session are
+// simply left behind (never passed in).
+export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   const playthrough = getPlaythrough(playthroughId);
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(roomTemplateId);
 
@@ -86,17 +92,32 @@ export function createRoomSession(playthroughId, roomTemplateId) {
     );
   const sessionId = result.lastInsertRowid;
 
+  const carryOverByCharacterId = new Map(
+    (options.carryOverParticipants ?? []).map((p) => [p.character_id, p]),
+  );
+
   const defaultParticipants = db
     .prepare('SELECT character_id FROM room_template_characters WHERE room_template_id = ? AND is_default_participant = 1')
     .all(roomTemplateId);
   for (const { character_id: characterId } of defaultParticipants) {
+    const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(characterId);
     db.prepare(
-      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)',
-    ).run(sessionId, characterId, defaultOutfit?.id ?? null);
+      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)',
+    ).run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
     ensureRelationshipStatesSeeded(playthroughId, characterId);
+    carryOverByCharacterId.delete(characterId);
+  }
+
+  // Remaining carry-over participants aren't part of the new room's own cast
+  // — they're only present because they're accompanying the player.
+  for (const carryOver of carryOverByCharacterId.values()) {
+    db.prepare(
+      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)',
+    ).run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
+    ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id);
   }
 
   touchPlaythrough(playthroughId);
@@ -108,6 +129,24 @@ export function exitRoomSession(id) {
   db.prepare(`UPDATE room_sessions SET status = 'ended', updated_at = datetime('now') WHERE id = ?`).run(id);
   const updatedPlaythrough = advanceTime(session.playthrough_id, 1);
   return { session: getRoomSession(id), playthrough: updatedPlaythrough };
+}
+
+// Ends a session as part of a room連結 move (room移動) rather than a full
+// exit — deliberately does NOT advance time itself; the caller applies the
+// connection's movement_cost via playthroughsRepo.applyMovementCost instead,
+// which only advances a time-slot once the sub-count budget is exhausted.
+export function endSessionForMove(id) {
+  db.prepare(`UPDATE room_sessions SET status = 'ended', updated_at = datetime('now') WHERE id = ?`).run(id);
+  return getRoomSession(id);
+}
+
+export function setAccompanying(sessionId, characterId, isAccompanying) {
+  db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ?').run(
+    isAccompanying ? 1 : 0,
+    sessionId,
+    characterId,
+  );
+  return getRoomSession(sessionId);
 }
 
 export function touchRoomSession(id) {

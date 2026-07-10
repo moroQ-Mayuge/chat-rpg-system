@@ -48,13 +48,15 @@ export function createWorld({
   protagonist_notes = '',
   protagonist_mode = 'character',
   attribute_tags = '',
+  movement_points_per_time_slot = 4,
 }) {
   const result = db
     .prepare(
       `INSERT INTO worlds
         (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id, image_tags,
-         protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
+         movement_points_per_time_slot)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -73,6 +75,7 @@ export function createWorld({
       protagonist_notes ?? '',
       protagonist_mode ?? 'character',
       attribute_tags ?? '',
+      movement_points_per_time_slot ?? 4,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -96,13 +99,14 @@ export function updateWorld(
     protagonist_notes,
     protagonist_mode,
     attribute_tags,
+    movement_points_per_time_slot,
   },
 ) {
   db.prepare(
     `UPDATE worlds
      SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?, image_tags = ?,
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
-         attribute_tags = ?
+         attribute_tags = ?, movement_points_per_time_slot = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -121,6 +125,7 @@ export function updateWorld(
     protagonist_notes ?? '',
     protagonist_mode ?? 'character',
     attribute_tags ?? '',
+    movement_points_per_time_slot ?? 4,
     id,
   );
   return getWorld(id);

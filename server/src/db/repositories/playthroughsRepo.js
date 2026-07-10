@@ -71,6 +71,28 @@ export function touchPlaythrough(id) {
   db.prepare(`UPDATE playthroughs SET updated_at = datetime('now') WHERE id = ?`).run(id);
 }
 
+// Adds a room-connection's movement_cost to the playthrough's running
+// sub-count. When the sub-count reaches the World's configured budget for one
+// time-slot, the time-slot advances (via the shared advanceTime) and the
+// sub-count resets to 0 — the remainder is discarded, not carried over
+// (chosen for simplicity over fairness, per design decision).
+export function applyMovementCost(playthroughId, cost) {
+  const playthrough = db.prepare('SELECT * FROM playthroughs WHERE id = ?').get(playthroughId);
+  const world = getWorld(playthrough.world_id);
+  const newSubcount = playthrough.current_movement_subcount + cost;
+
+  if (newSubcount >= world.movement_points_per_time_slot) {
+    db.prepare('UPDATE playthroughs SET current_movement_subcount = 0 WHERE id = ?').run(playthroughId);
+    return advanceTime(playthroughId, 1);
+  }
+
+  db.prepare(`UPDATE playthroughs SET current_movement_subcount = ?, updated_at = datetime('now') WHERE id = ?`).run(
+    newSubcount,
+    playthroughId,
+  );
+  return getPlaythrough(playthroughId);
+}
+
 export function updateProtagonistSettings(
   id,
   {
