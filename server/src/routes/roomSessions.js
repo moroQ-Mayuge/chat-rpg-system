@@ -11,6 +11,8 @@ import {
 } from '../db/repositories/roomSessionsRepo.js';
 import { resolveProtagonist, applyMovementCost } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
+import { findOrCreateWorldItem } from '../db/repositories/itemsRepo.js';
+import { addItemToInventory } from '../db/repositories/inventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
@@ -185,6 +187,17 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
 
     if (parsed.type === 'narration') {
       const message = createMessage(sessionId, { sender_type: 'narration', content: parsed.text });
+      broadcast(sessionId, { type: 'message_complete', message });
+      return;
+    }
+
+    if (parsed.type === 'item_grant') {
+      // Dynamic item generation (chat enhancement backlog item 9): always
+      // scoped to the current room's own World, never the shared-common
+      // tier — see findOrCreateWorldItem's own comment for why.
+      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description);
+      addItemToInventory(session.playthrough_id, item.id);
+      const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を手に入れた。` });
       broadcast(sessionId, { type: 'message_complete', message });
       return;
     }

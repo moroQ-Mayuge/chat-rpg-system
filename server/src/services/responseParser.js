@@ -11,10 +11,12 @@
 
 const LINE_PATTERN = /^\[(.+?)\]:\s*(.*)$/;
 const EMOTION_PATTERN = /\[EMOTION:([a-zA-Z0-9_]+)\]\s*$/;
+const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 
 // Returns null for a blank line, otherwise one of:
 //   { type: 'scene_change', description }
 //   { type: 'narration', text }
+//   { type: 'item_grant', itemName, description }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
 // turn (rather than merged into a previous turn) — necessary for incremental
@@ -36,6 +38,11 @@ export function parseScriptLine(rawLine) {
   }
   if (tag === 'NARRATION') {
     return { type: 'narration', text: rest.trim(), emotionKey: null };
+  }
+
+  const itemGrantMatch = tag.match(ITEM_GRANT_PATTERN);
+  if (itemGrantMatch) {
+    return { type: 'item_grant', itemName: itemGrantMatch[1].trim(), description: rest.trim() };
   }
 
   const emotionMatch = rest.match(EMOTION_PATTERN);
