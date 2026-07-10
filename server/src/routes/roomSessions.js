@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { db } from '../db/connection.js';
-import { getRoomSession, exitRoomSession, updateSessionScene, setCurrentSceneImage } from '../db/repositories/roomSessionsRepo.js';
-import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
+import {
+  getRoomSession,
+  exitRoomSession,
+  updateSessionScene,
+  setCurrentSceneImage,
+  endSessionForMove,
+  createRoomSession,
+  setAccompanying,
+} from '../db/repositories/roomSessionsRepo.js';
+import { resolveProtagonist, applyMovementCost } from '../db/repositories/playthroughsRepo.js';
+import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
@@ -67,6 +76,38 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
 
 roomSessionsRouter.post('/:id/exit', (req, res) => {
   res.json(exitRoomSession(req.params.id));
+});
+
+// Moves the player from a "場所" (is_place room_template) to one of its
+// outgoing connections. Unlike /exit, this does NOT unconditionally advance
+// time — the connection's movement_cost is instead applied to the
+// playthrough's sub-count budget (World.movement_points_per_time_slot),
+// which only advances the time slot once exhausted. Participants flagged
+// is_accompanying follow into the new session.
+roomSessionsRouter.post('/:id/move', (req, res) => {
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  const connection = getConnection(req.body.connection_id);
+  if (!connection || connection.from_room_template_id !== session.room_template_id) {
+    return res.status(400).json({ error: 'invalid_connection' });
+  }
+
+  const carryOverParticipants = session.participants
+    .filter((p) => p.is_accompanying)
+    .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+
+  endSessionForMove(session.id);
+  const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
+  const newSession = createRoomSession(session.playthrough_id, connection.to_room_template_id, {
+    carryOverParticipants,
+  });
+
+  res.json({ session: newSession, playthrough });
+});
+
+roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {
+  res.json(setAccompanying(req.params.id, req.params.characterId, Boolean(req.body.is_accompanying)));
 });
 
 function fallbackEmotionKey() {

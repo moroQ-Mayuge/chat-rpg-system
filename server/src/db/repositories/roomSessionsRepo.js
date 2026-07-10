@@ -53,7 +53,7 @@ export function getActiveSessionForPlaythrough(playthroughId) {
 export function getRoomSession(id) {
   const row = db
     .prepare(
-      `SELECT rs.*, rt.background_image_path AS room_background_image_path, gi.file_path AS current_scene_image_path
+      `SELECT rs.*, rt.background_image_path AS room_background_image_path, rt.is_place AS room_is_place, gi.file_path AS current_scene_image_path
        FROM room_sessions rs
        JOIN room_templates rt ON rt.id = rs.room_template_id
        LEFT JOIN generated_images gi ON gi.id = rs.current_scene_image_id
