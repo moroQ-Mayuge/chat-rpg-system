@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { listWorlds, getWorld, createWorld, updateWorld, deleteWorld, setThumbnailImage } from '../db/repositories/worldsRepo.js';
 import { generateWorldThumbnail } from '../services/worldThumbnailGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
+import { exportWorldBundle } from '../services/contentBundle/index.js';
 
 export const worldsRouter = Router();
 
@@ -54,6 +55,22 @@ worldsRouter.post('/:id/thumbnail-image', upload.single('image'), (req, res) => 
   if (!req.file) return res.status(400).json({ error: 'image_required' });
   const relativePath = `/images/worlds/${req.file.filename}`;
   res.json(setThumbnailImage(req.params.id, relativePath));
+});
+
+worldsRouter.get('/:id/export-bundle', async (req, res) => {
+  const world = getWorld(req.params.id);
+  if (!world) return res.status(404).json({ error: 'not_found' });
+  try {
+    const zipBuffer = await exportWorldBundle(req.params.id, {
+      includeRoomTemplates: req.query.include_room_templates === '1',
+      includeCharacters: req.query.include_characters === '1',
+    });
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(world.name)}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
 });
 
 worldsRouter.post('/:id/generate-thumbnail-image', (req, res) => {

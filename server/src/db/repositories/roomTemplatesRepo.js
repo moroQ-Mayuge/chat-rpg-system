@@ -29,6 +29,11 @@ export function listRoomTemplates() {
   return rows.map(attachAssociations);
 }
 
+export function listRoomTemplatesForWorld(worldId) {
+  const rows = db.prepare('SELECT * FROM room_templates WHERE world_id = ? ORDER BY name ASC').all(worldId);
+  return rows.map(attachAssociations);
+}
+
 export function getRoomTemplate(id) {
   const row = db
     .prepare(

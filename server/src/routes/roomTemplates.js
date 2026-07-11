@@ -14,6 +14,7 @@ import {
 import { generateRoomBackgroundImage } from '../services/roomBackgroundImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { listConnectionsFrom, createConnection } from '../db/repositories/roomConnectionsRepo.js';
+import { exportRoomTemplateBundle } from '../services/contentBundle/index.js';
 
 export const roomTemplatesRouter = Router();
 
@@ -71,6 +72,21 @@ roomTemplatesRouter.get('/:id/connections', (req, res) => {
 
 roomTemplatesRouter.post('/:id/connections', (req, res) => {
   res.status(201).json(createConnection({ ...req.body, from_room_template_id: req.params.id }));
+});
+
+roomTemplatesRouter.get('/:id/export-bundle', async (req, res) => {
+  const template = getRoomTemplate(req.params.id);
+  if (!template) return res.status(404).json({ error: 'not_found' });
+  try {
+    const zipBuffer = await exportRoomTemplateBundle(req.params.id, {
+      includeCharacters: req.query.include_characters === '1',
+    });
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(template.name)}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
 });
 
 roomTemplatesRouter.post('/:id/generate-background-image', (req, res) => {
