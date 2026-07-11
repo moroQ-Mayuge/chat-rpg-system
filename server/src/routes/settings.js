@@ -17,6 +17,7 @@ import { listImageGenerationSettings, updateImageGenerationSettings } from '../d
 import { launchKoboldcpp } from '../services/koboldcppLauncher.js';
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
+import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
 
 export const settingsRouter = Router();
 
@@ -109,6 +110,14 @@ settingsRouter.get('/koboldcpp-launch-settings', (req, res) => {
 settingsRouter.put('/koboldcpp-launch-settings', (req, res) => {
   if (![0, 1, 2].includes(req.body.sd_quant)) return res.status(400).json({ error: 'invalid_sd_quant' });
   res.json(updateLaunchSettings(req.body));
+});
+
+settingsRouter.get('/status-display-preferences', (req, res) => {
+  res.json(getStatusDisplayPreferences());
+});
+
+settingsRouter.put('/status-display-preferences', (req, res) => {
+  res.json(updateStatusDisplayPreferences(req.body));
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {

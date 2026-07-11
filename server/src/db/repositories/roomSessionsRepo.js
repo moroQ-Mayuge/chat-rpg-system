@@ -1,6 +1,24 @@
 import { db } from '../connection.js';
 import { getPlaythrough, advanceTime, touchPlaythrough } from './playthroughsRepo.js';
 import { carryOverAccompanyingStatuses } from './characterStatusStatesRepo.js';
+import { buildStatusSnapshot } from './statusSnapshotRepo.js';
+import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
+
+const STATUS_DISPLAY_LOCATIONS = ['strip', 'panel', 'chat_log'];
+const STATUS_DISPLAY_CATEGORIES = ['self_stat', 'status', 'relationship_stage'];
+
+// World settings are a ceiling, player preferences narrow within it — a
+// category is only ever visible when BOTH agree (see 0027_status_display_settings.sql).
+function computeStatusDisplayVisibility(worldSettings, playerPrefs) {
+  const visibility = {};
+  for (const location of STATUS_DISPLAY_LOCATIONS) {
+    visibility[location] = {};
+    for (const category of STATUS_DISPLAY_CATEGORIES) {
+      visibility[location][category] = Boolean(worldSettings[location][category]) && Boolean(playerPrefs[location][category]);
+    }
+  }
+  return visibility;
+}
 
 export function ensureRelationshipStatesSeeded(playthroughId, characterId) {
   const alreadySeeded = db
@@ -39,9 +57,17 @@ function attachParticipants(session) {
           )
           .all(participant.current_outfit_id)
       : [];
+    participant.status = buildStatusSnapshot(session.playthrough_id, participant.character_id, { roomSessionId: session.id });
   }
 
-  return { ...session, participants };
+  const worldRow = db
+    .prepare('SELECT w.status_display_settings FROM worlds w JOIN playthroughs p ON p.world_id = w.id WHERE p.id = ?')
+    .get(session.playthrough_id);
+  const worldSettings = JSON.parse(worldRow.status_display_settings);
+  const playerPrefs = getStatusDisplayPreferences();
+  const status_display_visibility = computeStatusDisplayVisibility(worldSettings, playerPrefs);
+
+  return { ...session, participants, status_display_visibility };
 }
 
 // Lists every session (active or ended) a playthrough has ever had, newest

@@ -1,6 +1,7 @@
 import { db } from '../connection.js';
 import { touchRoomSession } from './roomSessionsRepo.js';
 import { advanceTime } from './playthroughsRepo.js';
+import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 
 function attachImagePath(message) {
   if (!message) return message;
@@ -12,6 +13,9 @@ function attachImagePath(message) {
   if (result.mentioned_character_ids) {
     result = { ...result, mentioned_character_ids: JSON.parse(result.mentioned_character_ids) };
   }
+  if (result.status_snapshot) {
+    result = { ...result, status_snapshot: JSON.parse(result.status_snapshot) };
+  }
   return result;
 }
 
@@ -22,14 +26,25 @@ export function listMessagesForSession(sessionId) {
     .map(attachImagePath);
 }
 
+// A character's status_snapshot freezes their game-state values at the
+// moment they spoke — チャット欄の顔アイコン付近のログ表示はこれを使う（現在値
+// ではなく発言時点の値なので、後でステータスが変わっても過去メッセージの
+// 表示は変わらない）。narration/user/system messages never carry one.
+function buildMessageStatusSnapshot(sessionId, sender_type, character_id) {
+  if (sender_type !== 'character' || character_id == null) return null;
+  const { playthrough_id } = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
+  return JSON.stringify(buildStatusSnapshot(playthrough_id, character_id, { roomSessionId: sessionId }));
+}
+
 export function createMessage(
   sessionId,
   { sender_type, character_id = null, content_type = 'text', content = null, image_id = null, emotion_tag = null, mentioned_character_ids = null },
 ) {
+  const status_snapshot = buildMessageStatusSnapshot(sessionId, sender_type, character_id);
   const result = db
     .prepare(
-      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       sessionId,
@@ -40,6 +55,7 @@ export function createMessage(
       image_id,
       emotion_tag,
       mentioned_character_ids ? JSON.stringify(mentioned_character_ids) : null,
+      status_snapshot,
     );
   touchRoomSession(sessionId);
   maybeAutoAdvanceTime(sessionId);

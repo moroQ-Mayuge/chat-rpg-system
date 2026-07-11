@@ -65,3 +65,24 @@ export function useImageGenerationSettingsMutations() {
     }),
   };
 }
+
+export function useStatusDisplayPreferences() {
+  return useQuery({ queryKey: ['statusDisplayPreferences'], queryFn: settingsApi.getStatusDisplayPreferences });
+}
+
+export function useStatusDisplayPreferencesMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['statusDisplayPreferences'] });
+  // Invalidate roomSessions too, since getRoomSession computes status_display_visibility
+  // from the current preferences — a stale cached session would otherwise keep
+  // showing the old effective visibility until the next unrelated refetch.
+  return {
+    update: useMutation({
+      mutationFn: settingsApi.updateStatusDisplayPreferences,
+      onSuccess: () => {
+        invalidate();
+        queryClient.invalidateQueries({ queryKey: ['roomSessions'] });
+      },
+    }),
+  };
+}
