@@ -1,5 +1,16 @@
 # 変更履歴
 
+## 未リリース
+
+**自己ステータス／キャラ状態システム**
+- 既存`relationship_axes`/`relationship_states`を拡張し、`scope`列（`relationship`/`self_stat`）と`regen_per_time_slot`列（時間帯ごとの自然回復/減少、NULLで無効）を追加。既存の関係性軸6種はそのまま`scope='relationship'`として残し、新規に自己ステータス11種（体力・気力・満腹・水分・テンション・精神・道徳・善悪・従順・魅力・酔い）を`scope='self_stat'`として追加。時間経過（ターン数/部屋退出/`advance_time`アクションのいずれか）のたびに、対象プレイスルーに登場済みの全キャラへ`regen_per_time_slot`が自動適用される（min/max値でクランプ）
+- 新規`character_statuses`（共通＋World固有の2段構成、気絶・死亡などカテゴリ的な状態のマスター）／`character_status_states`（付与状況の記録）を追加。ステータスごとに`persistence_scope`（`playthrough`＝永続／`session`＝部屋移動・再入室でリセット／`accompanying`＝同行中のみ継続）と`removes_from_session`（付与時にセッション参加者から自動除外するか）を個別設定可能
+- 新規イベント条件`has_status`（対象キャラ＋ステータス＋所持していない場合に成立、の否定フラグ）／アクション`change_status`（grant/remove/lock/unlock）を追加し、既存の`has_item`/`change_relationship`と同じUXでイベントエディタから利用可能
+- 新規`axis_status_triggers`（軸のしきい値超え/下回りに応じてステータスを自動付与・解除するマスター）を追加。`relationshipStatesRepo.js`の`adjustValue`（イベントの`change_relationship`アクション・自然回復のどちらもここを通る）にフックしたため、値の変化源を問わず一律にしきい値判定が働く。`character_status_states.locked`フラグがオンの間は自動解除をスキップ（明示的な`remove`操作は常に有効。自動付与は既にアクティブなステータスのロックを上書きしない）
+- Room→Place移動時の同行キャラ引き継ぎ処理（`createRoomSession`の`carryOverParticipants`）を拡張し、`accompanying`スコープのキャラ状態（ロック状態含む）も新セッションへコピー。`session`スコープはリセットが目的のため引き継がれない
+- 新規「キャラ状態」管理ページ（ステータス定義CRUD＋しきい値トリガー編集）を追加。関係性軸ページにも区分（関係性軸／自己ステータス）セレクタと自然増減入力欄を追加
+- 「関係」（相対的な関係ステージ）と「呼び方」（キャラごとの呼称）は既存スキーマに対応する概念がなく、今回は対象外（ROADMAP.mdに別途設計課題として記録）
+
 ## v0.0.5
 
 ロードマップ項目の実装ラウンド
