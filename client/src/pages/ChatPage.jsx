@@ -34,7 +34,7 @@ function ActionCommandBar({ worldId, onKeywordSend, onOpenPanel }) {
           key={cmd.id}
           type="button"
           style={COMMAND_ICON_STYLE}
-          onClick={() => (cmd.command_type === 'keyword' ? onKeywordSend(cmd.keyword_text) : onOpenPanel(cmd.command_type))}
+          onClick={() => (cmd.command_type === 'keyword' ? onKeywordSend(cmd.keyword_text) : onOpenPanel(cmd))}
         >
           {cmd.icon} {cmd.label}
         </button>
@@ -95,31 +95,58 @@ function ItemPickupPanel({ worldId, playthroughId, onClose, onAcquired }) {
   );
 }
 
-function ItemUsePanel({ playthroughId, participants, onClose, onUse }) {
+// Looks for an already-typed "@名前" mention in the chat draft matching a
+// current participant, so opening an item action panel doesn't force
+// re-selecting a target the player already specified inline (e.g. having
+// typed "@みお" then tapping "使う" should default the target to みお).
+function detectMentionedParticipant(draft, participants) {
+  const match = participants.find((p) => draft.includes(`@${p.name}`));
+  return match ? String(match.character_id) : '';
+}
+
+// Generic panel for any item_use-type action command (World-defined, not a
+// fixed "使う"/"渡す" pair — chat enhancement backlog item 9 follow-up).
+// `command` carries the clicked command's label plus its consumes_item/
+// transfers_to_target flags, which drive both the panel's own behavior and
+// the wording of the chat line it posts.
+function ItemActionPanel({ command, playthroughId, participants, draft, onClose, onSend }) {
   const { data: inventory } = useInventory(playthroughId);
+  const { useItem, transferItem } = useInventoryMutations(playthroughId);
   const [itemId, setItemId] = useState('');
-  const [targetId, setTargetId] = useState('');
+  const [targetId, setTargetId] = useState(() => detectMentionedParticipant(draft, participants));
   const [description, setDescription] = useState('');
 
-  function submit() {
+  async function submit() {
     const entry = inventory?.find((e) => e.item_id === Number(itemId));
     if (!entry) return;
     const target = participants.find((p) => p.character_id === Number(targetId));
+
+    if (command.transfers_to_target) {
+      if (!target) return;
+      await transferItem.mutateAsync({ itemId: entry.item_id, quantity: 1, toCharacterId: target.character_id });
+      onSend(`『${entry.name}』を@${target.name}に${command.label}`);
+      onClose();
+      return;
+    }
+
+    if (command.consumes_item) {
+      await useItem.mutateAsync({ itemId: entry.item_id, quantity: 1 });
+    }
     const targetText = target ? `@${target.name}に` : '';
-    const text = `『${entry.name}』を${targetText}使う${description ? `：${description}` : ''}`;
-    onUse(text);
+    const text = `『${entry.name}』を${targetText}${command.label}${description ? `：${description}` : ''}`;
+    onSend(text);
     onClose();
   }
 
   return (
     <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ fontSize: 12, fontWeight: 500 }}>アイテムを使う</span>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>アイテムを{command.label}</span>
         <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
           閉じる
         </button>
       </div>
-      {inventory?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>使えるアイテムを持っていません</p>}
+      {inventory?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>持ち物がありません</p>}
       {inventory?.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label>
@@ -134,9 +161,9 @@ function ItemUsePanel({ playthroughId, participants, onClose, onUse }) {
             </select>
           </label>
           <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>対象（任意）</span>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>対象{command.transfers_to_target ? '' : '（任意）'}</span>
             <select style={{ width: '100%' }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
-              <option value="">指定なし</option>
+              <option value="">{command.transfers_to_target ? '対象を選択してください' : '指定なし'}</option>
               {participants.map((p) => (
                 <option key={p.character_id} value={p.character_id}>
                   {p.name}
@@ -144,13 +171,20 @@ function ItemUsePanel({ playthroughId, participants, onClose, onUse }) {
               ))}
             </select>
           </label>
-          <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>使い方（任意）</span>
-            <input style={{ width: '100%' }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="どのように使うか" />
-          </label>
+          {!command.transfers_to_target && (
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>詳細（任意）</span>
+              <input
+                style={{ width: '100%' }}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={`どのように${command.label}か`}
+              />
+            </label>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={submit} disabled={!itemId}>
-              使う
+            <button type="button" onClick={submit} disabled={!itemId || (command.transfers_to_target && !targetId)}>
+              {command.label}
             </button>
           </div>
         </div>
@@ -409,8 +443,10 @@ export default function ChatPage() {
         {streamError && <p style={{ color: 'red', fontSize: 12 }}>エラー: {streamError}</p>}
       </div>
 
-      {itemPanel === 'item_check' && <ItemCheckPanel playthroughId={session.playthrough_id} onClose={() => setItemPanel(null)} />}
-      {itemPanel === 'item_pickup' && (
+      {itemPanel?.command_type === 'item_check' && (
+        <ItemCheckPanel playthroughId={session.playthrough_id} onClose={() => setItemPanel(null)} />
+      )}
+      {itemPanel?.command_type === 'item_pickup' && (
         <ItemPickupPanel
           worldId={playthrough.world_id}
           playthroughId={session.playthrough_id}
@@ -418,15 +454,17 @@ export default function ChatPage() {
           onAcquired={sendText}
         />
       )}
-      {itemPanel === 'item_use' && (
-        <ItemUsePanel
+      {itemPanel?.command_type === 'item_use' && (
+        <ItemActionPanel
+          command={itemPanel}
           playthroughId={session.playthrough_id}
           participants={session.participants}
+          draft={draft}
           onClose={() => setItemPanel(null)}
-          onUse={sendText}
+          onSend={sendText}
         />
       )}
-      {itemPanel === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
+      {itemPanel?.command_type === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
 
       {session.participants.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>

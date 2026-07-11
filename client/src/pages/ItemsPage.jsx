@@ -6,7 +6,16 @@ import { useAllActionCommands, useActionCommandMutations } from '../hooks/useAct
 
 const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '', category_id: '' };
 const emptyCategoryForm = { world_id: '', name: '', is_consumable: false };
-const emptyCommandForm = { world_id: '', label: '', icon: '', command_type: 'keyword', keyword_text: '', sort_order: 0 };
+const emptyCommandForm = {
+  world_id: '',
+  label: '',
+  icon: '',
+  command_type: 'keyword',
+  keyword_text: '',
+  sort_order: 0,
+  consumes_item: false,
+  transfers_to_target: false,
+};
 
 const COMMAND_TYPE_LABELS = {
   keyword: 'キーワード送信',
@@ -235,6 +244,8 @@ function ActionCommandsSection({ worlds }) {
               <span style={{ fontSize: 11, color: '#888' }}>
                 [{worldLabel(cmd.world_id, worlds)}] {COMMAND_TYPE_LABELS[cmd.command_type]}
                 {cmd.command_type === 'keyword' && ` (${cmd.keyword_text})`}
+                {cmd.command_type === 'item_use' &&
+                  ` (${cmd.transfers_to_target ? '対象へ譲渡' : cmd.consumes_item ? '消費型' : '非消費'})`}
               </span>
             </span>
             <button onClick={() => handleDelete(cmd.id)}>削除</button>
@@ -286,6 +297,26 @@ function ActionCommandsSection({ worlds }) {
             <input type="number" style={{ width: '100%' }} value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
           </label>
         </div>
+        {form.command_type === 'item_use' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.consumes_item}
+                onChange={(e) => setForm({ ...form, consumes_item: e.target.checked })}
+              />
+              実行すると所持数を1減らす（消費型として扱う）
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.transfers_to_target}
+                onChange={(e) => setForm({ ...form, transfers_to_target: e.target.checked })}
+              />
+              実行すると対象キャラクターへ所有権を移す（渡す系の挙動にする。対象選択が必須になる）
+            </label>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={handleCreate} disabled={!form.label}>
             追加

@@ -15,19 +15,54 @@ export function getActionCommand(id) {
   return db.prepare('SELECT * FROM action_commands WHERE id = ?').get(id);
 }
 
-export function createActionCommand({ world_id, label, icon, command_type, keyword_text, sort_order }) {
+export function createActionCommand({
+  world_id,
+  label,
+  icon,
+  command_type,
+  keyword_text,
+  sort_order,
+  consumes_item,
+  transfers_to_target,
+}) {
   const result = db
     .prepare(
-      'INSERT INTO action_commands (world_id, label, icon, command_type, keyword_text, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+      `INSERT INTO action_commands
+        (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(world_id ?? null, label, icon ?? '', command_type, keyword_text ?? '', sort_order ?? 0);
+    .run(
+      world_id ?? null,
+      label,
+      icon ?? '',
+      command_type,
+      keyword_text ?? '',
+      sort_order ?? 0,
+      consumes_item ? 1 : 0,
+      transfers_to_target ? 1 : 0,
+    );
   return getActionCommand(result.lastInsertRowid);
 }
 
-export function updateActionCommand(id, { world_id, label, icon, command_type, keyword_text, sort_order }) {
+export function updateActionCommand(
+  id,
+  { world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target },
+) {
   db.prepare(
-    'UPDATE action_commands SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ? WHERE id = ?',
-  ).run(world_id ?? null, label, icon ?? '', command_type, keyword_text ?? '', sort_order ?? 0, id);
+    `UPDATE action_commands
+     SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?
+     WHERE id = ?`,
+  ).run(
+    world_id ?? null,
+    label,
+    icon ?? '',
+    command_type,
+    keyword_text ?? '',
+    sort_order ?? 0,
+    consumes_item ? 1 : 0,
+    transfers_to_target ? 1 : 0,
+    id,
+  );
   return getActionCommand(id);
 }
 
