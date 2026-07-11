@@ -9,6 +9,7 @@ import { executeAdvanceTime } from './advanceTime.js';
 import { executeGrantItem } from './grantItem.js';
 import { executeRemoveItem } from './removeItem.js';
 import { executeChangeStatus } from './changeStatus.js';
+import { executeSetAddress } from './setAddress.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -22,6 +23,7 @@ export const actionRegistry = {
   grant_item: executeGrantItem,
   remove_item: executeRemoveItem,
   change_status: executeChangeStatus,
+  set_address: executeSetAddress,
 };
 
 export async function executeAction(action, execCtx) {

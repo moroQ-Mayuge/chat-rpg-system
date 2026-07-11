@@ -2,6 +2,7 @@ import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
 import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
+import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -61,7 +62,9 @@ function buildSystemPrompt(session, participants) {
   const characterCards = participants
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
-      return serializeCharacter(character, outfit);
+      const currentAddress = getCurrentAddress(session.playthrough_id, character.id);
+      const effectiveCharacter = currentAddress ? { ...character, call_user_as: currentAddress } : character;
+      return serializeCharacter(effectiveCharacter, outfit);
     })
     .join('\n');
 
