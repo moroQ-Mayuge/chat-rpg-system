@@ -4,6 +4,13 @@ import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
 import TagChips from '../components/ui/TagChips.jsx';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
+import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
+
+const DEFAULT_STATUS_DISPLAY_SETTINGS = {
+  strip: { self_stat: false, status: false, relationship_stage: false },
+  panel: { self_stat: false, status: false, relationship_stage: false },
+  chat_log: { self_stat: false, status: false, relationship_stage: false },
+};
 
 const emptyForm = {
   name: '',
@@ -25,6 +32,7 @@ const emptyForm = {
   movement_points_per_time_slot: 4,
   max_response_tokens: '',
   notify_relationship_changes: false,
+  status_display_settings: DEFAULT_STATUS_DISPLAY_SETTINGS,
 };
 
 export default function WorldsPage() {
@@ -61,6 +69,7 @@ export default function WorldsPage() {
         movement_points_per_time_slot: world.movement_points_per_time_slot ?? 4,
         max_response_tokens: world.max_response_tokens ?? '',
         notify_relationship_changes: Boolean(world.notify_relationship_changes),
+        status_display_settings: world.status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS,
       });
     }
   }, [editingId, worlds]);
@@ -344,6 +353,17 @@ export default function WorldsPage() {
               />
               関係性の変化をチャット画面に通知する
             </label>
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>チャット欄へのステータス表示</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              このWorldで見せてよい範囲の上限を設定します（プレイヤー個人の設定はこの範囲内でさらに絞り込めます。設定画面から変更可能）
+            </p>
+            <StatusDisplayGrid
+              value={form.status_display_settings}
+              onChange={(next) => setForm({ ...form, status_display_settings: next })}
+            />
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

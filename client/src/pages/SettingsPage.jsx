@@ -10,8 +10,11 @@ import {
   useSamplers,
   useKoboldcppLaunchSettings,
   useKoboldcppLaunchSettingsMutations,
+  useStatusDisplayPreferences,
+  useStatusDisplayPreferencesMutations,
 } from '../hooks/useSettings.js';
 import { settingsApi } from '../api/settings.js';
+import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
 
 const cardStyle = { background: '#f7f7f7', borderRadius: 12, padding: 16 };
 
@@ -446,6 +449,23 @@ function ImageFormatSection() {
   );
 }
 
+function StatusDisplayPreferencesSection() {
+  const { data: preferences, isLoading } = useStatusDisplayPreferences();
+  const { update } = useStatusDisplayPreferencesMutations();
+
+  if (isLoading) return null;
+
+  return (
+    <div style={cardStyle}>
+      <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>チャット欄へのステータス表示（プレイヤー個人設定）</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        各Worldが許可した範囲内で、さらに個人の好みに応じて非表示にできます（Worldが非表示にしている項目はここで表示に戻せません）。
+      </p>
+      <StatusDisplayGrid value={preferences} onChange={(next) => update.mutate(next)} />
+    </div>
+  );
+}
+
 function TestGenerateSection() {
   const { data: presets } = useStylePresets();
   const [prompt, setPrompt] = useState('');
@@ -734,6 +754,7 @@ export default function SettingsPage() {
           <StylePresetsSection />
           <ImageFormatSection />
           <ImageGenerationSettingsSection />
+          <StatusDisplayPreferencesSection />
           <TestGenerateSection />
         </div>
       )}
