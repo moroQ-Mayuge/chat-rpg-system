@@ -8,6 +8,7 @@ function parseWorld(row) {
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
+    status_display_settings: JSON.parse(row.status_display_settings),
   };
 }
 
@@ -30,6 +31,11 @@ const DEFAULT_TIME_SLOT_LABELS = ['朝', '昼', '放課後', '夜'];
 const DEFAULT_WEATHER_OPTIONS = ['晴れ', '曇り', '雨'];
 const DEFAULT_SEASON_LABELS = ['春', '夏', '秋', '冬'];
 const DEFAULT_DAYS_PER_SEASON = 30;
+const DEFAULT_STATUS_DISPLAY_SETTINGS = {
+  strip: { self_stat: false, status: false, relationship_stage: false },
+  panel: { self_stat: false, status: false, relationship_stage: false },
+  chat_log: { self_stat: false, status: false, relationship_stage: false },
+};
 
 export function createWorld({
   name,
@@ -51,14 +57,15 @@ export function createWorld({
   movement_points_per_time_slot = 4,
   max_response_tokens = null,
   notify_relationship_changes = false,
+  status_display_settings = DEFAULT_STATUS_DISPLAY_SETTINGS,
 }) {
   const result = db
     .prepare(
       `INSERT INTO worlds
         (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id, image_tags,
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
-         movement_points_per_time_slot, max_response_tokens, notify_relationship_changes)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -80,6 +87,7 @@ export function createWorld({
       movement_points_per_time_slot ?? 4,
       max_response_tokens ?? null,
       notify_relationship_changes ? 1 : 0,
+      JSON.stringify(status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS),
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -106,13 +114,14 @@ export function updateWorld(
     movement_points_per_time_slot,
     max_response_tokens,
     notify_relationship_changes,
+    status_display_settings,
   },
 ) {
   db.prepare(
     `UPDATE worlds
      SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?, image_tags = ?,
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
-         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?
+         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -134,6 +143,7 @@ export function updateWorld(
     movement_points_per_time_slot ?? 4,
     max_response_tokens ?? null,
     notify_relationship_changes ? 1 : 0,
+    JSON.stringify(status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS),
     id,
   );
   return getWorld(id);

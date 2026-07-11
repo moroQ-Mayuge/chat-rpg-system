@@ -41,6 +41,12 @@ export function listRegeneratingSelfStatAxes() {
     .all();
 }
 
+// All self-stat axes regardless of regen — used to build a status snapshot
+// (statusSnapshotRepo.js) covering every self-stat, not just the drifting ones.
+export function listSelfStatAxes() {
+  return db.prepare("SELECT * FROM relationship_axes WHERE scope = 'self_stat'").all();
+}
+
 export function deleteRelationshipAxis(id) {
   db.prepare('DELETE FROM relationship_axes WHERE id = ?').run(id);
   return { deleted: true };
