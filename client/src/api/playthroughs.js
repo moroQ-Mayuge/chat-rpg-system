@@ -11,4 +11,6 @@ export const playthroughsApi = {
   listInventory: (id) => api.get(`/playthroughs/${id}/inventory`),
   addInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory`, { item_id: itemId, quantity }),
   useInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory/use`, { item_id: itemId, quantity }),
+  transferInventoryItem: (id, itemId, quantity, toCharacterId) =>
+    api.post(`/playthroughs/${id}/inventory/transfer`, { item_id: itemId, quantity, to_character_id: toCharacterId }),
 };

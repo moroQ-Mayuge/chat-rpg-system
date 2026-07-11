@@ -60,5 +60,10 @@ export function useInventoryMutations(playthroughId) {
       mutationFn: ({ itemId, quantity }) => playthroughsApi.useInventoryItem(playthroughId, itemId, quantity),
       onSuccess: invalidate,
     }),
+    transferItem: useMutation({
+      mutationFn: ({ itemId, quantity, toCharacterId }) =>
+        playthroughsApi.transferInventoryItem(playthroughId, itemId, quantity, toCharacterId),
+      onSuccess: invalidate,
+    }),
   };
 }

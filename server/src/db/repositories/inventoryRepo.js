@@ -6,9 +6,10 @@ import { db } from '../connection.js';
 export function listInventoryForPlaythrough(playthroughId, ownerCharacterId = null) {
   return db
     .prepare(
-      `SELECT pi.*, i.name, i.description, i.image_tags
+      `SELECT pi.*, i.name, i.description, i.image_tags, i.category_id, ic.is_consumable
        FROM playthrough_inventory pi
        JOIN items i ON i.id = pi.item_id
+       LEFT JOIN item_categories ic ON ic.id = i.category_id
        WHERE pi.playthrough_id = ? AND pi.owner_character_id IS ?
        ORDER BY pi.acquired_at DESC`,
     )
@@ -46,6 +47,22 @@ export function removeItemFromInventory(playthroughId, itemId, quantity = 1, own
     db.prepare('UPDATE playthrough_inventory SET quantity = quantity - ? WHERE id = ?').run(quantity, existing.id);
   }
   return { removed: true };
+}
+
+// Moves `quantity` units from the player's own inventory (owner_character_id
+// NULL) to a specific NPC's holding — the "渡す" counterpart to "使う".
+// Fails loudly (rather than silently no-op'ing) if the player doesn't
+// actually hold enough, since a transfer that silently does nothing would
+// be confusing for a chat action the player explicitly took.
+export function transferItem(playthroughId, itemId, quantity, toCharacterId) {
+  const held = db
+    .prepare('SELECT quantity FROM playthrough_inventory WHERE playthrough_id = ? AND item_id = ? AND owner_character_id IS NULL')
+    .get(playthroughId, itemId);
+  if (!held || held.quantity < quantity) return { transferred: false, reason: 'insufficient_quantity' };
+
+  removeItemFromInventory(playthroughId, itemId, quantity, null);
+  addItemToInventory(playthroughId, itemId, quantity, toCharacterId);
+  return { transferred: true };
 }
 
 export function hasItem(playthroughId, itemId, ownerCharacterId = null) {

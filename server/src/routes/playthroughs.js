@@ -6,7 +6,7 @@ import {
   updateProtagonistSettings,
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
-import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
+import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory, transferItem } from '../db/repositories/inventoryRepo.js';
 
 export const playthroughsRouter = Router();
 
@@ -43,8 +43,10 @@ playthroughsRouter.get('/:id/room-sessions', (req, res) => {
   res.json(listSessionsForPlaythrough(req.params.id));
 });
 
-// Player inventory only for now (owner_character_id always null) — see
-// playthrough_inventory's schema comment for the future NPC-holder path.
+// Player-held inventory (owner_character_id null). NPC-held inventory is
+// reachable via transferItem below but has no listing endpoint yet — no UI
+// needs to browse an NPC's held items today, only move things into their
+// hands.
 playthroughsRouter.get('/:id/inventory', (req, res) => {
   res.json(listInventoryForPlaythrough(req.params.id));
 });
@@ -57,4 +59,11 @@ playthroughsRouter.post('/:id/inventory', (req, res) => {
 playthroughsRouter.post('/:id/inventory/use', (req, res) => {
   if (!req.body.item_id) return res.status(400).json({ error: 'item_id_required' });
   res.json(removeItemFromInventory(req.params.id, req.body.item_id, req.body.quantity ?? 1));
+});
+
+playthroughsRouter.post('/:id/inventory/transfer', (req, res) => {
+  if (!req.body.item_id || !req.body.to_character_id) {
+    return res.status(400).json({ error: 'item_id_and_to_character_id_required' });
+  }
+  res.json(transferItem(req.params.id, req.body.item_id, req.body.quantity ?? 1, req.body.to_character_id));
 });
