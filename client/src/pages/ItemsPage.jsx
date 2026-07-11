@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllItems, useItemMutations } from '../hooks/useItems.js';
+import { useAllItemCategories, useItemCategoryMutations } from '../hooks/useItemCategories.js';
 import { useAllActionCommands, useActionCommandMutations } from '../hooks/useActionCommands.js';
 
-const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '' };
+const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '', category_id: '' };
+const emptyCategoryForm = { world_id: '', name: '', is_consumable: false };
 const emptyCommandForm = { world_id: '', label: '', icon: '', command_type: 'keyword', keyword_text: '', sort_order: 0 };
 
 const COMMAND_TYPE_LABELS = {
@@ -19,14 +21,98 @@ function worldLabel(worldId, worlds) {
   return worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`;
 }
 
+function ItemCategoriesSection({ worlds }) {
+  const { data: categories, isLoading } = useAllItemCategories();
+  const { create, remove } = useItemCategoryMutations();
+  const [form, setForm] = useState(emptyCategoryForm);
+
+  async function handleCreate() {
+    if (!form.name) return;
+    await create.mutateAsync({ ...form, world_id: form.world_id ? Number(form.world_id) : null });
+    setForm(emptyCategoryForm);
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('このカテゴリを削除しますか？（使用中のアイテムがある場合は削除できません）')) return;
+    await remove.mutateAsync(id);
+  }
+
+  if (isLoading) return null;
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <h3>アイテムカテゴリ</h3>
+      <p style={{ fontSize: 11, color: '#888' }}>
+        アイテムが消費型（使うと所持数が減る）かどうかは、個々のアイテムではなくカテゴリ単位で判定されます。動的にアイテムが生成される際も、このカテゴリ一覧からLLMが選びます。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+        {categories.map((c) => (
+          <div
+            key={c.id}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #ddd', borderRadius: 6 }}
+          >
+            <span>
+              {c.name}{' '}
+              <span style={{ fontSize: 11, color: '#888' }}>
+                [{worldLabel(c.world_id, worlds)}] {c.is_consumable ? '消費型' : '永続型'}
+              </span>
+            </span>
+            <button onClick={() => handleDelete(c.id)}>削除</button>
+          </div>
+        ))}
+        {categories.length === 0 && <p style={{ fontSize: 12, color: '#999' }}>まだカテゴリがありません</p>}
+      </div>
+
+      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
+        <p style={{ fontWeight: 500 }}>新規登録</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
+            <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：消耗品" />
+          </label>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>所属World</span>
+            <select style={{ width: '100%' }} value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })}>
+              <option value="">共通</option>
+              {worlds.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <input
+            type="checkbox"
+            checked={form.is_consumable}
+            onChange={(e) => setForm({ ...form, is_consumable: e.target.checked })}
+          />
+          消費型（このカテゴリのアイテムは「使う」で所持数が減る）
+        </label>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={handleCreate} disabled={!form.name}>
+            追加
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ItemsSection({ worlds }) {
   const { data: items, isLoading } = useAllItems();
+  const { data: categories } = useAllItemCategories();
   const { create, remove } = useItemMutations();
   const [form, setForm] = useState(emptyItemForm);
 
   async function handleCreate() {
     if (!form.name) return;
-    await create.mutateAsync({ ...form, world_id: form.world_id ? Number(form.world_id) : null });
+    await create.mutateAsync({
+      ...form,
+      world_id: form.world_id ? Number(form.world_id) : null,
+      category_id: form.category_id ? Number(form.category_id) : null,
+    });
     setForm(emptyItemForm);
   }
 
@@ -35,7 +121,12 @@ function ItemsSection({ worlds }) {
     await remove.mutateAsync(id);
   }
 
-  if (isLoading) return null;
+  if (isLoading || !categories) return null;
+
+  function categoryLabel(categoryId) {
+    const c = categories.find((cat) => cat.id === categoryId);
+    return c ? `${c.name}${c.is_consumable ? '・消費型' : ''}` : '未設定';
+  }
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -52,7 +143,7 @@ function ItemsSection({ worlds }) {
             <span>
               {item.name}{' '}
               <span style={{ fontSize: 11, color: '#888' }}>
-                [{worldLabel(item.world_id, worlds)}] {item.description}
+                [{worldLabel(item.world_id, worlds)}] [{categoryLabel(item.category_id)}] {item.description}
               </span>
             </span>
             <button onClick={() => handleDelete(item.id)}>削除</button>
@@ -63,7 +154,7 @@ function ItemsSection({ worlds }) {
 
       <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
         <p style={{ fontWeight: 500 }}>新規登録</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
           <label>
             <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
             <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -75,6 +166,17 @@ function ItemsSection({ worlds }) {
               {worlds.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>カテゴリ</span>
+            <select style={{ width: '100%' }} value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
+              <option value="">未設定</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  [{worldLabel(c.world_id, worlds)}] {c.name}
                 </option>
               ))}
             </select>
@@ -201,6 +303,7 @@ export default function ItemsPage() {
   return (
     <div>
       <h2>アイテム・行動コマンド</h2>
+      <ItemCategoriesSection worlds={worlds} />
       <ItemsSection worlds={worlds} />
       <ActionCommandsSection worlds={worlds} />
     </div>

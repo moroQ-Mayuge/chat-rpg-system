@@ -18,10 +18,10 @@ export function getItem(id) {
   return db.prepare('SELECT * FROM items WHERE id = ?').get(id);
 }
 
-export function createItem({ world_id, name, description, image_tags }) {
+export function createItem({ world_id, name, description, image_tags, category_id }) {
   const result = db
-    .prepare('INSERT INTO items (world_id, name, description, image_tags) VALUES (?, ?, ?, ?)')
-    .run(world_id ?? null, name, description ?? '', image_tags ?? '');
+    .prepare('INSERT INTO items (world_id, name, description, image_tags, category_id) VALUES (?, ?, ?, ?, ?)')
+    .run(world_id ?? null, name, description ?? '', image_tags ?? '', category_id ?? null);
   return getItem(result.lastInsertRowid);
 }
 
@@ -39,12 +39,13 @@ export function findOrCreateWorldItem(worldId, name, description) {
   return createItem({ world_id: worldId, name, description });
 }
 
-export function updateItem(id, { world_id, name, description, image_tags }) {
-  db.prepare('UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ? WHERE id = ?').run(
+export function updateItem(id, { world_id, name, description, image_tags, category_id }) {
+  db.prepare('UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ?, category_id = ? WHERE id = ?').run(
     world_id ?? null,
     name,
     description ?? '',
     image_tags ?? '',
+    category_id ?? null,
     id,
   );
   return getItem(id);
