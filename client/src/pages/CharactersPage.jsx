@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCharacters, useCharacter, useCharacterMutations, useOutfitMutations } from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 import TagChips from '../components/ui/TagChips.jsx';
 import { charactersApi } from '../api/characters.js';
 import { outfitsApi } from '../api/outfits.js';
+import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 
 const BASIC_FIELDS = [
   ['name', '名前（愛称）'],
@@ -72,6 +74,7 @@ function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
 }
 
 export default function CharactersPage() {
+  const queryClient = useQueryClient();
   const { data: characters, isLoading: loadingList } = useCharacters();
   const { data: expressionTypes } = useExpressionTypes();
   const [selectedId, setSelectedId] = useState(null);
@@ -296,6 +299,27 @@ export default function CharactersPage() {
     }
   }
 
+  async function handleExportCharacter(id) {
+    try {
+      await contentBundleApi.exportCharacter(id);
+    } catch (err) {
+      window.alert(`エクスポートに失敗しました: ${err.message}`);
+    }
+  }
+
+  async function handleImportBundle(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const result = await contentBundleApi.import(file);
+      window.alert(formatBundleImportSummary(result));
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+    } catch (err) {
+      window.alert(`インポートに失敗しました: ${err.message}`);
+    }
+  }
+
   if (loadingList || !expressionTypes) return <p>読み込み中...</p>;
 
   return (
@@ -316,18 +340,33 @@ export default function CharactersPage() {
             }}
           >
             <span>{c.name}</span>
-            <button
-              style={{ fontSize: 11 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(c.id);
-              }}
-            >
-              削除
-            </button>
+            <span style={{ display: 'flex', gap: 4 }}>
+              <button
+                style={{ fontSize: 11 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportCharacter(c.id);
+                }}
+              >
+                エクスポート
+              </button>
+              <button
+                style={{ fontSize: 11 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(c.id);
+                }}
+              >
+                削除
+              </button>
+            </span>
           </div>
         ))}
         <button onClick={startNew}>+ 新規キャラ</button>
+        <label style={{ fontSize: 12, cursor: 'pointer' }}>
+          インポート（zip）
+          <input type="file" accept=".zip" onChange={handleImportBundle} style={{ display: 'none' }} />
+        </label>
       </div>
 
       <div>

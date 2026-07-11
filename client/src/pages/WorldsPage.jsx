@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
 import TagChips from '../components/ui/TagChips.jsx';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
+import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 
 const DEFAULT_STATUS_DISPLAY_SETTINGS = {
   strip: { self_stat: false, status: false, relationship_stage: false },
@@ -36,7 +38,11 @@ const emptyForm = {
 };
 
 export default function WorldsPage() {
+  const queryClient = useQueryClient();
   const { data: worlds, isLoading } = useWorlds();
+  const [exportPanelWorldId, setExportPanelWorldId] = useState(null);
+  const [exportIncludeRooms, setExportIncludeRooms] = useState(false);
+  const [exportIncludeCharacters, setExportIncludeCharacters] = useState(false);
   const { data: stylePresets } = useStylePresets();
   const { create, update, remove, uploadThumbnailImage, generateThumbnailImage } = useWorldMutations();
   const [editingId, setEditingId] = useState(null);
@@ -108,6 +114,37 @@ export default function WorldsPage() {
     if (editingId === world.id) cancelEdit();
   }
 
+  function toggleExportPanel(worldId) {
+    setExportIncludeRooms(false);
+    setExportIncludeCharacters(false);
+    setExportPanelWorldId((current) => (current === worldId ? null : worldId));
+  }
+
+  async function handleExportWorld(worldId) {
+    try {
+      await contentBundleApi.exportWorld(worldId, {
+        includeRoomTemplates: exportIncludeRooms,
+        includeCharacters: exportIncludeRooms && exportIncludeCharacters,
+      });
+      setExportPanelWorldId(null);
+    } catch (err) {
+      window.alert(`エクスポートに失敗しました: ${err.message}`);
+    }
+  }
+
+  async function handleImportBundle(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const result = await contentBundleApi.import(file);
+      window.alert(formatBundleImportSummary(result));
+      queryClient.invalidateQueries({ queryKey: ['worlds'] });
+    } catch (err) {
+      window.alert(`インポートに失敗しました: ${err.message}`);
+    }
+  }
+
   async function handleThumbnailUpload(e) {
     const file = e.target.files[0];
     if (!file || editingId === 'new') return;
@@ -133,51 +170,78 @@ export default function WorldsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>世界観一覧</h2>
-        <button onClick={startCreate}>+ 新規世界観</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ fontSize: 12, cursor: 'pointer', alignSelf: 'center' }}>
+            インポート（zip）
+            <input type="file" accept=".zip" onChange={handleImportBundle} style={{ display: 'none' }} />
+          </label>
+          <button onClick={startCreate}>+ 新規世界観</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {worlds.map((world) => (
-          <div
-            key={world.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 8,
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              opacity: world.is_unassigned_bucket ? 0.7 : 1,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div
-                style={{
-                  width: 56,
-                  height: 32,
-                  borderRadius: 4,
-                  flexShrink: 0,
-                  background: world.thumbnail_image_path ? `url(${world.thumbnail_image_path}) center/cover` : '#eee',
-                }}
-              />
-              <span>
-                {world.name}
-                {world.is_unassigned_bucket && (
-                  <span style={{ fontSize: 11, marginLeft: 8, color: '#888' }}>削除不可</span>
+          <div key={world.id}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: 8,
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                opacity: world.is_unassigned_bucket ? 0.7 : 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 56,
+                    height: 32,
+                    borderRadius: 4,
+                    flexShrink: 0,
+                    background: world.thumbnail_image_path ? `url(${world.thumbnail_image_path}) center/cover` : '#eee',
+                  }}
+                />
+                <span>
+                  {world.name}
+                  {world.is_unassigned_bucket && (
+                    <span style={{ fontSize: 11, marginLeft: 8, color: '#888' }}>削除不可</span>
+                  )}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Link to={`/worlds/${world.id}/playthroughs`}>
+                  <button>ルート一覧</button>
+                </Link>
+                <button onClick={() => toggleExportPanel(world.id)}>エクスポート</button>
+                {!world.is_unassigned_bucket && (
+                  <>
+                    <button onClick={() => startEdit(world)}>編集</button>
+                    <button onClick={() => handleDelete(world)}>削除</button>
+                  </>
                 )}
-              </span>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Link to={`/worlds/${world.id}/playthroughs`}>
-                <button>ルート一覧</button>
-              </Link>
-              {!world.is_unassigned_bucket && (
-                <>
-                  <button onClick={() => startEdit(world)}>編集</button>
-                  <button onClick={() => handleDelete(world)}>削除</button>
-                </>
-              )}
-            </div>
+            {exportPanelWorldId === world.id && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px', fontSize: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input type="checkbox" checked={exportIncludeRooms} onChange={(e) => setExportIncludeRooms(e.target.checked)} />
+                  部屋テンプレートを含める
+                </label>
+                {exportIncludeRooms && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={exportIncludeCharacters}
+                      onChange={(e) => setExportIncludeCharacters(e.target.checked)}
+                    />
+                    キャラクターも含める
+                  </label>
+                )}
+                <button onClick={() => handleExportWorld(world.id)}>ダウンロード</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
