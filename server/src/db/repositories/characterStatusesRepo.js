@@ -15,19 +15,25 @@ export function getStatus(id) {
   return db.prepare('SELECT * FROM character_statuses WHERE id = ?').get(id);
 }
 
-export function createStatus({ world_id, name, persistence_scope, removes_from_session }) {
+export function createStatus({ world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant }) {
   const result = db
-    .prepare('INSERT INTO character_statuses (world_id, name, persistence_scope, removes_from_session) VALUES (?, ?, ?, ?)')
-    .run(world_id ?? null, name, persistence_scope, removes_from_session ? 1 : 0);
+    .prepare(
+      'INSERT INTO character_statuses (world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .run(world_id ?? null, name, persistence_scope, removes_from_session ? 1 : 0, exclusive_group || null, default_address_on_grant || null);
   return getStatus(result.lastInsertRowid);
 }
 
-export function updateStatus(id, { world_id, name, persistence_scope, removes_from_session }) {
-  db.prepare('UPDATE character_statuses SET world_id = ?, name = ?, persistence_scope = ?, removes_from_session = ? WHERE id = ?').run(
+export function updateStatus(id, { world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant }) {
+  db.prepare(
+    'UPDATE character_statuses SET world_id = ?, name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ? WHERE id = ?',
+  ).run(
     world_id ?? null,
     name,
     persistence_scope,
     removes_from_session ? 1 : 0,
+    exclusive_group || null,
+    default_address_on_grant || null,
     id,
   );
   return getStatus(id);

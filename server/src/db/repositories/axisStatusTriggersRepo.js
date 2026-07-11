@@ -47,22 +47,45 @@ function findActiveRoomSessionId(playthroughId, characterId) {
   return row?.id ?? null;
 }
 
+// How "strict" (hard to satisfy) a trigger's condition is, used to order
+// grants so that when several thresholds on the same axis become met at once
+// (e.g. a big favorability jump satisfies 他人/顔見知り/友人/恋人 all in one
+// go), the loosest is granted first and the strictest last — within a shared
+// exclusive_group, each later grant evicts the previous one (see
+// characterStatusStatesRepo.js's grantStatus), so only the single most
+// advanced matching stage survives the cascade.
+function strictness(trigger) {
+  if (trigger.comparison === '>=' || trigger.comparison === '>') return trigger.threshold_value;
+  if (trigger.comparison === '<=' || trigger.comparison === '<') return -trigger.threshold_value;
+  return 0;
+}
+
 // Called after any relationship_axes value change (see relationshipStatesRepo.js's
 // adjustValue) to auto-grant/auto-clear statuses whose threshold the new value
 // now crosses. Auto-grant is skipped once the status is already active (so it
 // can never clobber a lock set via the change_status action's lock operation);
-// auto-clear is skipped while the status is locked.
+// auto-clear is skipped while the status is locked. Automatic grants pass
+// respectLockWhenEvicting so a locked exclusive_group member (e.g. a manually
+// pinned relationship stage) blocks the whole cascade until explicitly unlocked
+// or explicitly replaced via change_status.
 export function evaluateAxisStatusTriggers(playthroughId, characterId, axisId, newValue) {
   const triggers = listTriggersForAxis(axisId);
   if (triggers.length === 0) return;
   const roomSessionId = findActiveRoomSessionId(playthroughId, characterId);
   const ctx = { playthroughId, roomSessionId };
-  for (const trigger of triggers) {
+
+  const sorted = [...triggers].sort((a, b) => strictness(a) - strictness(b));
+  for (const trigger of sorted) {
     const met = compare(newValue, trigger.comparison, trigger.threshold_value);
     const active = hasStatus(characterId, trigger.status_id, ctx);
     if (met && !active) {
-      grantStatus(characterId, trigger.status_id, ctx, false);
-    } else if (!met && active && !isLocked(characterId, trigger.status_id, ctx)) {
+      grantStatus(characterId, trigger.status_id, ctx, false, { respectLockWhenEvicting: true });
+    }
+  }
+  for (const trigger of triggers) {
+    const met = compare(newValue, trigger.comparison, trigger.threshold_value);
+    const active = hasStatus(characterId, trigger.status_id, ctx);
+    if (!met && active && !isLocked(characterId, trigger.status_id, ctx)) {
       removeStatus(characterId, trigger.status_id, ctx);
     }
   }

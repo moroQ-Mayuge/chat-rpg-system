@@ -1,5 +1,6 @@
 import { db } from '../connection.js';
 import { getStatus } from './characterStatusesRepo.js';
+import { setCurrentAddress } from './characterAddressStatesRepo.js';
 
 // Resolves which scoping key actually applies from the status's own
 // persistence_scope — 'playthrough' persists across every room in the
@@ -40,10 +41,47 @@ export function hasStatus(characterId, statusId, ctx) {
   return Boolean(row);
 }
 
+// Finds other currently-active statuses sharing this exclusive_group for the
+// same character, so grantStatus can evict them — mirrors listActiveStatuses'
+// scope-matching WHERE clause (each sibling row already stores which of
+// playthrough_id/room_session_id applies, based on its own persistence_scope).
+function findActiveExclusiveGroupSiblings(characterId, exclusiveGroup, excludeStatusId, ctx) {
+  return db
+    .prepare(
+      `SELECT css.status_id, css.locked
+       FROM character_status_states css
+       JOIN character_statuses cs ON cs.id = css.status_id
+       WHERE css.character_id = ? AND cs.exclusive_group = ? AND css.status_id != ?
+         AND ((cs.persistence_scope = 'playthrough' AND css.playthrough_id = ?)
+           OR (cs.persistence_scope != 'playthrough' AND css.room_session_id = ?))`,
+    )
+    .all(characterId, exclusiveGroup, excludeStatusId, ctx.playthroughId, ctx.roomSessionId);
+}
+
 // Re-granting an already-active status just updates its lock flag rather
 // than inserting a duplicate row.
-export function grantStatus(characterId, statusId, ctx, locked = false) {
+//
+// options.respectLockWhenEvicting: when this status has an exclusive_group
+// and another status in that group is currently active+locked, the eviction
+// (and therefore the whole grant) is skipped entirely rather than forcing the
+// swap — used by axis_status_triggers' automatic grants so a locked stage
+// can't be silently replaced by a passive value change. Explicit change_status
+// grants leave this false (default), so they can always force the swap,
+// mirroring how explicit removeStatus always works regardless of lock.
+export function grantStatus(characterId, statusId, ctx, locked = false, options = {}) {
+  const { respectLockWhenEvicting = false } = options;
   const status = getStatus(statusId);
+
+  if (status.exclusive_group) {
+    const siblings = findActiveExclusiveGroupSiblings(characterId, status.exclusive_group, statusId, ctx);
+    if (respectLockWhenEvicting && siblings.some((s) => s.locked)) {
+      return { skipped: true, reason: 'exclusive_group_locked' };
+    }
+    for (const sibling of siblings) {
+      removeStatus(characterId, sibling.status_id, ctx);
+    }
+  }
+
   const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
   const existing = db
     .prepare(
@@ -71,6 +109,10 @@ export function grantStatus(characterId, statusId, ctx, locked = false) {
       `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
        WHERE room_session_id = ? AND character_id = ?`,
     ).run(ctx.roomSessionId, characterId);
+  }
+
+  if (status.default_address_on_grant && ctx.playthroughId != null) {
+    setCurrentAddress(ctx.playthroughId, characterId, status.default_address_on_grant);
   }
 
   return result;
