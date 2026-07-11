@@ -16,7 +16,7 @@ const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 // Returns null for a blank line, otherwise one of:
 //   { type: 'scene_change', description }
 //   { type: 'narration', text }
-//   { type: 'item_grant', itemName, description }
+//   { type: 'item_grant', itemName, categoryName, description }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
 // turn (rather than merged into a previous turn) — necessary for incremental
@@ -42,7 +42,11 @@ export function parseScriptLine(rawLine) {
 
   const itemGrantMatch = tag.match(ITEM_GRANT_PATTERN);
   if (itemGrantMatch) {
-    return { type: 'item_grant', itemName: itemGrantMatch[1].trim(), description: rest.trim() };
+    // "アイテム名|カテゴリ名" — the category half is optional (and falls
+    // back to a default category server-side if omitted or unrecognized),
+    // so a line missing it is still handled rather than misparsed.
+    const [itemName, categoryName] = itemGrantMatch[1].split('|').map((s) => s.trim());
+    return { type: 'item_grant', itemName, categoryName: categoryName || null, description: rest.trim() };
   }
 
   const emotionMatch = rest.match(EMOTION_PATTERN);

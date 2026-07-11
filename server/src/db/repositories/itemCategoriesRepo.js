@@ -23,6 +23,18 @@ export function findCategoryByName(worldId, name) {
     .get(worldId, name);
 }
 
+// Used by dynamic item generation ([ITEM_GRANT: name|category]): resolves
+// the LLM-chosen category name against this World's effective list, falling
+// back to the common "未分類" seed category if the name is missing or
+// doesn't match anything (LLM omitted it, typo'd it, or invented one that
+// isn't in the list it was shown) — matches this codebase's established
+// unmatched-reference fallback convention (e.g. JSON import, character_join).
+export function resolveCategoryOrFallback(worldId, categoryName) {
+  const matched = categoryName ? findCategoryByName(worldId, categoryName) : null;
+  if (matched) return matched;
+  return db.prepare("SELECT * FROM item_categories WHERE world_id IS NULL AND name = '未分類'").get();
+}
+
 export function createCategory({ world_id, name, is_consumable }) {
   const result = db
     .prepare('INSERT INTO item_categories (world_id, name, is_consumable) VALUES (?, ?, ?)')

@@ -12,6 +12,7 @@ import {
 import { resolveProtagonist, applyMovementCost } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem } from '../db/repositories/itemsRepo.js';
+import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
 import { addItemToInventory } from '../db/repositories/inventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
@@ -194,8 +195,13 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
     if (parsed.type === 'item_grant') {
       // Dynamic item generation (chat enhancement backlog item 9): always
       // scoped to the current room's own World, never the shared-common
-      // tier — see findOrCreateWorldItem's own comment for why.
-      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description);
+      // tier — see findOrCreateWorldItem's own comment for why. The LLM
+      // picks a category name from the list shown in the system prompt;
+      // resolveCategoryOrFallback falls back to 未分類 if it's missing or
+      // doesn't match (typo/hallucination), so an item is never left
+      // without a category (and thus without a consumable/not determination).
+      const category = resolveCategoryOrFallback(worldId, parsed.categoryName);
+      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id);
       addItemToInventory(session.playthrough_id, item.id);
       const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を手に入れた。` });
       broadcast(sessionId, { type: 'message_complete', message });

@@ -33,10 +33,10 @@ export function createItem({ world_id, name, description, image_tags, category_i
 // whole point of keeping e.g. fantasy items out of a modern setting.
 // Find-or-create by exact name match so repeated grants of the same
 // LLM-invented name reuse one item row instead of duplicating it.
-export function findOrCreateWorldItem(worldId, name, description) {
+export function findOrCreateWorldItem(worldId, name, description, categoryId) {
   const existing = db.prepare('SELECT * FROM items WHERE world_id = ? AND name = ?').get(worldId, name);
   if (existing) return existing;
-  return createItem({ world_id: worldId, name, description });
+  return createItem({ world_id: worldId, name, description, category_id: categoryId });
 }
 
 export function updateItem(id, { world_id, name, description, image_tags, category_id }) {

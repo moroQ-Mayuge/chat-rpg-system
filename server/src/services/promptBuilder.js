@@ -1,6 +1,7 @@
 import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
 import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
+import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -54,6 +55,8 @@ function buildProtagonistBlock(protagonist) {
 
 function buildSystemPrompt(session, participants) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
+  const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
+  const itemCategoryNames = listCategoriesForWorld(worldId).map((c) => c.name);
 
   const characterCards = participants
     .map((p) => {
@@ -94,7 +97,7 @@ function buildSystemPrompt(session, participants) {
     '[キャラ名]: セリフ本文 [EMOTION:感情キー]',
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
     '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）',
-    '[ITEM_GRANT: アイテム名]: アイテムの簡単な説明（キャラクターが物語上、実際にユーザーへ具体的な物を渡した場合のみ。世間話や比喩表現では使わない）',
+    `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（キャラクターが物語上、実際にユーザーへ具体的な物を渡した場合のみ。世間話や比喩表現では使わない）。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
@@ -107,7 +110,7 @@ function buildSystemPrompt(session, participants) {
     '',
     '出力例（キャラクターが物を渡した場合）：',
     '[みお]: これ、あげる [EMOTION:smile]',
-    '[ITEM_GRANT: 手作りクッキー]: みおが焼いた素朴な味のクッキー',
+    `[ITEM_GRANT: 手作りクッキー|${itemCategoryNames[0] ?? '未分類'}]: みおが焼いた素朴な味のクッキー`,
     '[NARRATION]: みおは小さな包みを差し出した。',
   ].join('\n');
 }
