@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllCharacterStatuses, useCharacterStatusMutations } from '../hooks/useCharacterStatuses.js';
+import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
+import { useAxisStatusTriggers, useAxisStatusTriggerMutations } from '../hooks/useAxisStatusTriggers.js';
 
 const emptyForm = { world_id: '', name: '', persistence_scope: 'session', removes_from_session: false };
 
@@ -102,6 +104,117 @@ export default function CharacterStatusesPage() {
         </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={handleCreate} disabled={!form.name}>
+            追加
+          </button>
+        </div>
+      </div>
+
+      <AxisStatusTriggersSection statuses={statuses} />
+    </div>
+  );
+}
+
+const emptyTriggerForm = { relationship_axis_id: '', comparison: '<=', threshold_value: 0, status_id: '' };
+
+function AxisStatusTriggersSection({ statuses }) {
+  const { data: axes, isLoading: axesLoading } = useRelationshipAxes();
+  const { data: triggers, isLoading: triggersLoading } = useAxisStatusTriggers();
+  const { create, remove } = useAxisStatusTriggerMutations();
+  const [form, setForm] = useState(emptyTriggerForm);
+
+  async function handleCreate() {
+    if (!form.relationship_axis_id || !form.status_id) return;
+    await create.mutateAsync({
+      relationship_axis_id: Number(form.relationship_axis_id),
+      comparison: form.comparison,
+      threshold_value: Number(form.threshold_value),
+      status_id: Number(form.status_id),
+    });
+    setForm(emptyTriggerForm);
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('このしきい値トリガーを削除しますか？')) return;
+    await remove.mutateAsync(id);
+  }
+
+  if (axesLoading || triggersLoading) return null;
+
+  const axisName = (id) => axes.find((a) => a.id === id)?.name ?? `軸#${id}`;
+  const statusName = (id) => statuses.find((s) => s.id === id)?.name ?? `状態#${id}`;
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <h3 style={{ fontSize: 15 }}>しきい値トリガー</h3>
+      <p style={{ fontSize: 11, color: '#888' }}>
+        自己ステータスや関係性軸の値が条件を満たす／外れるとキャラ状態を自動的に付与／解除します。状態がロックされている間は自動解除されません（自動付与は既にロック中でも妨げません）。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+        {triggers.map((t) => (
+          <div
+            key={t.id}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #ddd', borderRadius: 6 }}
+          >
+            <span>
+              {axisName(t.relationship_axis_id)} {t.comparison} {t.threshold_value} → 「{statusName(t.status_id)}」を自動付与／それ以外で自動解除
+            </span>
+            <button onClick={() => handleDelete(t.id)}>削除</button>
+          </div>
+        ))}
+        {triggers.length === 0 && <p style={{ fontSize: 12, color: '#999' }}>まだしきい値トリガーがありません</p>}
+      </div>
+
+      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
+        <p style={{ fontWeight: 500 }}>新規登録</p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <label style={{ flex: 2 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>軸</span>
+            <select
+              style={{ width: '100%' }}
+              value={form.relationship_axis_id}
+              onChange={(e) => setForm({ ...form, relationship_axis_id: e.target.value })}
+            >
+              <option value="">選択してください</option>
+              {axes.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>比較</span>
+            <select style={{ width: '100%' }} value={form.comparison} onChange={(e) => setForm({ ...form, comparison: e.target.value })}>
+              {['>=', '<=', '==', '>', '<'].map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>しきい値</span>
+            <input
+              style={{ width: '100%' }}
+              type="number"
+              value={form.threshold_value}
+              onChange={(e) => setForm({ ...form, threshold_value: e.target.value })}
+            />
+          </label>
+          <label style={{ flex: 2 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>キャラ状態</span>
+            <select style={{ width: '100%' }} value={form.status_id} onChange={(e) => setForm({ ...form, status_id: e.target.value })}>
+              <option value="">選択してください</option>
+              {statuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={handleCreate} disabled={!form.relationship_axis_id || !form.status_id}>
             追加
           </button>
         </div>

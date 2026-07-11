@@ -76,6 +76,18 @@ export function removeStatus(characterId, statusId, ctx) {
   return { removed: result.changes > 0 };
 }
 
+export function isLocked(characterId, statusId, ctx) {
+  const status = getStatus(statusId);
+  if (!status) return false;
+  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const row = db
+    .prepare(
+      'SELECT locked FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+    )
+    .get(characterId, statusId, playthrough_id, room_session_id);
+  return row ? Boolean(row.locked) : false;
+}
+
 export function setStatusLocked(characterId, statusId, ctx, locked) {
   const status = getStatus(statusId);
   const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);

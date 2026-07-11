@@ -1,4 +1,5 @@
 import { db } from '../connection.js';
+import { evaluateAxisStatusTriggers } from './axisStatusTriggersRepo.js';
 
 export function getAxis(axisId) {
   return db.prepare('SELECT * FROM relationship_axes WHERE id = ?').get(axisId);
@@ -33,6 +34,8 @@ export function adjustValue(playthroughId, characterId, axisId, operation, amoun
      VALUES (?, ?, ?, ?)
      ON CONFLICT (playthrough_id, character_id, relationship_axis_id) DO UPDATE SET current_value = excluded.current_value`,
   ).run(playthroughId, characterId, axisId, next);
+
+  evaluateAxisStatusTriggers(playthroughId, characterId, axisId, next);
 
   return next;
 }
