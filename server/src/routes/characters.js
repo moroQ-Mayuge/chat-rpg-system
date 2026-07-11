@@ -7,6 +7,7 @@ import {
   deleteCharacter,
 } from '../db/repositories/charactersRepo.js';
 import { generateCharacterSheet, parseAndSuggestTags, regenerateField } from '../services/characterAssist.js';
+import { exportCharacterBundle } from '../services/contentBundle/index.js';
 
 export const charactersRouter = Router();
 
@@ -62,4 +63,17 @@ charactersRouter.put('/:id', (req, res) => {
 
 charactersRouter.delete('/:id', (req, res) => {
   res.json(deleteCharacter(req.params.id));
+});
+
+charactersRouter.get('/:id/export-bundle', async (req, res) => {
+  const character = getCharacter(req.params.id);
+  if (!character) return res.status(404).json({ error: 'not_found' });
+  try {
+    const zipBuffer = await exportCharacterBundle(req.params.id);
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(character.name)}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
 });

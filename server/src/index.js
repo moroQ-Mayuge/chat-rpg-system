@@ -25,6 +25,7 @@ import { itemCategoriesRouter } from './routes/itemCategories.js';
 import { actionCommandsRouter } from './routes/actionCommands.js';
 import { characterStatusesRouter } from './routes/characterStatuses.js';
 import { axisStatusTriggersRouter } from './routes/axisStatusTriggers.js';
+import { contentBundleRouter } from './routes/contentBundle.js';
 import { attachSocketServer } from './ws/socketServer.js';
 
 migrate();
@@ -52,6 +53,7 @@ app.use('/api/item-categories', itemCategoriesRouter);
 app.use('/api/action-commands', actionCommandsRouter);
 app.use('/api/character-statuses', characterStatusesRouter);
 app.use('/api/axis-status-triggers', axisStatusTriggersRouter);
+app.use('/api/content-bundle', contentBundleRouter);
 
 // Serves the built client (npm run build) so the app can run as a single
 // process on the LAN without a separate Vite dev server. No-op in dev, since
