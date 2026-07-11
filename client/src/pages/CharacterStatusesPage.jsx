@@ -4,7 +4,14 @@ import { useAllCharacterStatuses, useCharacterStatusMutations } from '../hooks/u
 import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useAxisStatusTriggers, useAxisStatusTriggerMutations } from '../hooks/useAxisStatusTriggers.js';
 
-const emptyForm = { world_id: '', name: '', persistence_scope: 'session', removes_from_session: false };
+const emptyForm = {
+  world_id: '',
+  name: '',
+  persistence_scope: 'session',
+  removes_from_session: false,
+  exclusive_group: '',
+  default_address_on_grant: '',
+};
 
 const SCOPE_LABELS = {
   playthrough: '永続（部屋を移動しても持続）',
@@ -53,6 +60,8 @@ export default function CharacterStatusesPage() {
               <span style={{ fontSize: 11, color: '#888' }}>
                 [{worldLabel(s.world_id, worlds)}] {SCOPE_LABELS[s.persistence_scope]}
                 {s.removes_from_session ? '／セッション参加者から自動除外' : ''}
+                {s.exclusive_group ? `／排他グループ:${s.exclusive_group}` : ''}
+                {s.default_address_on_grant ? `／付与時に呼び方を「${s.default_address_on_grant}」へ変更` : ''}
               </span>
             </span>
             <button onClick={() => handleDelete(s.id)}>削除</button>
@@ -102,6 +111,26 @@ export default function CharacterStatusesPage() {
           />
           この状態が付与されたキャラをセッション参加者から自動的に除外する
         </label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>排他グループ（任意）</span>
+            <input
+              style={{ width: '100%' }}
+              value={form.exclusive_group}
+              onChange={(e) => setForm({ ...form, exclusive_group: e.target.value })}
+              placeholder="例：関係（同じグループ内は常に1つだけアクティブになる）"
+            />
+          </label>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>付与時に呼び方を自動変更（任意）</span>
+            <input
+              style={{ width: '100%' }}
+              value={form.default_address_on_grant}
+              onChange={(e) => setForm({ ...form, default_address_on_grant: e.target.value })}
+              placeholder="例：あなた♡（空欄なら呼び方は変更しない）"
+            />
+          </label>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={handleCreate} disabled={!form.name}>
             追加

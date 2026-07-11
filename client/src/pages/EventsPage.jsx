@@ -33,6 +33,7 @@ const ACTION_TYPES = [
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'remove_item', label: 'アイテム削除' },
   { value: 'change_status', label: 'ステータス変更' },
+  { value: 'set_address', label: '呼び方変更' },
 ];
 
 function conditionDefaults(type) {
@@ -91,6 +92,8 @@ function actionDefaults(type) {
       return { item_id: null, quantity: 1 };
     case 'change_status':
       return { character_id: null, status_id: null, operation: 'grant', locked: false };
+    case 'set_address':
+      return { character_id: null, address: '' };
     default:
       return {};
   }
@@ -784,6 +787,31 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               </label>
             )}
           </div>
+        </div>
+      )}
+
+      {action.action_type === 'set_address' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => setParams({ character_id: e.target.value === 'all_present' ? 'all_present' : Number(e.target.value) || null })}
+            >
+              <option value="">選択してください</option>
+              <option value="all_present">同席者全員</option>
+              {charOptions}
+            </select>
+          </label>
+          <label style={{ flex: 2 }}>
+            <span style={label11}>新しい呼び方</span>
+            <input
+              style={{ width: '100%' }}
+              placeholder="例：あなた♡"
+              value={p.address ?? ''}
+              onChange={(e) => setParams({ address: e.target.value })}
+            />
+          </label>
         </div>
       )}
     </div>
