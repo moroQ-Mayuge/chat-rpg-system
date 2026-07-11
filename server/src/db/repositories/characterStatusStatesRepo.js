@@ -50,16 +50,50 @@ export function grantStatus(characterId, statusId, ctx, locked = false) {
       'SELECT id FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
     )
     .get(characterId, statusId, playthrough_id, room_session_id);
+  let result;
   if (existing) {
     db.prepare('UPDATE character_status_states SET locked = ? WHERE id = ?').run(locked ? 1 : 0, existing.id);
-    return { id: existing.id, granted: false, alreadyActive: true };
+    result = { id: existing.id, granted: false, alreadyActive: true };
+  } else {
+    const inserted = db
+      .prepare(
+        'INSERT INTO character_status_states (status_id, character_id, playthrough_id, room_session_id, locked) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run(statusId, characterId, playthrough_id, room_session_id, locked ? 1 : 0);
+    result = { id: inserted.lastInsertRowid, granted: true };
   }
-  const result = db
+
+  // A raw update rather than roomSessionsRepo.js's removeParticipant, since
+  // importing that here would cycle back through playthroughsRepo.js ->
+  // relationshipStatesRepo.js -> axisStatusTriggersRepo.js -> this file.
+  if (status.removes_from_session && ctx.roomSessionId != null) {
+    db.prepare(
+      `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+       WHERE room_session_id = ? AND character_id = ?`,
+    ).run(ctx.roomSessionId, characterId);
+  }
+
+  return result;
+}
+
+// Copies a character's currently-active 'accompanying'-scoped statuses from
+// one room_session to another — called by roomSessionsRepo.js's
+// createRoomSession when a character carries over via is_accompanying on a
+// room移動, mirroring how the participant row itself is carried over.
+export function carryOverAccompanyingStatuses(characterId, fromRoomSessionId, toRoomSessionId) {
+  const rows = db
     .prepare(
-      'INSERT INTO character_status_states (status_id, character_id, playthrough_id, room_session_id, locked) VALUES (?, ?, ?, ?, ?)',
+      `SELECT css.status_id, css.locked
+       FROM character_status_states css
+       JOIN character_statuses cs ON cs.id = css.status_id
+       WHERE css.character_id = ? AND css.room_session_id = ? AND cs.persistence_scope = 'accompanying'`,
     )
-    .run(statusId, characterId, playthrough_id, room_session_id, locked ? 1 : 0);
-  return { id: result.lastInsertRowid, granted: true };
+    .all(characterId, fromRoomSessionId);
+  for (const row of rows) {
+    db.prepare(
+      'INSERT INTO character_status_states (status_id, character_id, playthrough_id, room_session_id, locked) VALUES (?, ?, NULL, ?, ?)',
+    ).run(row.status_id, characterId, toRoomSessionId, row.locked);
+  }
 }
 
 // Explicit removal always works regardless of locked — the lock only

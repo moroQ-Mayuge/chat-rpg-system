@@ -105,6 +105,7 @@ roomSessionsRouter.post('/:id/move', (req, res) => {
   const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
   const newSession = createRoomSession(session.playthrough_id, connection.to_room_template_id, {
     carryOverParticipants,
+    fromRoomSessionId: session.id,
   });
 
   res.json({ session: newSession, playthrough });
