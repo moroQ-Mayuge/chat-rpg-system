@@ -14,6 +14,7 @@ import ChatPage from './pages/ChatPage.jsx';
 import ItemsPage from './pages/ItemsPage.jsx';
 import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
 import SessionLogPage from './pages/SessionLogPage.jsx';
+import CharacterStatusesPage from './pages/CharacterStatusesPage.jsx';
 
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
@@ -53,6 +54,9 @@ export default function App() {
           <NavLink to="/relationship-axes" style={navLinkStyle}>
             関係性軸
           </NavLink>
+          <NavLink to="/character-statuses" style={navLinkStyle}>
+            キャラ状態
+          </NavLink>
           <NavLink to="/events" style={navLinkStyle}>
             イベント
           </NavLink>
@@ -79,6 +83,7 @@ export default function App() {
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />
+          <Route path="/character-statuses" element={<CharacterStatusesPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/worlds/:worldId/playthroughs" element={<PlaythroughsPage />} />

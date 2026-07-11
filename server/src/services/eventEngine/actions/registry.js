@@ -8,6 +8,7 @@ import { executeChangeOutfit } from './changeOutfit.js';
 import { executeAdvanceTime } from './advanceTime.js';
 import { executeGrantItem } from './grantItem.js';
 import { executeRemoveItem } from './removeItem.js';
+import { executeChangeStatus } from './changeStatus.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -20,6 +21,7 @@ export const actionRegistry = {
   advance_time: executeAdvanceTime,
   grant_item: executeGrantItem,
   remove_item: executeRemoveItem,
+  change_status: executeChangeStatus,
 };
 
 export async function executeAction(action, execCtx) {

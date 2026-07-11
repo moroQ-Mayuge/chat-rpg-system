@@ -6,6 +6,7 @@ import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
+import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { eventsApi } from '../api/events.js';
 
 const CONDITION_TYPES = [
@@ -16,6 +17,7 @@ const CONDITION_TYPES = [
   { value: 'flag_state', label: 'フラグ状態' },
   { value: 'participant_count', label: '同席人数' },
   { value: 'has_item', label: '所持アイテム' },
+  { value: 'has_status', label: 'ステータス所持' },
   { value: 'llm_judge', label: 'LLM判定' },
 ];
 
@@ -30,6 +32,7 @@ const ACTION_TYPES = [
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'remove_item', label: 'アイテム削除' },
+  { value: 'change_status', label: 'ステータス変更' },
 ];
 
 function conditionDefaults(type) {
@@ -48,6 +51,8 @@ function conditionDefaults(type) {
       return { comparison: '>=', value: 1 };
     case 'has_item':
       return { item_id: null, negate: false };
+    case 'has_status':
+      return { character_id: null, status_id: null, negate: false };
     case 'llm_judge':
       return { question: '' };
     default:
@@ -84,6 +89,8 @@ function actionDefaults(type) {
     case 'grant_item':
     case 'remove_item':
       return { item_id: null, quantity: 1 };
+    case 'change_status':
+      return { character_id: null, status_id: null, operation: 'grant', locked: false };
     default:
       return {};
   }
@@ -112,7 +119,7 @@ const rowHeaderStyle = { display: 'flex', justifyContent: 'space-between', align
 const grid3 = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 };
 const label11 = { fontSize: 11, color: '#888', display: 'block', marginBottom: 2 };
 
-function ConditionEditor({ condition, characters, axes, items, hasOutcomeBranch, onChange, onRemove }) {
+function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
   const [keywordDraft, setKeywordDraft] = useState('');
@@ -361,6 +368,41 @@ function ConditionEditor({ condition, characters, axes, items, hasOutcomeBranch,
         </div>
       )}
 
+      {condition.condition_type === 'has_status' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => setParams({ character_id: e.target.value === 'any_present' ? 'any_present' : Number(e.target.value) || null })}
+            >
+              <option value="">選択してください</option>
+              <option value="any_present">同席者の誰か1人でも</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>ステータス</span>
+            <select value={p.status_id ?? ''} onChange={(e) => setParams({ status_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(statuses ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
+          </label>
+        </div>
+      )}
+
       {condition.condition_type === 'llm_judge' && (
         <div>
           <label>
@@ -381,7 +423,7 @@ function ConditionEditor({ condition, characters, axes, items, hasOutcomeBranch,
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, items, hasOutcomeBranch, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, statuses, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -700,6 +742,50 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, hasOut
           </label>
         </div>
       )}
+
+      {action.action_type === 'change_status' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => setParams({ character_id: e.target.value === 'all_present' ? 'all_present' : Number(e.target.value) || null })}
+            >
+              <option value="">選択してください</option>
+              <option value="all_present">同席者全員</option>
+              {charOptions}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>ステータス</span>
+            <select value={p.status_id ?? ''} onChange={(e) => setParams({ status_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(statuses ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <label style={{ flex: 1 }}>
+              <span style={label11}>操作</span>
+              <select value={p.operation} onChange={(e) => setParams({ operation: e.target.value })}>
+                <option value="grant">付与</option>
+                <option value="remove">解除</option>
+                <option value="lock">ロック</option>
+                <option value="unlock">ロック解除</option>
+              </select>
+            </label>
+            {p.operation === 'grant' && (
+              <label style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+                <input type="checkbox" checked={p.locked ?? false} onChange={(e) => setParams({ locked: e.target.checked })} />
+                <span style={{ fontSize: 12 }}>付与と同時にロックする</span>
+              </label>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -755,6 +841,7 @@ export default function EventsPage() {
   const { data: expressionTypes } = useExpressionTypes();
   const { data: roomTemplates } = useRoomTemplates();
   const { data: items } = useAllItems();
+  const { data: statuses } = useAllCharacterStatuses();
   const { create, update, remove } = useEventDefinitionMutations();
 
   const [selectedId, setSelectedId] = useState(null);
@@ -1015,6 +1102,7 @@ export default function EventsPage() {
                 characters={characters}
                 axes={axes}
                 items={items}
+                statuses={statuses}
                 hasOutcomeBranch={draft.has_outcome_branch}
                 onChange={(next) =>
                   setDraft({ ...draft, conditions: draft.conditions.map((c, idx) => (idx === i ? next : c)) })
@@ -1047,6 +1135,7 @@ export default function EventsPage() {
                 axes={axes}
                 expressionTypes={expressionTypes}
                 items={items}
+                statuses={statuses}
                 hasOutcomeBranch={draft.has_outcome_branch}
                 onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
                 onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}
