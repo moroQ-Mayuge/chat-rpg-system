@@ -1,5 +1,7 @@
 import { db } from '../connection.js';
 import { getWorld } from './worldsRepo.js';
+import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
+import { adjustValue } from './relationshipStatesRepo.js';
 
 function attachLabels(playthrough) {
   if (!playthrough) return playthrough;
@@ -39,6 +41,25 @@ export function deletePlaythrough(id) {
   return { deleted: true };
 }
 
+// Self-stat axes with a configured regen_per_time_slot passively drift every
+// time slot, for every character already introduced in this playthrough
+// (has at least one relationship_states row here) — applies regardless of
+// whether that character is present in the current session, per design
+// (自己ステータス／キャラ状態システム, ROADMAP.md).
+function applySelfStatRegen(playthroughId, slots) {
+  const axes = listRegeneratingSelfStatAxes();
+  if (axes.length === 0) return;
+  const characterIds = db
+    .prepare('SELECT DISTINCT character_id FROM relationship_states WHERE playthrough_id = ?')
+    .all(playthroughId)
+    .map((r) => r.character_id);
+  for (const axis of axes) {
+    for (const characterId of characterIds) {
+      adjustValue(playthroughId, characterId, axis.id, 'add', axis.regen_per_time_slot * slots);
+    }
+  }
+}
+
 // Advances the playthrough's calendar by `slots` time-slot steps. On each day
 // rollover: reroll weather and recompute the season index from the day count.
 // Shared by all three triggers (turn-count, room-exit, advance_time event action) per SPEC.md 3.2.
@@ -63,6 +84,8 @@ export function advanceTime(playthroughId, slots = 1) {
      SET current_day = ?, current_time_slot_index = ?, current_weather = ?, current_season_index = ?, updated_at = datetime('now')
      WHERE id = ?`,
   ).run(day, slotIndex, weather, seasonIndex, playthroughId);
+
+  applySelfStatRegen(playthroughId, slots);
 
   return getPlaythrough(playthroughId);
 }
