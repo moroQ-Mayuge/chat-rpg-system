@@ -9,6 +9,27 @@ import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useItemsForWorld } from '../hooks/useItems.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
 
+// Compact renderer for a status snapshot ({self_stats, statuses,
+// relationship_stage} — same shape whether live (participant.status) or
+// frozen at speak-time (message.status_snapshot)), gated per-category by the
+// effective visibility for whichever display location is calling it (strip/
+// panel/chat_log — see session.status_display_visibility).
+function StatusInline({ status, visibility }) {
+  if (!status || !visibility) return null;
+  const parts = [];
+  if (visibility.self_stat && status.self_stats.length > 0) {
+    parts.push(status.self_stats.map((s) => `${s.name}:${s.value}`).join(' '));
+  }
+  if (visibility.status && status.statuses.length > 0) {
+    parts.push(status.statuses.map((s) => `[${s.name}]`).join(''));
+  }
+  if (visibility.relationship_stage && status.relationship_stage) {
+    parts.push(`《${status.relationship_stage.name}》`);
+  }
+  if (parts.length === 0) return null;
+  return <span style={{ fontSize: 9, color: '#666', marginLeft: 6 }}>{parts.join('　')}</span>;
+}
+
 const COMMAND_ICON_STYLE = {
   fontSize: 12,
   padding: '4px 8px',
@@ -319,6 +340,7 @@ export default function ChatPage() {
           : session.participants.map((p) => (
               <span key={p.character_id} style={{ marginRight: 8 }}>
                 {p.name}
+                <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
                 {session.room_is_place && (
                   <button
                     type="button"
@@ -341,6 +363,20 @@ export default function ChatPage() {
               </span>
             ))}
       </p>
+
+      {Object.values(session.status_display_visibility.panel).some(Boolean) && (
+        <details style={{ marginBottom: 6, flexShrink: 0 }}>
+          <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>ステータスパネル</summary>
+          <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {session.participants.map((p) => (
+              <div key={p.character_id} style={{ fontSize: 11 }}>
+                <strong>{p.name}</strong>
+                <StatusInline status={p.status} visibility={session.status_display_visibility.panel} />
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       <div style={{ marginBottom: 6, flexShrink: 0 }}>
         <button onClick={() => setScenePanelOpen((v) => !v)} style={{ fontSize: 11 }}>
@@ -391,6 +427,9 @@ export default function ChatPage() {
               {!isUser && (
                 <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>
                   {participant?.name ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
+                  {m.sender_type === 'character' && (
+                    <StatusInline status={m.status_snapshot} visibility={session.status_display_visibility.chat_log} />
+                  )}
                 </p>
               )}
               <div style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 8 }}>
