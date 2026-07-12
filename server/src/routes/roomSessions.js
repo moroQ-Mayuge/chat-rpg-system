@@ -28,6 +28,7 @@ import { runEventEngine } from '../services/eventEngine/index.js';
 import { resolveStylePromptForWorld } from '../db/repositories/imageStylePresetsRepo.js';
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
+import { withDisambiguatedNames } from '../services/participantNaming.js';
 import { broadcast } from '../ws/rooms.js';
 
 export const roomSessionsRouter = Router();
@@ -161,7 +162,11 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
 
   const validEmotionKeys = new Set(db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key));
   const fallbackKey = fallbackEmotionKey();
-  const participantsByName = new Map(session.participants.map((p) => [p.name, p]));
+  // Same disambiguation algorithm as promptBuilder.js's buildSystemPrompt,
+  // applied to the same session.participants array — so if two participants
+  // share a name, this Map's keys naturally match whatever the model was
+  // shown ("みお" / "みお(2)") instead of colliding on the bare name.
+  const participantsByName = new Map(withDisambiguatedNames(session.participants).map((p) => [p.display_name, p]));
 
   // The system prompt tells the model never to speak/act as the protagonist
   // by name, but small local models don't reliably follow negative

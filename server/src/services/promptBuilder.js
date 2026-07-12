@@ -3,6 +3,7 @@ import { serializeCharacter } from './characterSheetFormat.js';
 import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
+import { withDisambiguatedNames } from './participantNaming.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -59,16 +60,23 @@ function buildSystemPrompt(session, participants) {
   const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
   const itemCategoryNames = listCategoriesForWorld(worldId).map((c) => c.name);
 
-  const characterCards = participants
+  // Disambiguates same-named participants (e.g. two "みお"s cast in the same
+  // scene) with a "(2)" suffix, since the LLM has no other way to tell them
+  // apart in the [Name]: script format — both the character cards below and
+  // the participant list line need to show whatever name the model is
+  // expected to echo back, so roomSessions.js's parsing lookup agrees.
+  const disambiguated = withDisambiguatedNames(participants);
+
+  const characterCards = disambiguated
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
       const currentAddress = getCurrentAddress(session.playthrough_id, character.id);
-      const effectiveCharacter = currentAddress ? { ...character, call_user_as: currentAddress } : character;
+      const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
       return serializeCharacter(effectiveCharacter, outfit);
     })
     .join('\n');
 
-  const participantNames = participants.map((p) => p.name).join('、');
+  const participantNames = disambiguated.map((p) => p.display_name).join('、');
   const protagonist = resolveProtagonist(session.playthrough_id);
   const protagonistBlock = buildProtagonistBlock(protagonist);
 
