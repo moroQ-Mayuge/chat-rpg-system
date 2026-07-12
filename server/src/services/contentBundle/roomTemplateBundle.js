@@ -99,17 +99,27 @@ export async function importRoomTemplateEntries(entries, readImage, worldId, war
   return { created, deferred };
 }
 
-export function resolveRoomTemplateAssociations(deferred, worldId, warnings) {
+// importedCharacters: the characters actually created by THIS import batch
+// (from importCharacterEntries's return). Name lookups prefer this list
+// first — falling back to a whole-install search only when the bundle
+// references a character it didn't itself include (e.g. re-linking a room to
+// an already-existing character in this install). Without this, a name that
+// collides with a character that predates the import (very likely when
+// re-importing a bundle exported from the very same install, or duplicating
+// content that shares a cast) would silently resolve to the pre-existing
+// character instead of the one this batch just created.
+export function resolveRoomTemplateAssociations(deferred, worldId, warnings, importedCharacters = []) {
+  const importedByName = new Map(importedCharacters.map((c) => [c.name, c.id]));
   for (const { roomTemplateId, entry } of deferred) {
     for (const name of entry.default_participant_character_names ?? []) {
-      const character = db.prepare('SELECT id FROM characters WHERE name = ?').get(name);
-      if (!character) {
+      const characterId = importedByName.get(name) ?? db.prepare('SELECT id FROM characters WHERE name = ?').get(name)?.id;
+      if (characterId == null) {
         warnings.push(`部屋テンプレート「${entry.name}」の登場キャラ「${name}」が見つからず、割り当てをスキップしました`);
         continue;
       }
       db.prepare(
         'INSERT INTO room_template_characters (room_template_id, character_id, is_default_participant) VALUES (?, ?, 1)',
-      ).run(roomTemplateId, character.id);
+      ).run(roomTemplateId, characterId);
     }
     for (const conn of entry.connections ?? []) {
       const toRoom = db
