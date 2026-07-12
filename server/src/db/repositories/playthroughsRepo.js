@@ -2,6 +2,7 @@ import { db } from '../connection.js';
 import { getWorld } from './worldsRepo.js';
 import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
 import { adjustValue } from './relationshipStatesRepo.js';
+import { setFlag } from './sessionFlagsRepo.js';
 
 function attachLabels(playthrough) {
   if (!playthrough) return playthrough;
@@ -33,6 +34,12 @@ export function createPlaythrough(worldId, name) {
        VALUES (?, ?, 1, 0, ?, 0, 'active')`,
     )
     .run(worldId, name, initialWeather);
+  // Lets flag_state("season"/"time_slot"/"weather", ...) event conditions
+  // work from turn 1, not just after the first change (see advanceTime's
+  // matching update).
+  setFlag(result.lastInsertRowid, 'season', world.season_labels[0] ?? '', null);
+  setFlag(result.lastInsertRowid, 'time_slot', world.time_slot_labels[0] ?? '', null);
+  setFlag(result.lastInsertRowid, 'weather', initialWeather, null);
   return getPlaythrough(result.lastInsertRowid);
 }
 
@@ -84,6 +91,19 @@ export function advanceTime(playthroughId, slots = 1) {
      SET current_day = ?, current_time_slot_index = ?, current_weather = ?, current_season_index = ?, updated_at = datetime('now')
      WHERE id = ?`,
   ).run(day, slotIndex, weather, seasonIndex, playthroughId);
+
+  // Lets event authors gate content on the current season/time-of-day/weather
+  // via a plain flag_state condition, since no dedicated condition type for
+  // any of these exists.
+  if (seasonIndex !== playthrough.current_season_index) {
+    setFlag(playthroughId, 'season', world.season_labels[seasonIndex] ?? '', null);
+  }
+  if (slotIndex !== playthrough.current_time_slot_index) {
+    setFlag(playthroughId, 'time_slot', world.time_slot_labels[slotIndex] ?? '', null);
+  }
+  if (weather !== playthrough.current_weather) {
+    setFlag(playthroughId, 'weather', weather ?? '', null);
+  }
 
   applySelfStatRegen(playthroughId, slots);
 

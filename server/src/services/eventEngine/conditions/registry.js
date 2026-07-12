@@ -7,6 +7,7 @@ import { evaluateParticipantCount } from './participantCount.js';
 import { evaluateHasItem } from './hasItem.js';
 import { evaluateLlmJudge } from './llmJudge.js';
 import { evaluateHasStatus } from './hasStatus.js';
+import { evaluateHasOutfit } from './hasOutfit.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -18,6 +19,7 @@ export const conditionRegistry = {
   has_item: evaluateHasItem,
   llm_judge: evaluateLlmJudge,
   has_status: evaluateHasStatus,
+  has_outfit: evaluateHasOutfit,
 };
 
 // Awaited unconditionally — most evaluators are sync and resolve

@@ -18,6 +18,7 @@ const CONDITION_TYPES = [
   { value: 'participant_count', label: '同席人数' },
   { value: 'has_item', label: '所持アイテム' },
   { value: 'has_status', label: 'ステータス所持' },
+  { value: 'has_outfit', label: '着用中の衣装' },
   { value: 'llm_judge', label: 'LLM判定' },
 ];
 
@@ -54,6 +55,8 @@ function conditionDefaults(type) {
       return { item_id: null, negate: false };
     case 'has_status':
       return { character_id: null, status_id: null, negate: false };
+    case 'has_outfit':
+      return { character_id: null, outfit_name: '', negate: false };
     case 'llm_judge':
       return { question: '' };
     default:
@@ -402,6 +405,34 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
           <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
             <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
             <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
+          </label>
+        </div>
+      )}
+
+      {condition.condition_type === 'has_outfit' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => setParams({ character_id: e.target.value === 'any_present' ? 'any_present' : Number(e.target.value) || null })}
+            >
+              <option value="">選択してください</option>
+              <option value="any_present">同席者の誰か1人でも</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>衣装名（例：水着）</span>
+            <input style={{ width: '100%' }} value={p.outfit_name ?? ''} onChange={(e) => setParams({ outfit_name: e.target.value })} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>着ていない場合に成立</span>
           </label>
         </div>
       )}
