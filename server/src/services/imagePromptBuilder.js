@@ -4,6 +4,7 @@ import path from 'node:path';
 import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
+import { resolveOutfitTags } from './outfitTagCategories.js';
 
 export const MAIN_WIDTH = 1216;
 export const MAIN_HEIGHT = 832;
@@ -61,7 +62,7 @@ export function buildSceneTagParts(session, participants) {
 
   const characterTags = participants
     .filter((p) => p.current_outfit_id)
-    .map((p) => db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(p.current_outfit_id)?.image_tags)
+    .map((p) => resolveOutfitTags(db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id), null))
     .filter(Boolean)
     .join(', ');
 

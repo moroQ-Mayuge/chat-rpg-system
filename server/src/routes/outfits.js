@@ -3,10 +3,32 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
-import { createOutfit, updateOutfit, deleteOutfit, setStandingImage, setExpressionImage, getOutfit } from '../db/repositories/outfitsRepo.js';
+import {
+  createOutfit,
+  updateOutfit,
+  deleteOutfit,
+  setStandingImage,
+  setExpressionImage,
+  getOutfit,
+  OUTFIT_TAG_FIELDS,
+} from '../db/repositories/outfitsRepo.js';
 import { getExpressionType } from '../db/repositories/expressionTypesRepo.js';
 import { generateOutfitStandingImage, generateOutfitExpressionImage } from '../services/outfitImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
+
+// Lets the character edit form generate a preview using whatever's currently
+// typed in the 13 tag category fields, even if not saved yet — without this,
+// generation always re-read the last-saved outfit row, forcing a save before
+// every single prompt tweak could be tested (the exact workflow friction the
+// user reported). Only known tag fields are pulled from the body; anything
+// else in req.body is ignored.
+export function tagOverridesFromBody(body) {
+  const overrides = {};
+  for (const field of OUTFIT_TAG_FIELDS) {
+    if (body[field] !== undefined) overrides[field] = body[field];
+  }
+  return overrides;
+}
 
 export const outfitsRouter = Router();
 
@@ -49,7 +71,7 @@ outfitsRouter.post('/outfits/:id/expression-image/:expressionTypeId', upload.sin
 outfitsRouter.post('/outfits/:id/generate-standing-image', (req, res) => {
   enqueueImageJob(async () => {
     try {
-      const outfit = getOutfit(req.params.id);
+      const outfit = { ...getOutfit(req.params.id), ...tagOverridesFromBody(req.body) };
       const imagePath = await generateOutfitStandingImage(outfit, req.body.extra_hint);
       res.json(setStandingImage(req.params.id, imagePath));
     } catch (err) {
@@ -61,7 +83,7 @@ outfitsRouter.post('/outfits/:id/generate-standing-image', (req, res) => {
 outfitsRouter.post('/outfits/:id/generate-expression-image/:expressionTypeId', (req, res) => {
   enqueueImageJob(async () => {
     try {
-      const outfit = getOutfit(req.params.id);
+      const outfit = { ...getOutfit(req.params.id), ...tagOverridesFromBody(req.body) };
       const expressionType = getExpressionType(req.params.expressionTypeId);
       const imagePath = await generateOutfitExpressionImage(outfit, expressionType, req.body.extra_hint, req.body.mode);
       res.json(setExpressionImage(req.params.id, req.params.expressionTypeId, imagePath));

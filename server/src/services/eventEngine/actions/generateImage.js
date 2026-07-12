@@ -11,9 +11,10 @@ import { resolveStylePromptForWorld } from '../../../db/repositories/imageStyleP
 import { getImageGenerationSettings } from '../../../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
+import { resolveOutfitTags } from '../../outfitTagCategories.js';
 
 // Substitutes placeholders in prompt_override with a participant's current
-// Outfit danbooru tags (SPEC.md 3.6.4/3.7). Two forms are supported:
+// Outfit danbooru tags (SPEC.md 3.6.4/3.7). Two base forms are supported:
 //   ${キャラ名}     — a specific, fixed character by name
 //   ${target1} ${target2} ... — positional, resolving to candidateParticipants
 //                                in order (i.e. target_character_ids' order,
@@ -21,6 +22,10 @@ import { broadcast } from '../../../ws/rooms.js';
 //                                an event reference "whoever ends up here"
 //                                without knowing in advance which character
 //                                that will be (e.g. after a random character_join).
+// Either base form can carry an optional ".<categoryKey>" suffix to pull just
+// one tag category or a named shot-framing range instead of the whole outfit
+// (see outfitTagCategories.js's resolveOutfitTags) — e.g. ${target1.hairstyle},
+// ${みお.upperbody_full}. No suffix keeps the old "everything combined" behavior.
 // Content inside the placeholders is authored entirely by the user in the
 // event editor — this module only does string substitution, never generates
 // the tag content itself.
@@ -29,16 +34,20 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
   if (!promptOverride) return { text: '', referencedIds };
 
   const text = promptOverride.replace(/\$\{([^}]+)\}/g, (match, token) => {
-    const positionalMatch = token.match(/^target(\d+)$/);
+    const dotIndex = token.indexOf('.');
+    const base = dotIndex === -1 ? token : token.slice(0, dotIndex);
+    const categoryKey = dotIndex === -1 ? null : token.slice(dotIndex + 1);
+
+    const positionalMatch = base.match(/^target(\d+)$/);
     const participant = positionalMatch
       ? candidateParticipants[Number(positionalMatch[1]) - 1]
-      : participantsByName.get(token);
+      : participantsByName.get(base);
     if (!participant) return '';
     referencedIds.add(participant.character_id);
     const outfit = participant.current_outfit_id
-      ? db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(participant.current_outfit_id)
+      ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
       : null;
-    return outfit?.image_tags ?? '';
+    return resolveOutfitTags(outfit, categoryKey) ?? '';
   });
 
   return { text, referencedIds };
@@ -74,7 +83,7 @@ export async function executeGenerateImage(params, execCtx) {
         // aren't silently dropped from the generated image (SPEC.md 3.6.4).
         const leftoverTags = candidateParticipants
           .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
-          .map((p) => db.prepare('SELECT image_tags FROM outfits WHERE id = ?').get(p.current_outfit_id)?.image_tags)
+          .map((p) => resolveOutfitTags(db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id), null))
           .filter(Boolean);
 
         const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');

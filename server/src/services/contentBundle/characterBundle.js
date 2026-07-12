@@ -1,6 +1,6 @@
 import { db } from '../../db/connection.js';
 import { getCharacter, createCharacter, CHARACTER_TEXT_FIELDS } from '../../db/repositories/charactersRepo.js';
-import { createOutfit, setStandingImage, setExpressionImage, deleteOutfit } from '../../db/repositories/outfitsRepo.js';
+import { createOutfit, setStandingImage, setExpressionImage, deleteOutfit, OUTFIT_TAG_FIELDS } from '../../db/repositories/outfitsRepo.js';
 import { saveCharacterImage } from '../../storage/imageStorage.js';
 import { extensionOf } from './diskImages.js';
 
@@ -15,7 +15,7 @@ export function collectCharacterEntry(characterId, imageCollector) {
       name: outfit.name,
       clothing_description: outfit.clothing_description,
       equipment_description: outfit.equipment_description,
-      image_tags: outfit.image_tags,
+      ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, outfit[f]])),
       is_default: Boolean(outfit.is_default),
       standing_image: imageCollector.add(outfit.standing_image_path, 'char-standing'),
       expression_images: outfit.expression_images.map((img) => ({
