@@ -1,5 +1,24 @@
 import { db } from '../connection.js';
 
+// The 13 danbooru-tag category columns that replaced the old flat image_tags
+// column (see 0028_outfit_tag_categories.sql). Order matters for the "bare"
+// (no category key) composition in outfitTagCategories.js's resolveOutfitTags.
+export const OUTFIT_TAG_FIELDS = [
+  'main_features',
+  'hairstyle',
+  'clothing_main',
+  'clothing_face',
+  'clothing_upper',
+  'clothing_lower',
+  'clothing_legs',
+  'shoes',
+  'clothing_face_extra',
+  'clothing_upper_extra',
+  'clothing_lower_extra',
+  'clothing_legs_extra',
+  'belongings',
+];
+
 function attachExpressionImages(outfit) {
   if (!outfit) return outfit;
   const images = db
@@ -32,36 +51,27 @@ function unsetOtherDefaults(characterId, exceptOutfitId) {
 }
 
 export function createOutfit(characterId, data) {
+  const tagColumns = OUTFIT_TAG_FIELDS.join(', ');
+  const tagPlaceholders = OUTFIT_TAG_FIELDS.map(() => '?').join(', ');
+  const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, image_tags, is_default)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
-    .run(
-      characterId,
-      data.name,
-      data.clothing_description ?? '',
-      data.equipment_description ?? '',
-      data.image_tags ?? '',
-      data.is_default ? 1 : 0,
-    );
+    .run(characterId, data.name, data.clothing_description ?? '', data.equipment_description ?? '', data.is_default ? 1 : 0, ...tagValues);
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
   return getOutfit(result.lastInsertRowid);
 }
 
 export function updateOutfit(id, data) {
   const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(id);
+  const tagSetClause = OUTFIT_TAG_FIELDS.map((f) => `${f} = ?`).join(', ');
+  const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
-    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, image_tags = ?, is_default = ?
+    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, ${tagSetClause}
      WHERE id = ?`,
-  ).run(
-    data.name,
-    data.clothing_description ?? '',
-    data.equipment_description ?? '',
-    data.image_tags ?? '',
-    data.is_default ? 1 : 0,
-    id,
-  );
+  ).run(data.name, data.clothing_description ?? '', data.equipment_description ?? '', data.is_default ? 1 : 0, ...tagValues, id);
   if (data.is_default) unsetOtherDefaults(outfit.character_id, id);
   return getOutfit(id);
 }
