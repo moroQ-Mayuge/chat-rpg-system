@@ -14,7 +14,8 @@ export const outfitsApi = {
     formData.append('image', file);
     return api.post(`/outfits/${id}/expression-image/${expressionTypeId}`, formData);
   },
-  generateStandingImage: (id, extraHint) => api.post(`/outfits/${id}/generate-standing-image`, { extra_hint: extraHint }),
-  generateExpressionImage: (id, expressionTypeId, extraHint, mode) =>
-    api.post(`/outfits/${id}/generate-expression-image/${expressionTypeId}`, { extra_hint: extraHint, mode }),
+  generateStandingImage: (id, extraHint, tags) =>
+    api.post(`/outfits/${id}/generate-standing-image`, { extra_hint: extraHint, ...tags }),
+  generateExpressionImage: (id, expressionTypeId, extraHint, mode, tags) =>
+    api.post(`/outfits/${id}/generate-expression-image/${expressionTypeId}`, { extra_hint: extraHint, mode, ...tags }),
 };

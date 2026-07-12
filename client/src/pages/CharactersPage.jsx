@@ -53,6 +53,24 @@ const emptyForm = {
   attribute_tags: '',
 };
 
+// Matches server/src/db/repositories/outfitsRepo.js's OUTFIT_TAG_FIELDS order.
+const OUTFIT_TAG_CATEGORIES = [
+  ['main_features', '主たる特徴（髪型以外の目の色・体形・キャラタグなど）'],
+  ['hairstyle', '髪型'],
+  ['clothing_main', '服装の主たる特徴（学校制服など）'],
+  ['clothing_face', '服装：顔回り（帽子・耳アクセサリなど）'],
+  ['clothing_upper', '服装：上半身（シャツ・ジャケットなど）'],
+  ['clothing_lower', '服装：下半身（スカートなど、太もも上部まで）'],
+  ['clothing_legs', '足回り（太ももからふくらはぎ）'],
+  ['shoes', '靴'],
+  ['clothing_face_extra', '追加装備：顔回り（鎧など服の上に追加するもの）'],
+  ['clothing_upper_extra', '追加装備：上半身'],
+  ['clothing_lower_extra', '追加装備：下半身'],
+  ['clothing_legs_extra', '追加装備：足回り'],
+  ['belongings', '持ち物（かばん・武器など）'],
+];
+const OUTFIT_TAG_FIELDS = OUTFIT_TAG_CATEGORIES.map(([key]) => key);
+
 function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
   return (
     <div>
@@ -152,7 +170,7 @@ export default function CharactersPage() {
           name: created.outfits[0].name,
           clothing_description: created.outfits[0].clothing_description,
           equipment_description: created.outfits[0].equipment_description,
-          image_tags: pendingOutfitTags,
+          main_features: pendingOutfitTags,
           is_default: true,
         });
       }
@@ -238,6 +256,10 @@ export default function CharactersPage() {
     }));
   }
 
+  function currentOutfitTags() {
+    return Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, activeOutfit[key] ?? '']));
+  }
+
   async function saveOutfit() {
     if (!activeOutfit) return;
     await outfitMutations.update.mutateAsync({
@@ -246,8 +268,8 @@ export default function CharactersPage() {
         name: activeOutfit.name,
         clothing_description: activeOutfit.clothing_description,
         equipment_description: activeOutfit.equipment_description,
-        image_tags: activeOutfit.image_tags,
         is_default: Boolean(activeOutfit.is_default),
+        ...currentOutfitTags(),
       },
     });
   }
@@ -265,16 +287,21 @@ export default function CharactersPage() {
   }
 
   function confirmIfNoTags() {
-    if (activeOutfit.image_tags?.trim()) return true;
+    const hasAnyTag = OUTFIT_TAG_FIELDS.some((key) => activeOutfit[key]?.trim());
+    if (hasAnyTag) return true;
     return window.confirm('服装タグが未設定ですが、このまま画像生成しますか？（意図せず裸体が生成される場合があります）');
   }
 
+  // Sends the form's current (possibly unsaved) tag values along with the
+  // generate request, so tweaking a tag and generating a preview no longer
+  // requires saving the outfit first — the server prefers these over the
+  // last-saved DB row when present (see routes/outfits.js's tagOverridesFromBody).
   async function handleGenerateStandingImage() {
     if (!activeOutfit || !confirmIfNoTags()) return;
     setGeneratingImageTarget('standing');
     setImageGenError(null);
     try {
-      await outfitMutations.generateStandingImage.mutateAsync({ id: activeOutfit.id });
+      await outfitMutations.generateStandingImage.mutateAsync({ id: activeOutfit.id, tags: currentOutfitTags() });
     } catch (err) {
       setImageGenError(err.message);
     } finally {
@@ -291,6 +318,7 @@ export default function CharactersPage() {
         id: activeOutfit.id,
         expressionTypeId,
         mode: expressionGenMode || undefined,
+        tags: currentOutfitTags(),
       });
     } catch (err) {
       setImageGenError(err.message);
@@ -564,11 +592,13 @@ export default function CharactersPage() {
                         </div>
 
                         <div>
-                          <p style={{ fontSize: 12, marginBottom: 4 }}>画像生成用danbooruタグ</p>
-                          <DanbooruTagEditor
-                            value={activeOutfit.image_tags}
-                            onChange={(v) => updateActiveOutfitField('image_tags', v)}
-                          />
+                          <p style={{ fontSize: 12, marginBottom: 4 }}>画像生成用danbooruタグ（カテゴリ別）</p>
+                          {OUTFIT_TAG_CATEGORIES.map(([key, label]) => (
+                            <details key={key} open={Boolean(activeOutfit[key]?.trim())} style={{ marginBottom: 4 }}>
+                              <summary style={{ fontSize: 11, color: '#555', cursor: 'pointer' }}>{label}</summary>
+                              <DanbooruTagEditor value={activeOutfit[key]} onChange={(v) => updateActiveOutfitField(key, v)} />
+                            </details>
+                          ))}
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

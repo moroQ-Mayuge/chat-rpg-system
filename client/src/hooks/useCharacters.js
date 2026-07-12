@@ -47,11 +47,12 @@ export function useOutfitMutations(characterId) {
       onSuccess: invalidate,
     }),
     generateStandingImage: useMutation({
-      mutationFn: ({ id, extraHint }) => outfitsApi.generateStandingImage(id, extraHint),
+      mutationFn: ({ id, extraHint, tags }) => outfitsApi.generateStandingImage(id, extraHint, tags),
       onSuccess: invalidate,
     }),
     generateExpressionImage: useMutation({
-      mutationFn: ({ id, expressionTypeId, extraHint, mode }) => outfitsApi.generateExpressionImage(id, expressionTypeId, extraHint, mode),
+      mutationFn: ({ id, expressionTypeId, extraHint, mode, tags }) =>
+        outfitsApi.generateExpressionImage(id, expressionTypeId, extraHint, mode, tags),
       onSuccess: invalidate,
     }),
   };
