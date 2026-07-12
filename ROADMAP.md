@@ -112,6 +112,5 @@
 
 ### コンテンツパイプライン
 - **TTS対応** — KoboldCpp自体は`--ttsmodel`等のCLIフラグを既に持っている（未使用）。モデル配置・API連携・再生UIが必要
-- **名前重複キャラの識別子** — `generateReply()`の`participantsByName`が表示名でキャラを引き当てており、同名キャラが複数いると衝突する
 - **SillyTavernカード形式インポート＋和訳** — `characterSheetFormat.js`の`parse()`を新フォーマット対応として拡張、英語データの自動和訳ステップを追加
 - **Qwen-Image-Edit対応** — KoboldCpp本体はv1.101.1以降で公式サポート済み（開発者本人が動作確認済み）。ただし本プロジェクトの手元検証では、非公式「AIO」モデル一式（VAE・テキストエンコーダ未統合、mmprojの変換方式がKoboldCppのローダーと非互換）は不可と判明。公式リンク先の構成一式（QuantStack + mradermacher、計約16.6GB）は未検証のまま
