@@ -152,11 +152,21 @@ export function importEventDefinitionJson(json, options = {}) {
   if (json?.type !== 'event_definition') throw new Error('イベント定義のエクスポートファイルではありません。');
 
   const nameByOldId = json.character_names ?? {};
+  // options.preferredCharacters/preferredStatuses: this import batch's own
+  // characters/statuses (or the target World's own, when merging into an
+  // existing World), applied AFTER the whole-install base map so they win on
+  // a name collision — same rationale as preferredRoomTemplates below. Without
+  // this, a character/status name that collides with one elsewhere in the
+  // install (routine in this install's split-World demo content) silently
+  // resolves to whichever same-named entity happens to sort last in
+  // listCharacters()/listAllStatuses(), not necessarily the intended one.
   const idByName = new Map(listCharacters().map((c) => [c.name, c.id]));
+  for (const c of options.preferredCharacters ?? []) idByName.set(c.name, c.id);
   const unresolvedCharacters = new Set();
 
   const statusNameByOldId = json.status_names ?? {};
   const statusIdByName = new Map(listAllStatuses().map((s) => [s.name, s.id]));
+  for (const s of options.preferredStatuses ?? []) statusIdByName.set(s.name, s.id);
   const unresolvedStatuses = new Set();
 
   const outfitRefByOldId = new Map((json.outfit_refs ?? []).map((r) => [r.outfit_id, r]));

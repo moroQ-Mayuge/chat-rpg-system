@@ -114,7 +114,7 @@ export async function importBundle(zipBuffer, options = {}) {
   // character/status/room template above has actually been created.
   let eventDefinitionsCreated = 0;
   if ((manifest.event_definitions ?? []).length > 0) {
-    eventDefinitionsCreated = importEventDefinitionEntries(manifest.event_definitions, warnings, roomTemplates);
+    eventDefinitionsCreated = importEventDefinitionEntries(manifest.event_definitions, warnings, roomTemplates, characters, characterStatuses);
   }
 
   return {

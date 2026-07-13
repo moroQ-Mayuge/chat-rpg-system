@@ -125,13 +125,21 @@ export function importAxisStatusTriggerEntries(entries, statusNameToId, warnings
 
 // Imported in the same order they were exported (ascending original id) so a
 // prerequisite event is always created before whatever references it by name.
-// importedRoomTemplates: this import batch's own rooms, so a room name that
-// collides with a pre-existing room elsewhere in the install resolves to the
-// right one (see importEventDefinitionJson's preferredRoomTemplates option).
-export function importEventDefinitionEntries(entries, warnings, importedRoomTemplates = []) {
+// importedRoomTemplates/importedCharacters/importedStatuses: this import
+// batch's own rooms/characters/statuses (or the target World's own, when
+// merging into an existing World), so a name that collides with a
+// pre-existing entity elsewhere in the install resolves to the right one
+// (see importEventDefinitionJson's preferredRoomTemplates/preferredCharacters/
+// preferredStatuses options).
+export function importEventDefinitionEntries(entries, warnings, importedRoomTemplates = [], importedCharacters = [], importedStatuses = []) {
   let created = 0;
   for (const json of entries) {
-    const result = importEventDefinitionJson(json, { suffixName: false, preferredRoomTemplates: importedRoomTemplates });
+    const result = importEventDefinitionJson(json, {
+      suffixName: false,
+      preferredRoomTemplates: importedRoomTemplates,
+      preferredCharacters: importedCharacters,
+      preferredStatuses: importedStatuses,
+    });
     const label = json.data?.name ?? '(不明なイベント)';
     if (result.unresolvedCharacters.length) warnings.push(`イベント「${label}」: キャラ参照が未解決です（${result.unresolvedCharacters.join(', ')}）`);
     if (result.unresolvedStatuses.length) warnings.push(`イベント「${label}」: ステータス参照が未解決です（${result.unresolvedStatuses.join(', ')}）`);
