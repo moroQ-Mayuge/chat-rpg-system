@@ -293,7 +293,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```json
 { "character_id": 3, "axis_id": 1, "comparison": ">=", "value": 80 }
 ```
-- `character_id`: 対象キャラID（`"any_present"`で同席者のうち誰か1人でも満たせば真、も許容）
+- `character_id`: 対象キャラID（`"any_present"`で同席者のうち誰か1人でも満たせば真、`"mentioned"`でそのターンにチャットで@メンションされたキャラのうち誰か1人でも満たせば真、も許容。`"mentioned"`時は`mentioned_limit`（int、nullable）でメンション順の先頭何人までを対象にするか絞り込める。has_status/has_outfitも同じ`"any_present"`/`"mentioned"`/`mentioned_limit`の扱いに対応）
 - `axis_id`: RelationshipAxisのID
 - `comparison`: `">="` `"<="` `"=="` `">"` `"<"`
 - `value`: int
@@ -320,7 +320,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "selection_mode": "random_weighted", "candidate_character_ids": [4,5,6], "outfit_id": null, "entrance_narration": "{character_name}がふらっと顔を出した。" }
 ```
 - `selection_mode`: `"specific"`（`character_id`指定） / `"random_weighted"`（Character.event_participation_weightで重み抽選） / `"random_uniform"`（候補から均等抽選）
-- `character_id` または `candidate_character_ids`: 対象
+- `character_id` または `candidate_character_ids`: 対象。`selection_mode: "specific"`時の`character_id`は`"mentioned"`も許容（そのターンに@メンションされた先頭1人。誰もメンションされていなければアクションはスキップ）
 - `outfit_id`: nullable（未指定はキャラのデフォルト衣装）
 - `entrance_narration`: nullable。テンプレート文字列（`{character_name}`等の置換変数を許可）
 
@@ -329,6 +329,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "selection_mode": "specific", "character_id": 4, "exit_narration": "{character_name}は静かに部屋を出て行った。" }
 ```
 - `selection_mode`: `"specific"` / `"random_from_present"`
+- `character_id`: `selection_mode: "specific"`時の対象。`"mentioned"`も許容（そのターンに@メンションされた先頭1人。誰もメンションされていなければアクションはスキップ）
 - `exit_narration`: nullable
 
 **insert_dialogue** - 台詞・ナレーション挿入
@@ -336,7 +337,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "mode": "generated", "character_id": 3, "prompt_hint": "少し照れながら本音を漏らす一言を発言する", "emotion_tag": "blush" }
 ```
 - `mode`: `"fixed"`（`text`をそのまま挿入） / `"generated"`（`prompt_hint`をLLMへの追加指示として渡し生成させる）
-- `character_id`: nullable（nullは`[NARRATION]`として扱う）
+- `character_id`: nullable（nullは`[NARRATION]`として扱う）。`"mentioned"`も許容（そのターンに@メンションされた先頭1人。誰もメンションされていなければ`[NARRATION]`にはフォールバックせずアクション自体をスキップする）
 - `text`: mode=fixedの場合の固定文
 - `prompt_hint`: mode=generatedの場合の生成ヒント
 - `emotion_tag`: nullable。強制的に使う表情キー
@@ -349,7 +350,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - `prompt_override`: nullable。ユーザーがイベントエディタ上で自由入力するdanbooruタグ・文章
   - `${キャラ名}`というプレースホルダーを埋め込むと、生成時にそのキャラクターの現在Outfitのdanbooruタグに置換される。複数キャラが絡む画像で「誰がどの役割・配置か」を書き分けたい場合に使う
   - プレースホルダーの中身（性的表現を含む具体的なタグ・文章）はユーザー自身がアプリのイベントエディタ上で入力するものであり、本仕様書や実装側で内容を事前定義・生成することはしない
-- `target_character_ids`: nullable（null=現在同席している全キャラ）。この画像に関係させるキャラの候補を絞り込む。プレースホルダーで参照されなかった候補キャラは、取りこぼし防止のためタグが自動的に末尾追加される（3.6参照）
+- `target_character_ids`: nullable（未指定または空配列の場合：そのターンに@メンションされたキャラがいればそちらを優先、いなければ現在同席している全キャラ）。この画像に関係させるキャラの候補を絞り込む。プレースホルダーで参照されなかった候補キャラは、取りこぼし防止のためタグが自動的に末尾追加される（3.6参照）
+- `mentioned_limit`: nullable（int）。`target_character_ids`が空で@メンションへフォールバックする際、メンション順の先頭何人までを対象にするか絞り込む（null=全員）
 
 **set_flag** - フラグ操作
 ```json
@@ -362,16 +364,16 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```json
 { "character_id": 3, "axis_id": 1, "operation": "add", "value": 5 }
 ```
-- `character_id`: 対象（`"all_present"`も許容）
+- `character_id`: 対象（`"all_present"`（同席者全員）／`"mentioned"`（そのターンに@メンションされた全員、`mentioned_limit`で先頭何人までかを絞り込み可）も許容）
 - `axis_id`: RelationshipAxisのID
 - `operation`: `"add"` / `"subtract"` / `"set"`
-- `value`: int（RelationshipAxisのmin/maxでクランプする）
+- `value`: int（RelationshipAxisのmin/maxでクランプする）。change_status/set_addressも`character_id`の`"all_present"`/`"mentioned"`/`mentioned_limit`の扱いは同じ
 
 **change_outfit** - 衣装変更
 ```json
 { "character_id": 3, "outfit_id": 7 }
 ```
-- `character_id`: 対象
+- `character_id`: 対象。`"mentioned"`も許容（そのターンに@メンションされた先頭1人。誰もメンションされていなければアクションはスキップ）
 - `outfit_id`: 切り替え先Outfit ID
 
 **advance_time** - ルートの時間経過を強制的に進める

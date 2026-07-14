@@ -125,6 +125,18 @@ const rowHeaderStyle = { display: 'flex', justifyContent: 'space-between', align
 const grid3 = { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 };
 const label11 = { fontSize: 11, color: '#888', display: 'block', marginBottom: 2 };
 
+// Shown next to a "対象キャラ" selector whenever character_id === 'mentioned',
+// to cap how many of the @-mentioned characters (in mention order) the
+// multi-target condition/action applies to. Blank = no cap (all mentioned).
+function MentionedLimitField({ value, onChange }) {
+  return (
+    <label>
+      <span style={label11}>@メンション上限人数（空欄=全員）</span>
+      <input type="number" min="1" value={value ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)} />
+    </label>
+  );
+}
+
 function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
@@ -272,10 +284,14 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'any_present' ? 'any_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -310,6 +326,9 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
               <input type="number" value={p.value ?? 0} onChange={(e) => setParams({ value: Number(e.target.value) })} />
             </label>
           </div>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
@@ -375,15 +394,19 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
       )}
 
       {condition.condition_type === 'has_status' && (
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <label style={{ flex: 1 }}>
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'any_present' ? 'any_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -406,19 +429,26 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
             <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
             <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
           </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
       {condition.condition_type === 'has_outfit' && (
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <label style={{ flex: 1 }}>
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'any_present' ? 'any_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -434,6 +464,9 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
             <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
             <span style={{ fontSize: 12 }}>着ていない場合に成立</span>
           </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
@@ -502,9 +535,13 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <span style={label11}>発言者</span>
               <select
                 value={p.character_id ?? ''}
-                onChange={(e) => setParams({ character_id: e.target.value ? Number(e.target.value) : null })}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setParams({ character_id: v === '' ? null : v === 'mentioned' ? 'mentioned' : Number(v) });
+                }}
               >
                 <option value="">ナレーション</option>
+                <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
                 {charOptions}
               </select>
             </label>
@@ -555,8 +592,15 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             {p.selection_mode === 'specific' && (
               <label>
                 <span style={label11}>対象キャラ</span>
-                <select value={p.character_id ?? ''} onChange={(e) => setParams({ character_id: Number(e.target.value) || null })}>
+                <select
+                  value={p.character_id ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+                  }}
+                >
                   <option value="">選択してください</option>
+                  <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
                   {charOptions}
                 </select>
               </label>
@@ -621,8 +665,15 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             {p.selection_mode === 'specific' && (
               <label>
                 <span style={label11}>対象キャラ</span>
-                <select value={p.character_id ?? ''} onChange={(e) => setParams({ character_id: Number(e.target.value) || null })}>
+                <select
+                  value={p.character_id ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+                  }}
+                >
                   <option value="">選択してください</option>
+                  <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
                   {charOptions}
                 </select>
               </label>
@@ -648,7 +699,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               </select>
             </label>
             <label style={{ gridColumn: 'span 2' }}>
-              <span style={label11}>対象キャラ（複数選択・未選択は同席者全員）</span>
+              <span style={label11}>対象キャラ（複数選択・空欄は@メンション優先→同席者全員）</span>
               <select
                 multiple
                 value={(p.target_character_ids ?? []).map(String)}
@@ -657,6 +708,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
                 {charOptions}
               </select>
             </label>
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           </div>
           <textarea
             style={{ width: '100%', marginTop: 8, fontFamily: 'monospace', fontSize: 12 }}
@@ -699,10 +751,14 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'all_present' ? 'all_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {charOptions}
             </select>
           </label>
@@ -731,6 +787,9 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <input type="number" value={p.value ?? 0} onChange={(e) => setParams({ value: Number(e.target.value) })} />
             </label>
           </div>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
@@ -738,8 +797,15 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
         <div style={grid3}>
           <label>
             <span style={label11}>対象キャラ</span>
-            <select value={p.character_id ?? ''} onChange={(e) => setParams({ character_id: Number(e.target.value) || null })}>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+              }}
+            >
               <option value="">選択してください</option>
+              <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
               {charOptions}
             </select>
           </label>
@@ -783,10 +849,14 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'all_present' ? 'all_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {charOptions}
             </select>
           </label>
@@ -818,19 +888,26 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               </label>
             )}
           </div>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
       {action.action_type === 'set_address' && (
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <label style={{ flex: 1 }}>
             <span style={label11}>対象キャラ</span>
             <select
               value={p.character_id ?? ''}
-              onChange={(e) => setParams({ character_id: e.target.value === 'all_present' ? 'all_present' : Number(e.target.value) || null })}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
             >
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
               {charOptions}
             </select>
           </label>
@@ -843,6 +920,9 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               onChange={(e) => setParams({ address: e.target.value })}
             />
           </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
     </div>

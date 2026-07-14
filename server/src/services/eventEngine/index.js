@@ -62,6 +62,7 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
     userMessage,
     aiResponseText,
     participants: session.participants,
+    mentionedCharacterIds,
     flagSetAtTurn: (flagKey) => getFlag(playthroughId, flagKey)?.set_at_turn ?? null,
   };
 

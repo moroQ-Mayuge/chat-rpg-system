@@ -3,6 +3,7 @@ import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { generateChatCompletion } from '../../koboldClient.js';
 import { serializeCharacter } from '../../characterSheetFormat.js';
+import { resolveMentionedSingle } from '../mentionResolution.js';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -44,9 +45,18 @@ async function generateNarrationLine(promptHint) {
   return rawText.trim();
 }
 
-// { mode: "fixed"|"generated", character_id?: number|null, text?, prompt_hint?, emotion_tag? }
+// { mode: "fixed"|"generated", character_id?: number|null|"mentioned", text?, prompt_hint?, emotion_tag? }
 export async function executeInsertDialogue(params, execCtx) {
-  const { mode, character_id = null, text, prompt_hint, emotion_tag } = params;
+  const { mode, text, prompt_hint, emotion_tag } = params;
+  let character_id = params.character_id ?? null;
+
+  // "mentioned" is resolved before the null check below so an unresolved
+  // mention (nobody @-mentioned this turn) skips the action outright,
+  // instead of silently falling through to the null-means-narration branch.
+  if (character_id === 'mentioned') {
+    character_id = resolveMentionedSingle(execCtx.mentionedCharacterIds);
+    if (character_id == null) return { skipped: true, reason: 'no_mention' };
+  }
 
   if (character_id == null) {
     const content = mode === 'fixed' ? text : await generateNarrationLine(prompt_hint);
