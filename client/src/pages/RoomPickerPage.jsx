@@ -21,7 +21,7 @@ export default function RoomPickerPage() {
 
   if (isLoading || !playthrough) return <p>読み込み中...</p>;
 
-  const roomsInWorld = templates.filter((t) => t.world_id === playthrough.world_id);
+  const roomsInWorld = templates.filter((t) => t.world_ids.includes(playthrough.world_id));
 
   return (
     <div>

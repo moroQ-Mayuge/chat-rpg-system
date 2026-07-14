@@ -9,7 +9,7 @@ import {
   createRoomSession,
   setAccompanying,
 } from '../db/repositories/roomSessionsRepo.js';
-import { resolveProtagonist, applyMovementCost } from '../db/repositories/playthroughsRepo.js';
+import { resolveProtagonist, applyMovementCost, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem } from '../db/repositories/itemsRepo.js';
 import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
@@ -97,6 +97,13 @@ roomSessionsRouter.post('/:id/move', (req, res) => {
   if (!connection || connection.from_room_template_id !== session.room_template_id) {
     return res.status(400).json({ error: 'invalid_connection' });
   }
+  // Connections are World-scoped now (0030_room_world_decoupling.sql) — a
+  // stray connection from another World should never be reachable via the
+  // normal UI, but this closes the gap for direct API calls.
+  const playthroughWorldId = getPlaythrough(session.playthrough_id).world_id;
+  if (connection.world_id !== playthroughWorldId) {
+    return res.status(400).json({ error: 'invalid_connection' });
+  }
 
   const carryOverParticipants = session.participants
     .filter((p) => p.is_accompanying)
@@ -154,7 +161,7 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null });
   if (!built) return;
 
-  const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const world = getWorld(worldId);
   const maxTokens = world.max_response_tokens;
 
@@ -298,7 +305,7 @@ async function generateSceneImage(sessionId, sceneChangeDescription) {
   });
 
   const settings = getImageGenerationSettings('scene');
-  const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(updatedSession.room_template_id).world_id;
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(updatedSession.playthrough_id).world_id;
   const stylePrompt = resolveStylePromptForWorld(worldId);
   const tagParts = buildSceneTagParts(updatedSession, updatedSession.participants);
   const prompt = renderPromptTemplate(settings.prompt_template, { style_preset: stylePrompt, ...tagParts });

@@ -12,6 +12,16 @@ export default function RoomTemplatesPage() {
   const [exportPanelRoomId, setExportPanelRoomId] = useState(null);
   const [exportIncludeCharacters, setExportIncludeCharacters] = useState(false);
   const [importTargetWorldId, setImportTargetWorldId] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+
+  function toggleGroup(worldId) {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(worldId)) next.delete(worldId);
+      else next.add(worldId);
+      return next;
+    });
+  }
 
   function toggleExportPanel(roomId) {
     setExportIncludeCharacters(false);
@@ -43,13 +53,19 @@ export default function RoomTemplatesPage() {
 
   if (isLoading || !worlds) return <p>読み込み中...</p>;
 
+  // Rooms are shared master data now (0030_room_world_decoupling.sql) — a
+  // room can legitimately appear in more than one World's group here.
+  // Rooms attached to zero Worlds fall into a synthetic "未接続" group.
   const groups = new Map();
   for (const template of templates) {
-    const key = template.world_id;
-    if (!groups.has(key)) {
-      groups.set(key, { worldName: template.world_name, isUnassigned: template.world_is_unassigned_bucket, items: [] });
+    const worldIds = template.world_ids.length > 0 ? template.world_ids : [null];
+    for (const worldId of worldIds) {
+      if (!groups.has(worldId)) {
+        const world = worldId != null ? worlds.find((w) => w.id === worldId) : null;
+        groups.set(worldId, { worldId, worldName: world?.name ?? '未接続', isUnassigned: worldId == null, items: [] });
+      }
+      groups.get(worldId).items.push(template);
     }
-    groups.get(key).items.push(template);
   }
   const sortedGroups = [...groups.values()].sort((a, b) => Number(a.isUnassigned) - Number(b.isUnassigned));
 
@@ -81,9 +97,17 @@ export default function RoomTemplatesPage() {
 
       {sortedGroups.length === 0 && <p>まだ部屋がありません</p>}
 
-      {sortedGroups.map((group) => (
-        <div key={group.worldName} style={{ marginBottom: 20 }}>
-          <p style={{ fontWeight: 500, color: group.isUnassigned ? '#888' : '#2563eb' }}>{group.worldName}</p>
+      {sortedGroups.map((group) => {
+        const collapsed = collapsedGroups.has(group.worldId);
+        return (
+        <div key={group.worldId ?? 'unattached'} style={{ marginBottom: 20 }}>
+          <p
+            style={{ fontWeight: 500, color: group.isUnassigned ? '#888' : '#2563eb', cursor: 'pointer', userSelect: 'none' }}
+            onClick={() => toggleGroup(group.worldId)}
+          >
+            {collapsed ? '▶' : '▼'} {group.worldName}（{group.items.length}）
+          </p>
+          {!collapsed && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
             {group.items.map((room) => (
               <div key={room.id} style={{ border: '1px solid #ddd', borderRadius: 12, overflow: 'hidden' }}>
@@ -129,8 +153,10 @@ export default function RoomTemplatesPage() {
               </div>
             ))}
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

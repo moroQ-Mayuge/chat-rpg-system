@@ -3,6 +3,7 @@ import { addParticipant } from '../../../db/repositories/roomSessionsRepo.js';
 import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { parseAttributeTags, tagsOverlap } from '../../attributeTagMatching.js';
+import { resolveMentionedSingle } from '../mentionResolution.js';
 
 function pickWeighted(candidateIds) {
   const weights = candidateIds.map(
@@ -19,11 +20,14 @@ function pickWeighted(candidateIds) {
 
 // The current room template's attribute_tags plus its World's — the shared
 // "eligible here" tag set used both for tag_match candidate selection and
-// for the require_attribute_match guard below.
-function getContextTags(roomTemplateId) {
-  const template = db.prepare('SELECT attribute_tags, world_id FROM room_templates WHERE id = ?').get(roomTemplateId);
+// for the require_attribute_match guard below. The room's World is resolved
+// from the playthrough, not the room itself, since rooms are shared master
+// data now and no longer carry a single world_id (0030_room_world_decoupling.sql).
+function getContextTags(roomTemplateId, playthroughId) {
+  const template = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
-  const world = db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(template.world_id);
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(playthroughId)?.world_id;
+  const world = worldId ? db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(worldId) : null;
   return [...parseAttributeTags(template.attribute_tags), ...parseAttributeTags(world?.attribute_tags)];
 }
 
@@ -32,8 +36,8 @@ function getContextTags(roomTemplateId) {
 // like "学生"/"幼馴染" and automatically become eligible everywhere those
 // keys are declared, instead of hand-listing candidate_character_ids per
 // event.
-function tagMatchCandidates(roomTemplateId) {
-  const contextTags = getContextTags(roomTemplateId);
+function tagMatchCandidates(roomTemplateId, playthroughId) {
+  const contextTags = getContextTags(roomTemplateId, playthroughId);
   if (contextTags.length === 0) return [];
 
   return db
@@ -45,14 +49,15 @@ function tagMatchCandidates(roomTemplateId) {
 
 const DEFAULT_REJECTION_NARRATION = '{character_name}は、この場にふさわしくないようで姿を見せなかった。';
 
-// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?, candidate_character_ids?, outfit_id?, entrance_narration?, require_attribute_match?, rejection_narration? }
+// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?: number|"mentioned", candidate_character_ids?, outfit_id?, entrance_narration?, require_attribute_match?, rejection_narration? }
 export async function executeCharacterJoin(params, execCtx) {
   const { selection_mode, character_id, candidate_character_ids = [], outfit_id = null, entrance_narration } = params;
   const presentIds = new Set(execCtx.session.participants.map((p) => p.character_id));
 
   let targetId;
   if (selection_mode === 'specific') {
-    targetId = character_id;
+    targetId = character_id === 'mentioned' ? resolveMentionedSingle(execCtx.mentionedCharacterIds) : character_id;
+    if (targetId == null) return { skipped: true, reason: 'no_mention' };
 
     // Guard against a "summon"-style event naming a fixed character who
     // doesn't actually belong here (chat enhancement backlog item 23
@@ -62,7 +67,7 @@ export async function executeCharacterJoin(params, execCtx) {
     // trigger paths at once. Only enforced when the room/World actually
     // declares attribute tags; untagged rooms are left unrestricted.
     if (params.require_attribute_match) {
-      const contextTags = getContextTags(execCtx.roomTemplateId);
+      const contextTags = getContextTags(execCtx.roomTemplateId, execCtx.playthroughId);
       if (contextTags.length > 0) {
         const target = db.prepare('SELECT name, attribute_tags FROM characters WHERE id = ?').get(targetId);
         const matches = target && tagsOverlap(parseAttributeTags(target.attribute_tags), contextTags);
@@ -78,7 +83,7 @@ export async function executeCharacterJoin(params, execCtx) {
       }
     }
   } else if (selection_mode === 'tag_match') {
-    const pool = tagMatchCandidates(execCtx.roomTemplateId).filter((id) => !presentIds.has(id));
+    const pool = tagMatchCandidates(execCtx.roomTemplateId, execCtx.playthroughId).filter((id) => !presentIds.has(id));
     if (pool.length === 0) return { skipped: true, reason: 'no_eligible_candidates' };
     targetId = pickWeighted(pool);
   } else {

@@ -32,7 +32,7 @@ function resolveSample(kind) {
         variables: {
           style_preset: resolveDefaultStylePrompt(),
           character_tags: resolveOutfitTags(outfit, null),
-          expression_tag: expressionType.llm_tag_key,
+          expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
           extra_hint: '',
         },
         referencePaths: outfit.standing_image_path ? [outfit.standing_image_path] : [],
@@ -43,7 +43,9 @@ function resolveSample(kind) {
       const sessionRow = firstRow('SELECT id FROM room_sessions ORDER BY id ASC LIMIT 1');
       if (!sessionRow) throw new Error('サンプルとなる部屋セッションが見つかりません。');
       const session = getRoomSession(sessionRow.id);
-      const template = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id);
+      // Resolved from the playthrough rather than the room: rooms are shared
+      // master data now and no longer carry a single world_id (0030_room_world_decoupling.sql).
+      const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
       const tagParts = buildSceneTagParts(session, session.participants);
       const referencePaths = session.participants
         .map((p) =>
@@ -51,16 +53,22 @@ function resolveSample(kind) {
         )
         .filter(Boolean);
       return {
-        variables: { style_preset: resolveStylePromptForWorld(template.world_id), ...tagParts, extra_hint: '' },
+        variables: { style_preset: resolveStylePromptForWorld(worldId), ...tagParts, extra_hint: '' },
         referencePaths,
       };
     }
     case 'room_background': {
       const template = firstRow('SELECT * FROM room_templates ORDER BY id ASC LIMIT 1');
       if (!template) throw new Error('サンプルとなる部屋テンプレートが見つかりません。');
+      // A room-master preview has no playthrough in scope -- fall back to
+      // whichever World it's attached to first (or the app-wide default
+      // style if it isn't attached to any World yet).
+      const attachedWorld = db
+        .prepare('SELECT world_id FROM world_room_templates WHERE room_template_id = ? ORDER BY world_id ASC LIMIT 1')
+        .get(template.id);
       return {
         variables: {
-          style_preset: template.world_id ? resolveStylePromptForWorld(template.world_id) : resolveDefaultStylePrompt(),
+          style_preset: attachedWorld ? resolveStylePromptForWorld(attachedWorld.world_id) : resolveDefaultStylePrompt(),
           location_tags: template.location_tags || '',
           atmosphere_tags: template.atmosphere_tags || '',
           extra_hint: '',

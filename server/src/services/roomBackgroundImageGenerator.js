@@ -12,8 +12,8 @@ function webPathToFsPath(webPath) {
   return path.join(config.imageStorageDir, webPath.replace(/^\/images\//, ''));
 }
 
-function buildPrompt(settings, roomTemplate, extraHint) {
-  const stylePrompt = roomTemplate.world_id ? resolveStylePromptForWorld(roomTemplate.world_id) : resolveDefaultStylePrompt();
+function buildPrompt(settings, roomTemplate, extraHint, worldId) {
+  const stylePrompt = worldId ? resolveStylePromptForWorld(worldId) : resolveDefaultStylePrompt();
   return renderPromptTemplate(settings.prompt_template, {
     style_preset: stylePrompt,
     location_tags: roomTemplate.location_tags || '',
@@ -26,9 +26,13 @@ function buildPrompt(settings, roomTemplate, extraHint) {
 // or "refine" (img2img starting from the existing background, using the
 // configured denoising_strength — keeps rough composition/mood while
 // updating detail/style).
-export async function generateRoomBackgroundImage(roomTemplate, mode, extraHint) {
+// worldId: rooms are shared master data now (0030_room_world_decoupling.sql)
+// and no longer carry a single world_id, so the caller (a room-master admin
+// action with no playthrough in scope) must explicitly say which of the
+// room's attached Worlds' style preset to generate with.
+export async function generateRoomBackgroundImage(roomTemplate, mode, extraHint, worldId) {
   const settings = getImageGenerationSettings('room_background');
-  const prompt = buildPrompt(settings, roomTemplate, extraHint);
+  const prompt = buildPrompt(settings, roomTemplate, extraHint, worldId);
 
   let buffer;
   if (mode === 'refine' && roomTemplate.background_image_path) {

@@ -57,7 +57,7 @@ function buildProtagonistBlock(protagonist) {
 
 function buildSystemPrompt(session, participants) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
-  const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(session.room_template_id).world_id;
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const itemCategoryNames = listCategoriesForWorld(worldId).map((c) => c.name);
 
   // Disambiguates same-named participants (e.g. two "みお"s cast in the same

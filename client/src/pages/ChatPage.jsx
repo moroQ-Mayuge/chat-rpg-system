@@ -255,7 +255,15 @@ export default function ChatPage() {
   const queryClient = useQueryClient();
   const { data: session, isLoading } = useRoomSession(id);
   const { sendMessage, exit, move, setAccompanying } = useRoomSessionMutations(id);
-  const { data: connections } = useRoomConnections(session?.room_is_place ? session.room_template_id : null);
+  const { data: playthrough } = useQuery({
+    queryKey: ['playthroughs', session?.playthrough_id],
+    queryFn: () => playthroughsApi.get(session.playthrough_id),
+    enabled: session != null,
+  });
+  const { data: connections } = useRoomConnections(
+    session?.room_is_place ? session.room_template_id : null,
+    playthrough?.world_id,
+  );
   const [draft, setDraft] = useState('');
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
@@ -272,12 +280,6 @@ export default function ChatPage() {
     const participant = participantFor(characterId);
     return participant?.expression_images.find((img) => img.llm_tag_key === emotionTag)?.image_path ?? null;
   }
-
-  const { data: playthrough } = useQuery({
-    queryKey: ['playthroughs', session?.playthrough_id],
-    queryFn: () => playthroughsApi.get(session.playthrough_id),
-    enabled: session != null,
-  });
 
   // Submitting with an empty draft is not a no-op: it's an explicit "continue
   // from here" trigger (no user action/speech), handled server-side by

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { roomTemplatesApi } from '../api/roomTemplates.js';
 
-export function useRoomTemplates() {
-  return useQuery({ queryKey: ['roomTemplates'], queryFn: roomTemplatesApi.list });
+export function useRoomTemplates(worldId) {
+  return useQuery({ queryKey: ['roomTemplates', 'list', worldId ?? 'all'], queryFn: () => roomTemplatesApi.list(worldId) });
 }
 
 export function useRoomTemplate(id) {
@@ -25,25 +25,61 @@ export function useRoomTemplateMutations() {
       onSuccess: invalidate,
     }),
     generateBackgroundImage: useMutation({
-      mutationFn: ({ id, mode, extraHint }) => roomTemplatesApi.generateBackgroundImage(id, mode, extraHint),
+      mutationFn: ({ id, mode, extraHint, worldId }) => roomTemplatesApi.generateBackgroundImage(id, mode, extraHint, worldId),
       onSuccess: invalidate,
     }),
   };
 }
 
-export function useRoomConnections(roomTemplateId) {
+// Which Worlds a room master is attached to, and attaching/detaching it.
+export function useRoomWorlds(roomTemplateId) {
   return useQuery({
-    queryKey: ['roomTemplates', roomTemplateId, 'connections'],
-    queryFn: () => roomTemplatesApi.listConnections(roomTemplateId),
+    queryKey: ['roomTemplates', roomTemplateId, 'worlds'],
+    queryFn: () => roomTemplatesApi.listWorlds(roomTemplateId),
     enabled: roomTemplateId != null,
   });
 }
 
-export function useRoomConnectionMutations(roomTemplateId) {
+export function useRoomWorldMutations(roomTemplateId) {
   const queryClient = useQueryClient();
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['roomTemplates', roomTemplateId, 'connections'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['roomTemplates', roomTemplateId, 'worlds'] });
   return {
-    create: useMutation({ mutationFn: (data) => roomTemplatesApi.createConnection(roomTemplateId, data), onSuccess: invalidate }),
+    attach: useMutation({ mutationFn: (worldId) => roomTemplatesApi.attachWorld(roomTemplateId, worldId), onSuccess: invalidate }),
+    detach: useMutation({ mutationFn: (worldId) => roomTemplatesApi.detachWorld(roomTemplateId, worldId), onSuccess: invalidate }),
+  };
+}
+
+// The per-World room-instance config: slot assignments, props, free props,
+// and outgoing connections, all scoped to (room, world).
+export function useRoomWorldConfig(roomTemplateId, worldId) {
+  return useQuery({
+    queryKey: ['roomTemplates', roomTemplateId, 'worlds', worldId, 'config'],
+    queryFn: () => roomTemplatesApi.getWorldConfig(roomTemplateId, worldId),
+    enabled: roomTemplateId != null && worldId != null,
+  });
+}
+
+export function useRoomWorldConfigMutations(roomTemplateId, worldId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['roomTemplates', roomTemplateId, 'worlds', worldId, 'config'] });
+  return {
+    save: useMutation({ mutationFn: (data) => roomTemplatesApi.saveWorldConfig(roomTemplateId, worldId, data), onSuccess: invalidate }),
+  };
+}
+
+export function useRoomConnections(roomTemplateId, worldId) {
+  return useQuery({
+    queryKey: ['roomTemplates', roomTemplateId, 'connections', worldId],
+    queryFn: () => roomTemplatesApi.listConnections(roomTemplateId, worldId),
+    enabled: roomTemplateId != null && worldId != null,
+  });
+}
+
+export function useRoomConnectionMutations(roomTemplateId, worldId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['roomTemplates', roomTemplateId, 'connections', worldId] });
+  return {
+    create: useMutation({ mutationFn: (data) => roomTemplatesApi.createConnection(roomTemplateId, { ...data, world_id: worldId }), onSuccess: invalidate }),
     update: useMutation({
       mutationFn: ({ connectionId, data }) => roomTemplatesApi.updateConnection(connectionId, data),
       onSuccess: invalidate,

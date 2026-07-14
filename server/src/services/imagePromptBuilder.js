@@ -49,13 +49,17 @@ function webPathToFsPath(webPath) {
 export function buildSceneTagParts(session, participants) {
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(session.room_template_id);
 
+  // Props are placed per-World now (rooms are shared master data, see
+  // 0030_room_world_decoupling.sql) — resolve the World from the session's
+  // playthrough rather than the room itself.
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const propTags = db
     .prepare(
-      `SELECT p.danbooru_tags FROM room_template_props rtp
-       JOIN props p ON p.id = rtp.prop_id
-       WHERE rtp.room_template_id = ?`,
+      `SELECT p.danbooru_tags FROM world_room_props wrp
+       JOIN props p ON p.id = wrp.prop_id
+       WHERE wrp.world_id = ? AND wrp.room_template_id = ?`,
     )
-    .all(template.id)
+    .all(worldId, template.id)
     .map((r) => r.danbooru_tags)
     .filter(Boolean)
     .join(', ');

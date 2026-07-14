@@ -3,6 +3,7 @@ import { getPlaythrough, advanceTime, touchPlaythrough } from './playthroughsRep
 import { carryOverAccompanyingStatuses } from './characterStatusStatesRepo.js';
 import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
+import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 
 const STATUS_DISPLAY_LOCATIONS = ['strip', 'panel', 'chat_log'];
 const STATUS_DISPLAY_CATEGORIES = ['self_stat', 'status', 'relationship_stage'];
@@ -144,10 +145,12 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     (options.carryOverParticipants ?? []).map((p) => [p.character_id, p]),
   );
 
-  const defaultParticipants = db
-    .prepare('SELECT character_id FROM room_template_characters WHERE room_template_id = ? AND is_default_participant = 1')
-    .all(roomTemplateId);
-  for (const { character_id: characterId } of defaultParticipants) {
+  // Default participants are now resolved per-World: the room master only
+  // declares abstract slots (room_template_participant_slots), and which
+  // concrete character fills each slot is a per-World decision
+  // (world_room_slot_assignments) — see 0030_room_world_decoupling.sql.
+  const defaultParticipantIds = listDefaultParticipantCharacterIdsForWorldRoom(playthrough.world_id, roomTemplateId);
+  for (const characterId of defaultParticipantIds) {
     const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')

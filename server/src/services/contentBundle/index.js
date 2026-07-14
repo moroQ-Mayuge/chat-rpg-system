@@ -1,8 +1,15 @@
 import { buildZip, readZip } from './zip.js';
 import { createImageCollector } from './diskImages.js';
 import { collectCharacterEntry, importCharacterEntries } from './characterBundle.js';
-import { collectWorldEntry, listRoomTemplateIdsForWorld, collectCharacterIdsForRoomTemplates, importWorldEntries } from './worldBundle.js';
-import { collectRoomTemplateEntry, collectCharacterIdsForRoomTemplateIds, importRoomTemplateEntries, resolveRoomTemplateAssociations } from './roomTemplateBundle.js';
+import {
+  collectWorldEntry,
+  listRoomTemplateIdsForWorld,
+  collectCharacterIdsForRoomTemplates,
+  collectWorldRoomConfigEntries,
+  importWorldEntries,
+  importWorldRoomConfigEntries,
+} from './worldBundle.js';
+import { collectRoomTemplateEntry, collectCharacterIdsForRoomTemplateIds, importRoomTemplateEntries } from './roomTemplateBundle.js';
 import {
   collectCharacterStatusEntries,
   collectAxisStatusTriggerEntries,
@@ -18,6 +25,7 @@ function emptyManifest() {
     exported_at: new Date().toISOString(),
     worlds: [],
     room_templates: [],
+    world_room_configs: [],
     characters: [],
     character_statuses: [],
     axis_status_triggers: [],
@@ -43,8 +51,12 @@ export async function exportWorldBundle(
   if (includeRoomTemplates) {
     const roomTemplateIds = listRoomTemplateIdsForWorld(worldId);
     manifest.room_templates = roomTemplateIds.map((id) => collectRoomTemplateEntry(id, imageCollector));
+    // World-specific concretization (slot assignments/props/connections) —
+    // rooms are shared master data now, so this is exported separately from
+    // the room masters themselves (see worldBundle.js's collectWorldRoomConfigEntries).
+    manifest.world_room_configs = collectWorldRoomConfigEntries(worldId);
     if (includeCharacters) {
-      const characterIds = collectCharacterIdsForRoomTemplates(roomTemplateIds);
+      const characterIds = collectCharacterIdsForRoomTemplates(roomTemplateIds, worldId);
       manifest.characters = characterIds.map((id) => collectCharacterEntry(id, imageCollector));
     }
   }
@@ -73,10 +85,10 @@ export async function exportRoomTemplateBundle(roomTemplateId, { includeCharacte
 // Single shared entry point for all bundle kinds (character-only, world,
 // room-template) — the importer only cares about which manifest arrays are
 // populated, not which export button produced the zip. Import order matters:
-// worlds -> room_templates (images/props only, associations deferred) ->
-// characters -> deferred room_template_characters/room_connections, since
-// those last two reference names that only exist once every entity in this
-// batch has actually been created.
+// worlds -> room_templates (master data, attached to worldIdForRooms) ->
+// characters -> world_room_configs (slot assignments/props/connections),
+// since that last step references names that only exist once every entity
+// in this batch has actually been created.
 export async function importBundle(zipBuffer, options = {}) {
   const { manifest, readImage } = readZip(zipBuffer);
   const warnings = [];
@@ -88,7 +100,7 @@ export async function importBundle(zipBuffer, options = {}) {
     throw new Error('target_world_id_required');
   }
 
-  const { created: roomTemplates, deferred } = await importRoomTemplateEntries(
+  const { created: roomTemplates } = await importRoomTemplateEntries(
     manifest.room_templates ?? [],
     readImage,
     worldIdForRooms,
@@ -97,7 +109,9 @@ export async function importBundle(zipBuffer, options = {}) {
 
   const characters = await importCharacterEntries(manifest.characters ?? [], readImage, warnings);
 
-  resolveRoomTemplateAssociations(deferred, worldIdForRooms, warnings, characters);
+  if ((manifest.world_room_configs ?? []).length > 0 && worldIdForRooms != null) {
+    importWorldRoomConfigEntries(manifest.world_room_configs, worldIdForRooms, roomTemplates, characters, warnings);
+  }
 
   // character_statuses are World-scoped by id, so importing them needs an
   // actual target World to attach to (falls back to options.targetWorldId

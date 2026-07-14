@@ -7,6 +7,7 @@ import {
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
 import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory, transferItem } from '../db/repositories/inventoryRepo.js';
+import { isRoomInWorld } from '../db/repositories/worldRoomTemplatesRepo.js';
 
 export const playthroughsRouter = Router();
 
@@ -36,6 +37,13 @@ playthroughsRouter.get('/:id/active-session', (req, res) => {
 
 playthroughsRouter.post('/:id/room-sessions', (req, res) => {
   if (!req.body.room_template_id) return res.status(400).json({ error: 'room_template_id_required' });
+  const playthrough = getPlaythrough(req.params.id);
+  if (!playthrough) return res.status(404).json({ error: 'not_found' });
+  // Rooms are shared master data now (0030_room_world_decoupling.sql) —
+  // previously unguarded server-side, only prevented by client-side filtering.
+  if (!isRoomInWorld(playthrough.world_id, req.body.room_template_id)) {
+    return res.status(400).json({ error: 'room_not_in_world' });
+  }
   res.status(201).json(createRoomSession(req.params.id, req.body.room_template_id));
 });
 

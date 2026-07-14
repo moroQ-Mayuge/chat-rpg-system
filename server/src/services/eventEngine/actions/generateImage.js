@@ -12,6 +12,7 @@ import { getImageGenerationSettings } from '../../../db/repositories/imageGenera
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { resolveOutfitTags } from '../../outfitTagCategories.js';
+import { resolveMentionedList } from '../mentionResolution.js';
 
 // Substitutes placeholders in prompt_override with a participant's current
 // Outfit danbooru tags (SPEC.md 3.6.4/3.7). Two base forms are supported:
@@ -53,13 +54,19 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
   return { text, referencedIds };
 }
 
-// { image_type: "scene"|"event", prompt_override?, target_character_ids? }
+// { image_type: "scene"|"event", prompt_override?, target_character_ids?, mentioned_limit? }
 export async function executeGenerateImage(params, execCtx) {
-  const { image_type = 'event', prompt_override = null, target_character_ids = null } = params;
+  const { image_type = 'event', prompt_override = null, target_character_ids = null, mentioned_limit = null } = params;
   // Falls back to the player's explicit @mention (chat enhancement backlog
   // item 3c) when the event itself doesn't pin down a target — lets "whoever
   // I mentioned" resolve without the event author having to hardcode it.
-  const effectiveTargetIds = target_character_ids ?? execCtx.mentionedCharacterIds;
+  // Treats an empty array the same as null/undefined (the editor UI's default
+  // for an untouched selector is `[]`, not `null` — without this, `[] ??
+  // execCtx.mentionedCharacterIds` never actually falls through, since `[]`
+  // is truthy, silently defeating the documented "空欄=@メンション優先"
+  // behavior).
+  const mentionedIds = resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit);
+  const effectiveTargetIds = target_character_ids && target_character_ids.length > 0 ? target_character_ids : mentionedIds.length > 0 ? mentionedIds : null;
 
   return new Promise((resolve, reject) => {
     enqueueImageJob(async () => {
@@ -71,7 +78,10 @@ export async function executeGenerateImage(params, execCtx) {
           : session.participants;
 
         const settings = getImageGenerationSettings(image_type);
-        const worldId = db.prepare('SELECT world_id FROM room_templates WHERE id = ?').get(execCtx.roomTemplateId).world_id;
+        // Resolved from the playthrough rather than the room: rooms are
+        // shared master data now and no longer carry a single world_id
+        // (0030_room_world_decoupling.sql).
+        const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(execCtx.playthroughId).world_id;
         const stylePrompt = resolveStylePromptForWorld(worldId);
         const tagParts = buildSceneTagParts(session, session.participants);
         const basePrompt = renderPromptTemplate(settings.prompt_template, { style_preset: stylePrompt, ...tagParts });

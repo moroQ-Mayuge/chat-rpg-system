@@ -3,7 +3,7 @@ import { listAllStatuses, createStatus } from '../../db/repositories/characterSt
 import { listRelationshipAxes } from '../../db/repositories/relationshipAxesRepo.js';
 import { createTrigger } from '../../db/repositories/axisStatusTriggersRepo.js';
 import { listEventDefinitions } from '../../db/repositories/eventDefinitionsRepo.js';
-import { listRoomTemplatesForWorld } from '../../db/repositories/roomTemplatesRepo.js';
+import { listRoomTemplatesForWorld, listWorldsForRoomTemplate } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { exportEventDefinitionJson, importEventDefinitionJson, collectCharacterIds, collectStatusIds } from '../eventPortability.js';
 
 export function collectCharacterStatusEntries(worldId) {
@@ -41,7 +41,11 @@ export function collectAxisStatusTriggerEntries(worldId) {
 // "Belongs to this World" for export purposes. Events have no world_id
 // column at all (scope='global' means "fires everywhere", not "owned by no
 // one"), so ownership has to be inferred from what each event references:
-//   - scope='room_template' tied to one of this World's own rooms: unambiguous.
+//   - scope='room_template' tied to one of this World's own rooms: unambiguous
+//     UNLESS the room is also attached to other Worlds (rooms are shared
+//     master data, see 0030_room_world_decoupling.sql) — in that case the
+//     event can't be attributed to just this World, so it's treated like the
+//     zero-signal 'ambiguous' case below (deduped by name).
 //   - scope='global' referencing (via character_id/status_id, including
 //     inside arrays) ONLY this World's own characters/statuses: include.
 //   - scope='global' referencing another World's characters/statuses (e.g.
@@ -60,13 +64,12 @@ export function collectEventDefinitionEntriesForWorld(worldId) {
   const worldCharacterIds = new Set(
     db
       .prepare(
-        `SELECT DISTINCT c.id FROM characters c
-         JOIN room_template_characters rtc ON rtc.character_id = c.id
-         JOIN room_templates rt ON rt.id = rtc.room_template_id
-         WHERE rt.world_id = ?`,
+        `SELECT DISTINCT wrsa.character_id FROM world_room_slot_assignments wrsa
+         JOIN room_template_participant_slots s ON s.id = wrsa.slot_id
+         WHERE wrsa.world_id = ?`,
       )
       .all(worldId)
-      .map((r) => r.id),
+      .map((r) => r.character_id),
   );
   const worldStatusIds = new Set(db.prepare('SELECT id FROM character_statuses WHERE world_id = ?').all(worldId).map((r) => r.id));
 
@@ -78,9 +81,14 @@ export function collectEventDefinitionEntriesForWorld(worldId) {
     return allOwnedByThisWorld ? 'owned' : 'other_world';
   }
 
+  function classifyRoomScoped(def) {
+    if (!roomIds.has(def.room_template_id)) return 'other_world';
+    return listWorldsForRoomTemplate(def.room_template_id).length > 1 ? 'ambiguous' : 'owned';
+  }
+
   const candidates = listEventDefinitions()
     .filter((d) => d.scope === 'room_template' ? roomIds.has(d.room_template_id) : true)
-    .map((d) => ({ def: d, classification: d.scope === 'room_template' ? 'owned' : classify(d) }))
+    .map((d) => ({ def: d, classification: d.scope === 'room_template' ? classifyRoomScoped(d) : classify(d) }))
     .filter(({ classification }) => classification !== 'other_world');
 
   // dedupe ambiguous zero-signal events by name, keeping the lowest id

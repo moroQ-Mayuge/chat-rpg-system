@@ -1,27 +1,29 @@
 import { db } from '../connection.js';
 
-export function listConnectionsFrom(roomTemplateId) {
+// Connections (経路) are World-scoped: the same room pair can be wired
+// differently, or not at all, in different Worlds.
+export function listConnectionsFrom(roomTemplateId, worldId) {
   return db
     .prepare(
       `SELECT rc.*, rt.name AS to_room_name
        FROM room_connections rc
        JOIN room_templates rt ON rt.id = rc.to_room_template_id
-       WHERE rc.from_room_template_id = ?
+       WHERE rc.from_room_template_id = ? AND rc.world_id = ?
        ORDER BY rc.id ASC`,
     )
-    .all(roomTemplateId);
+    .all(roomTemplateId, worldId);
 }
 
 export function getConnection(id) {
   return db.prepare('SELECT * FROM room_connections WHERE id = ?').get(id);
 }
 
-export function createConnection({ from_room_template_id, to_room_template_id, label, movement_cost }) {
+export function createConnection({ world_id, from_room_template_id, to_room_template_id, label, movement_cost }) {
   const result = db
     .prepare(
-      'INSERT INTO room_connections (from_room_template_id, to_room_template_id, label, movement_cost) VALUES (?, ?, ?, ?)',
+      'INSERT INTO room_connections (world_id, from_room_template_id, to_room_template_id, label, movement_cost) VALUES (?, ?, ?, ?, ?)',
     )
-    .run(from_room_template_id, to_room_template_id, label ?? '', movement_cost ?? 1);
+    .run(world_id, from_room_template_id, to_room_template_id, label ?? '', movement_cost ?? 1);
   return getConnection(result.lastInsertRowid);
 }
 
