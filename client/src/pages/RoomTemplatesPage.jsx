@@ -55,14 +55,15 @@ export default function RoomTemplatesPage() {
 
   // Rooms are shared master data now (0030_room_world_decoupling.sql) — a
   // room can legitimately appear in more than one World's group here.
-  // Rooms attached to zero Worlds fall into a synthetic "未接続" group.
+  // Rooms attached to zero Worlds fall into a synthetic "未分類" group,
+  // same convention as prop_categories/item_categories' common fallback.
   const groups = new Map();
   for (const template of templates) {
     const worldIds = template.world_ids.length > 0 ? template.world_ids : [null];
     for (const worldId of worldIds) {
       if (!groups.has(worldId)) {
         const world = worldId != null ? worlds.find((w) => w.id === worldId) : null;
-        groups.set(worldId, { worldId, worldName: world?.name ?? '未接続', isUnassigned: worldId == null, items: [] });
+        groups.set(worldId, { worldId, worldName: world?.name ?? '未分類', isUnassigned: worldId == null, items: [] });
       }
       groups.get(worldId).items.push(template);
     }
