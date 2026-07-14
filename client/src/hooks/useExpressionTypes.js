@@ -10,6 +10,7 @@ export function useExpressionTypeMutations() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['expressionTypes'] });
   return {
     create: useMutation({ mutationFn: expressionTypesApi.create, onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => expressionTypesApi.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: expressionTypesApi.remove, onSuccess: invalidate }),
   };
 }

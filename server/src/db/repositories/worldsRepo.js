@@ -12,9 +12,17 @@ function parseWorld(row) {
   };
 }
 
+// last_played_at: most recent playthroughs.updated_at across this World's
+// routes (kept fresh by touchPlaythrough/advanceTime/applyMovementCost during
+// real gameplay), null if the World has never been played. Sorting itself
+// happens client-side (WorldsPage.jsx) — this just makes the data available.
 export function listWorlds() {
   return db
-    .prepare('SELECT * FROM worlds ORDER BY is_unassigned_bucket ASC, name ASC')
+    .prepare(
+      `SELECT w.*, (SELECT MAX(p.updated_at) FROM playthroughs p WHERE p.world_id = w.id) AS last_played_at
+       FROM worlds w
+       ORDER BY w.is_unassigned_bucket ASC, w.name ASC`,
+    )
     .all()
     .map(parseWorld);
 }

@@ -49,6 +49,7 @@ export default function WorldsPage() {
   const [form, setForm] = useState(emptyForm);
   const [thumbGenerating, setThumbGenerating] = useState(false);
   const [thumbGenerateError, setThumbGenerateError] = useState(null);
+  const [sortKey, setSortKey] = useState('name');
 
   useEffect(() => {
     if (editingId == null || !worlds) return;
@@ -166,11 +167,33 @@ export default function WorldsPage() {
 
   if (isLoading) return <p>読み込み中...</p>;
 
+  // The "未所属" bucket always sorts last regardless of the chosen key
+  // (matches RoomTemplatesPage.jsx's "未接続" group always sorting last).
+  const sortedWorlds = [...worlds].sort((a, b) => {
+    if (a.is_unassigned_bucket !== b.is_unassigned_bucket) return a.is_unassigned_bucket ? 1 : -1;
+    if (sortKey === 'created_at') return new Date(b.created_at) - new Date(a.created_at);
+    if (sortKey === 'last_played_at') {
+      if (!a.last_played_at && !b.last_played_at) return 0;
+      if (!a.last_played_at) return 1;
+      if (!b.last_played_at) return -1;
+      return new Date(b.last_played_at) - new Date(a.last_played_at);
+    }
+    return a.name.localeCompare(b.name, 'ja');
+  });
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>世界観一覧</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label style={{ fontSize: 12 }}>
+            並び順{' '}
+            <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+              <option value="name">名前順</option>
+              <option value="created_at">作成日順（新しい順）</option>
+              <option value="last_played_at">最終プレイ順（新しい順）</option>
+            </select>
+          </label>
           <label style={{ fontSize: 12, cursor: 'pointer', alignSelf: 'center' }}>
             インポート（zip）
             <input type="file" accept=".zip" onChange={handleImportBundle} style={{ display: 'none' }} />
@@ -180,7 +203,7 @@ export default function WorldsPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-        {worlds.map((world) => (
+        {sortedWorlds.map((world) => (
           <div key={world.id}>
             <div
               style={{

@@ -3,6 +3,7 @@ import WorldsPage from './pages/WorldsPage.jsx';
 import PropsPage from './pages/PropsPage.jsx';
 import RoomTemplatesPage from './pages/RoomTemplatesPage.jsx';
 import RoomTemplateEditPage from './pages/RoomTemplateEditPage.jsx';
+import RoomWorldConfigPage from './pages/RoomWorldConfigPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import ExpressionTypesPage from './pages/ExpressionTypesPage.jsx';
 import RelationshipAxesPage from './pages/RelationshipAxesPage.jsx';
@@ -12,6 +13,7 @@ import PlaythroughsPage from './pages/PlaythroughsPage.jsx';
 import RoomPickerPage from './pages/RoomPickerPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
 import ItemsPage from './pages/ItemsPage.jsx';
+import ActionCommandsPage from './pages/ActionCommandsPage.jsx';
 import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
 import SessionLogPage from './pages/SessionLogPage.jsx';
 import CharacterStatusesPage from './pages/CharacterStatusesPage.jsx';
@@ -44,6 +46,9 @@ export default function App() {
           </NavLink>
           <NavLink to="/items" style={navLinkStyle}>
             アイテム
+          </NavLink>
+          <NavLink to="/action-commands" style={navLinkStyle}>
+            行動コマンド
           </NavLink>
           <NavLink to="/characters" style={navLinkStyle}>
             キャラクター
@@ -78,8 +83,10 @@ export default function App() {
           <Route path="/rooms" element={<RoomTemplatesPage />} />
           <Route path="/rooms/new" element={<RoomTemplateEditPage />} />
           <Route path="/rooms/:id/edit" element={<RoomTemplateEditPage />} />
+          <Route path="/rooms/:id/worlds/:worldId" element={<RoomWorldConfigPage />} />
           <Route path="/props" element={<PropsPage />} />
           <Route path="/items" element={<ItemsPage />} />
+          <Route path="/action-commands" element={<ActionCommandsPage />} />
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />

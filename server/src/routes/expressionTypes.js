@@ -18,6 +18,7 @@ expressionTypesRouter.post('/', (req, res) => {
 });
 
 expressionTypesRouter.put('/:id', (req, res) => {
+  if (!req.body.name || !req.body.llm_tag_key) return res.status(400).json({ error: 'name_and_llm_tag_key_required' });
   res.json(updateExpressionType(req.params.id, req.body));
 });
 
