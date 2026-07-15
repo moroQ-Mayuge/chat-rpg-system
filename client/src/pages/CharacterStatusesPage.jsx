@@ -11,6 +11,7 @@ const emptyForm = {
   removes_from_session: false,
   exclusive_group: '',
   default_address_on_grant: '',
+  suppresses_outfit_fields: '',
 };
 
 const SCOPE_LABELS = {
@@ -24,21 +25,55 @@ function worldLabel(worldId, worlds) {
   return worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`;
 }
 
+function formToPayload(form) {
+  return { ...form, world_id: form.world_id ? Number(form.world_id) : null };
+}
+
+function statusToForm(s) {
+  return {
+    world_id: s.world_id ?? '',
+    name: s.name,
+    persistence_scope: s.persistence_scope,
+    removes_from_session: s.removes_from_session,
+    exclusive_group: s.exclusive_group ?? '',
+    default_address_on_grant: s.default_address_on_grant ?? '',
+    suppresses_outfit_fields: s.suppresses_outfit_fields ?? '',
+  };
+}
+
 export default function CharacterStatusesPage() {
   const { data: worlds, isLoading: worldsLoading } = useWorlds();
   const { data: statuses, isLoading } = useAllCharacterStatuses();
-  const { create, remove } = useCharacterStatusMutations();
+  const { create, update, remove } = useCharacterStatusMutations();
+  const [selectedId, setSelectedId] = useState(null);
+  const isNew = selectedId === 'new';
   const [form, setForm] = useState(emptyForm);
 
-  async function handleCreate() {
+  function selectStatus(id) {
+    setSelectedId(id);
+    if (id === 'new' || id == null) {
+      setForm(emptyForm);
+    } else {
+      const found = statuses.find((s) => s.id === id);
+      if (found) setForm(statusToForm(found));
+    }
+  }
+
+  async function handleSave() {
     if (!form.name) return;
-    await create.mutateAsync({ ...form, world_id: form.world_id ? Number(form.world_id) : null });
+    if (isNew) {
+      await create.mutateAsync(formToPayload(form));
+      setSelectedId(null);
+    } else {
+      await update.mutateAsync({ id: selectedId, data: formToPayload(form) });
+    }
     setForm(emptyForm);
   }
 
   async function handleDelete(id) {
     if (!window.confirm('このキャラ状態を削除しますか？')) return;
     await remove.mutateAsync(id);
+    if (selectedId === id) selectStatus(null);
   }
 
   if (worldsLoading || isLoading) return <p>読み込み中...</p>;
@@ -53,7 +88,17 @@ export default function CharacterStatusesPage() {
         {statuses.map((s) => (
           <div
             key={s.id}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #ddd', borderRadius: 6 }}
+            onClick={() => selectStatus(s.id)}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: 8,
+              border: selectedId === s.id ? '1px solid #6366f1' : '1px solid #ddd',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: selectedId === s.id ? '#eef2ff' : 'transparent',
+            }}
           >
             <span>
               {s.name}{' '}
@@ -62,81 +107,101 @@ export default function CharacterStatusesPage() {
                 {s.removes_from_session ? '／セッション参加者から自動除外' : ''}
                 {s.exclusive_group ? `／排他グループ:${s.exclusive_group}` : ''}
                 {s.default_address_on_grant ? `／付与時に呼び方を「${s.default_address_on_grant}」へ変更` : ''}
+                {s.suppresses_outfit_fields ? `／抑制する衣装タグ:${s.suppresses_outfit_fields}` : ''}
               </span>
             </span>
-            <button onClick={() => handleDelete(s.id)}>削除</button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(s.id);
+              }}
+            >
+              削除
+            </button>
           </div>
         ))}
         {statuses.length === 0 && <p style={{ fontSize: 12, color: '#999' }}>まだキャラ状態がありません</p>}
+        {selectedId !== 'new' && <button onClick={() => selectStatus('new')}>+ 新規登録</button>}
       </div>
 
-      <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
-        <p style={{ fontWeight: 500 }}>新規登録</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-          <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
-            <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：気絶" />
-          </label>
-          <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>所属World</span>
-            <select style={{ width: '100%' }} value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })}>
-              <option value="">共通</option>
-              {worlds.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
+      {selectedId != null && (
+        <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
+          <p style={{ fontWeight: 500 }}>{isNew ? '新規登録' : '編集'}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
+              <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：気絶" />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>所属World</span>
+              <select style={{ width: '100%' }} value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })}>
+                <option value="">共通</option>
+                {worlds.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>持続範囲</span>
+            <select
+              style={{ width: '100%' }}
+              value={form.persistence_scope}
+              onChange={(e) => setForm({ ...form, persistence_scope: e.target.value })}
+            >
+              {Object.entries(SCOPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
             </select>
           </label>
-        </div>
-        <label style={{ display: 'block', marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>持続範囲</span>
-          <select
-            style={{ width: '100%' }}
-            value={form.persistence_scope}
-            onChange={(e) => setForm({ ...form, persistence_scope: e.target.value })}
-          >
-            {Object.entries(SCOPE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <input
-            type="checkbox"
-            checked={form.removes_from_session}
-            onChange={(e) => setForm({ ...form, removes_from_session: e.target.checked })}
-          />
-          この状態が付与されたキャラをセッション参加者から自動的に除外する
-        </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-          <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>排他グループ（任意）</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <input
+              type="checkbox"
+              checked={form.removes_from_session}
+              onChange={(e) => setForm({ ...form, removes_from_session: e.target.checked })}
+            />
+            この状態が付与されたキャラをセッション参加者から自動的に除外する
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>排他グループ（任意）</span>
+              <input
+                style={{ width: '100%' }}
+                value={form.exclusive_group}
+                onChange={(e) => setForm({ ...form, exclusive_group: e.target.value })}
+                placeholder="例：関係（同じグループ内は常に1つだけアクティブになる）"
+              />
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>付与時に呼び方を自動変更（任意）</span>
+              <input
+                style={{ width: '100%' }}
+                value={form.default_address_on_grant}
+                onChange={(e) => setForm({ ...form, default_address_on_grant: e.target.value })}
+                placeholder="例：あなた♡（空欄なら呼び方は変更しない）"
+              />
+            </label>
+          </div>
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>抑制する衣装タグ列（カンマ区切り、任意）</span>
             <input
               style={{ width: '100%' }}
-              value={form.exclusive_group}
-              onChange={(e) => setForm({ ...form, exclusive_group: e.target.value })}
-              placeholder="例：関係（同じグループ内は常に1つだけアクティブになる）"
+              value={form.suppresses_outfit_fields}
+              onChange={(e) => setForm({ ...form, suppresses_outfit_fields: e.target.value })}
+              placeholder="例：clothing_upper_outer,clothing_upper（このステータスがアクティブな間、画像生成タグから除外）"
             />
           </label>
-          <label>
-            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>付与時に呼び方を自動変更（任意）</span>
-            <input
-              style={{ width: '100%' }}
-              value={form.default_address_on_grant}
-              onChange={(e) => setForm({ ...form, default_address_on_grant: e.target.value })}
-              placeholder="例：あなた♡（空欄なら呼び方は変更しない）"
-            />
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleSave} disabled={!form.name}>
+              {isNew ? '追加' : '保存'}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={handleCreate} disabled={!form.name}>
-            追加
-          </button>
-        </div>
-      </div>
+      )}
 
       <AxisStatusTriggersSection statuses={statuses} />
     </div>

@@ -15,18 +15,37 @@ export function getStatus(id) {
   return db.prepare('SELECT * FROM character_statuses WHERE id = ?').get(id);
 }
 
-export function createStatus({ world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant }) {
+export function createStatus({
+  world_id,
+  name,
+  persistence_scope,
+  removes_from_session,
+  exclusive_group,
+  default_address_on_grant,
+  suppresses_outfit_fields,
+}) {
   const result = db
     .prepare(
-      'INSERT INTO character_statuses (world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO character_statuses (world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(world_id ?? null, name, persistence_scope, removes_from_session ? 1 : 0, exclusive_group || null, default_address_on_grant || null);
+    .run(
+      world_id ?? null,
+      name,
+      persistence_scope,
+      removes_from_session ? 1 : 0,
+      exclusive_group || null,
+      default_address_on_grant || null,
+      suppresses_outfit_fields ?? '',
+    );
   return getStatus(result.lastInsertRowid);
 }
 
-export function updateStatus(id, { world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant }) {
+export function updateStatus(
+  id,
+  { world_id, name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields },
+) {
   db.prepare(
-    'UPDATE character_statuses SET world_id = ?, name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ? WHERE id = ?',
+    'UPDATE character_statuses SET world_id = ?, name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ?, suppresses_outfit_fields = ? WHERE id = ?',
   ).run(
     world_id ?? null,
     name,
@@ -34,6 +53,7 @@ export function updateStatus(id, { world_id, name, persistence_scope, removes_fr
     removes_from_session ? 1 : 0,
     exclusive_group || null,
     default_address_on_grant || null,
+    suppresses_outfit_fields ?? '',
     id,
   );
   return getStatus(id);

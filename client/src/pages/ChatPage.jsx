@@ -296,6 +296,19 @@ export default function ChatPage() {
     await sendMessage.mutateAsync(text);
   }
 
+  // Action-command keyword buttons used to discard whatever was typed in the
+  // draft (including an @mention inserted via insertMention), silently
+  // breaking any event whose action targets character_id: "mentioned" (e.g.
+  // the undress-state commands) since mentionedCharacterIds would resolve to
+  // empty. Prepending the current draft preserves the mention while leaving
+  // the no-draft case (the vast majority of existing keyword commands)
+  // unchanged.
+  async function sendKeywordCommand(keywordText) {
+    const combined = draft.trim() ? `${draft.trim()} ${keywordText}` : keywordText;
+    await sendMessage.mutateAsync(combined);
+    setDraft('');
+  }
+
   function insertMention(name) {
     setDraft((d) => (d ? `${d} @${name} ` : `@${name} `));
   }
@@ -525,7 +538,7 @@ export default function ChatPage() {
         </div>
       )}
 
-      <ActionCommandBar worldId={playthrough.world_id} onKeywordSend={sendText} onOpenPanel={setItemPanel} />
+      <ActionCommandBar worldId={playthrough.world_id} onKeywordSend={sendKeywordCommand} onOpenPanel={setItemPanel} />
 
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
         <input

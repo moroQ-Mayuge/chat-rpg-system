@@ -35,8 +35,9 @@ const RANGE_EQUIPMENT = {
 
 const RANGE_NAMES = Object.keys(RANGE_BASE);
 
-function joinFields(outfit, fields) {
+function joinFields(outfit, fields, suppressedFields) {
   return fields
+    .filter((f) => !suppressedFields.has(f))
     .map((f) => outfit[f])
     .filter(Boolean)
     .join(', ');
@@ -53,18 +54,27 @@ function joinFields(outfit, fields) {
 //                          (underwear is never included — reference it
 //                          individually via ${target1.underwear_upper} etc.)
 //   anything else       -> null (unresolvable — caller decides the fallback).
-export function resolveOutfitTags(outfit, key) {
+//
+// suppressedFields: optional iterable of OUTFIT_TAG_FIELDS column names to
+// omit regardless of the outfit's own value — driven by the character's
+// currently-active undress-state statuses' suppresses_outfit_fields (see
+// characterStatusStatesRepo.js's listActiveStatuses), so a layer that's
+// "not there" per the current stage doesn't leak into generated prompts.
+// Omitted entirely by every existing call site that doesn't have status
+// context (standing/expression image generation, settings-page preview).
+export function resolveOutfitTags(outfit, key, suppressedFields = []) {
   if (!outfit) return '';
-  if (!key) return joinFields(outfit, CATEGORY_KEYS);
-  if (CATEGORY_KEYS.includes(key)) return outfit[key] ?? '';
+  const suppressed = suppressedFields instanceof Set ? suppressedFields : new Set(suppressedFields);
+  if (!key) return joinFields(outfit, CATEGORY_KEYS, suppressed);
+  if (CATEGORY_KEYS.includes(key)) return suppressed.has(key) ? '' : outfit[key] ?? '';
 
   const rangeMatch = key.match(new RegExp(`^(${RANGE_NAMES.join('|')})(_outer|_equipment|_full)?$`));
   if (rangeMatch) {
     const [, range, suffix] = rangeMatch;
-    if (!suffix) return joinFields(outfit, RANGE_BASE[range]);
-    if (suffix === '_outer') return joinFields(outfit, RANGE_OUTER[range]);
-    if (suffix === '_equipment') return joinFields(outfit, RANGE_EQUIPMENT[range]);
-    return joinFields(outfit, [...RANGE_BASE[range], ...RANGE_OUTER[range], ...RANGE_EQUIPMENT[range]]);
+    if (!suffix) return joinFields(outfit, RANGE_BASE[range], suppressed);
+    if (suffix === '_outer') return joinFields(outfit, RANGE_OUTER[range], suppressed);
+    if (suffix === '_equipment') return joinFields(outfit, RANGE_EQUIPMENT[range], suppressed);
+    return joinFields(outfit, [...RANGE_BASE[range], ...RANGE_OUTER[range], ...RANGE_EQUIPMENT[range]], suppressed);
   }
 
   return null;

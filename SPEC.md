@@ -666,7 +666,20 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 
 下着を見せる演出をしたい場合はレンジプリセットではなく`${target1.underwear_upper}`／`${target1.underwear_lower}`を個別に指定する。
 
-**脱衣状態の表現**：`character_statuses`の`exclusive_group`を`undress_state`として登録したステータス群（例：未着手／上着なし／下着のみ／全裸）を使い、既存の関係性ステージ（[[relationship_stage]]、`exclusive_group`は任意の名前でよい）と同じ排他機構でキャラの脱衣段階を管理する。`exclusive_group: 'undress_state'`のアクティブステータスは`promptBuilder.js`のキャラクターカードに「現在の服装状態：{ステータス名}」として自動的に含まれる（LLMのシステムプロンプトに可視）。表示側（チャット欄ステータス表示）は`buildStatusSnapshot`（`server/src/db/repositories/statusSnapshotRepo.js`）の`stages`配列に他のexclusive_groupファミリーと並んで含まれ、既存の「関係ステージ」表示トグルで一括制御される。
+**脱衣状態の表現**：`character_statuses`の`exclusive_group`を以下4つの予約名として登録したステータス群を使い、既存の関係性ステージ（`exclusive_group`は任意の名前でよい）と同じ排他機構で、上半身/下半身×服/下着を**独立に**管理する（服は半脱ぎだが下着はまだ着衣、のような組み合わせも表現できる）：
+
+| exclusive_group | 対象 |
+|---|---|
+| `undress_state_upper_clothing` | 上半身の服（ベース＋上着） |
+| `undress_state_upper_underwear` | 上半身下着 |
+| `undress_state_lower_clothing` | 下半身の服（ベース＋上着） |
+| `undress_state_lower_underwear` | 下半身下着 |
+
+- **LLMへの可視化**：アクティブな各トラックは`promptBuilder.js`（`undressState.js`の`getUndressStateLines`共通ロジック、`insertDialogue.js`の生成モードでも同じ関数を使用）のキャラクターカードに「現在の{トラック名}状態：{ステータス名}」として自動的に含まれる（LLMのシステムプロンプトに可視）。他のexclusive_groupファミリー（関係性ステージ等）はこの仕組みの対象外
+- **表示側**：`buildStatusSnapshot`（`server/src/db/repositories/statusSnapshotRepo.js`）の`stages`配列に他のexclusive_groupファミリーと並んで含まれ、既存の「関係ステージ」表示トグルで一括制御される
+- **画像生成タグへの反映**：`character_statuses`に`suppresses_outfit_fields`列（カンマ区切りの`OUTFIT_TAG_FIELDS`列名）を追加。このステータスがアクティブな間、対応する衣装タグ列を`resolveOutfitTags`（`outfitTagCategories.js`）の合成結果・`${targetN.category}`イベント/シーン画像生成プレースホルダーの両方から除外する（`generateImage.js`がアクティブな全ステータスの`suppresses_outfit_fields`を合算して渡す）。例：`clothing_upper_outer`列を抑制すれば「上着なし」段階で上着タグが画像生成に出力されなくなる
+- **チャット行動コマンドとの連携**：既存の`action_commands`（`command_type: 'keyword'`）＋`event_definitions`（`keyword`条件＋`change_status`アクション、`character_id: "mentioned"`）の組み合わせで、新しい機構を追加せずに「脱がす」ボタンを実現する。行動コマンドのキーワード送信は@メンションを保持したまま送信される（`ChatPage.jsx`の`sendKeywordCommand`）必要があるため、下書き欄の内容とキーワードを結合してから送信する
+- 現代学園ファンタジー（World4）に4トラック計14ステータス・対応する10個の行動コマンド／イベントを実コンテンツとして登録済み（各段階が「初期段階以外」の1つにつき1組、前方向へのみ進む——着直すボタンは用意していない）。持続範囲は`session`（部屋移動・再入室でリセット）
 
 ### expression_types（表情マスター）
 | カラム | 型 | 備考 |

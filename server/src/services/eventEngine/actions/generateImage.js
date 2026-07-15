@@ -13,6 +13,23 @@ import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo
 import { broadcast } from '../../../ws/rooms.js';
 import { resolveOutfitTags } from '../../outfitTagCategories.js';
 import { resolveMentionedList } from '../mentionResolution.js';
+import { listActiveStatuses } from '../../../db/repositories/characterStatusStatesRepo.js';
+
+// Undress-state statuses (exclusive_group 'undress_state_*') can each carry
+// a suppresses_outfit_fields list (0035_status_suppresses_outfit_fields.sql)
+// -- collects every currently-active one for a character into a single Set,
+// so a clothing layer the current stage says "isn't there" doesn't leak into
+// generated image prompts via ${targetN.category}.
+function getSuppressedOutfitFields(characterId, statusCtx) {
+  const active = listActiveStatuses(characterId, statusCtx);
+  const suppressed = new Set();
+  for (const status of active) {
+    for (const field of (status.suppresses_outfit_fields || '').split(',').map((f) => f.trim()).filter(Boolean)) {
+      suppressed.add(field);
+    }
+  }
+  return suppressed;
+}
 
 // Substitutes placeholders in prompt_override with a participant's current
 // Outfit danbooru tags (SPEC.md 3.6.4/3.7). Two base forms are supported:
@@ -30,7 +47,7 @@ import { resolveMentionedList } from '../mentionResolution.js';
 // Content inside the placeholders is authored entirely by the user in the
 // event editor — this module only does string substitution, never generates
 // the tag content itself.
-function substitutePlaceholders(promptOverride, participantsByName, candidateParticipants) {
+function substitutePlaceholders(promptOverride, participantsByName, candidateParticipants, statusCtx) {
   const referencedIds = new Set();
   if (!promptOverride) return { text: '', referencedIds };
 
@@ -48,7 +65,7 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
     const outfit = participant.current_outfit_id
       ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
       : null;
-    return resolveOutfitTags(outfit, categoryKey) ?? '';
+    return resolveOutfitTags(outfit, categoryKey, getSuppressedOutfitFields(participant.character_id, statusCtx)) ?? '';
   });
 
   return { text, referencedIds };
@@ -86,14 +103,21 @@ export async function executeGenerateImage(params, execCtx) {
         const tagParts = buildSceneTagParts(session, session.participants);
         const basePrompt = renderPromptTemplate(settings.prompt_template, { style_preset: stylePrompt, ...tagParts });
 
-        const { text: overrideText, referencedIds } = substitutePlaceholders(prompt_override, participantsByName, candidateParticipants);
+        const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId };
+        const { text: overrideText, referencedIds } = substitutePlaceholders(prompt_override, participantsByName, candidateParticipants, statusCtx);
 
         // Candidates referenced by target_character_ids but not explicitly used
         // via a ${name} placeholder still get their tags appended, so they
         // aren't silently dropped from the generated image (SPEC.md 3.6.4).
         const leftoverTags = candidateParticipants
           .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
-          .map((p) => resolveOutfitTags(db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id), null))
+          .map((p) =>
+            resolveOutfitTags(
+              db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id),
+              null,
+              getSuppressedOutfitFields(p.character_id, statusCtx),
+            ),
+          )
           .filter(Boolean);
 
         const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
