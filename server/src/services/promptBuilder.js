@@ -3,7 +3,22 @@ import { serializeCharacter } from './characterSheetFormat.js';
 import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
+import { listActiveStatuses } from '../db/repositories/characterStatusStatesRepo.js';
 import { withDisambiguatedNames } from './participantNaming.js';
+
+// "脱衣状態" is the one exclusive_group family surfaced to the LLM directly
+// (see characterSheetFormat.js's serializeCharacter) — a reserved
+// exclusive_group name the user assigns to their own character_statuses rows
+// (e.g. 未着手/上着なし/下着のみ/全裸) when authoring an undress-state ladder.
+// Other exclusive_group families (関係 stage, etc.) stay LLM-invisible, same
+// as before this feature existed.
+const UNDRESS_STATE_EXCLUSIVE_GROUP = 'undress_state';
+
+function getUndressStateName(playthroughId, roomSessionId, characterId) {
+  const active = listActiveStatuses(characterId, { playthroughId, roomSessionId });
+  const row = active.find((s) => s.exclusive_group === UNDRESS_STATE_EXCLUSIVE_GROUP);
+  return row ? row.name : null;
+}
 
 const HISTORY_LIMIT = 20;
 
@@ -72,7 +87,8 @@ function buildSystemPrompt(session, participants) {
       const { character, outfit } = getCharacterAndOutfit(p);
       const currentAddress = getCurrentAddress(session.playthrough_id, character.id);
       const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
-      return serializeCharacter(effectiveCharacter, outfit);
+      const undressStateName = getUndressStateName(session.playthrough_id, session.id, character.id);
+      return serializeCharacter(effectiveCharacter, outfit, undressStateName);
     })
     .join('\n');
 

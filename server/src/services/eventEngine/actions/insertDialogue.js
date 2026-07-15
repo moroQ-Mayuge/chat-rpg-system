@@ -3,7 +3,10 @@ import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { generateChatCompletion } from '../../koboldClient.js';
 import { serializeCharacter } from '../../characterSheetFormat.js';
+import { listActiveStatuses } from '../../../db/repositories/characterStatusStatesRepo.js';
 import { resolveMentionedSingle } from '../mentionResolution.js';
+
+const UNDRESS_STATE_EXCLUSIVE_GROUP = 'undress_state';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -15,9 +18,13 @@ async function generateCharacterLine(characterId, promptHint, execCtx) {
   const outfit = participant?.current_outfit_id
     ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
     : null;
+  const undressStateRow = listActiveStatuses(characterId, {
+    playthroughId: execCtx.playthroughId,
+    roomSessionId: execCtx.sessionId,
+  }).find((s) => s.exclusive_group === UNDRESS_STATE_EXCLUSIVE_GROUP);
 
   const systemPrompt = [
-    serializeCharacter(character, outfit),
+    serializeCharacter(character, outfit, undressStateRow?.name ?? null),
     '',
     'あなたは上記のキャラクターになりきって、日本語で一言だけセリフを発してください。',
     '地の文・タグ・鉤括弧は不要で、セリフ本文のみを出力してください。',

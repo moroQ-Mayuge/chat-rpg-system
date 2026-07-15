@@ -3,11 +3,16 @@ import { getValue } from './relationshipStatesRepo.js';
 import { listActiveStatuses } from './characterStatusStatesRepo.js';
 
 // Assembles a character's current game-state snapshot (self-stats, active
-// category statuses, current relationship stage) for チャット欄のステータス
-// 表示 — shared by roomSessionsRepo.js's attachParticipants (live values) and
-// messagesRepo.js's createMessage (a frozen snapshot at speak-time). The
-// "関係" stage is just whichever active status carries an exclusive_group
-// (see 0026_relationship_stage_and_address.sql) — no separate lookup needed.
+// category statuses, active exclusive_group "stage" statuses) for チャット欄
+// のステータス表示 — shared by roomSessionsRepo.js's attachParticipants (live
+// values) and messagesRepo.js's createMessage (a frozen snapshot at
+// speak-time). "stages" holds every active status that carries an
+// exclusive_group (see 0026_relationship_stage_and_address.sql) — a
+// character can have more than one exclusive_group family active at once
+// (e.g. 関係 alongside undress_state), so this is an array, not a single
+// slot. All display-visibility gating still uses the one "relationship_stage"
+// category toggle (status_display_settings) regardless of which
+// exclusive_group family a given stage belongs to.
 export function buildStatusSnapshot(playthroughId, characterId, { roomSessionId }) {
   const selfStats = listSelfStatAxes().map((axis) => ({
     axis_id: axis.id,
@@ -19,10 +24,9 @@ export function buildStatusSnapshot(playthroughId, characterId, { roomSessionId 
 
   const activeStatuses = listActiveStatuses(characterId, { playthroughId, roomSessionId });
   const statuses = activeStatuses.filter((s) => !s.exclusive_group).map((s) => ({ id: s.status_id, name: s.name }));
-  const relationshipStageRow = activeStatuses.find((s) => s.exclusive_group);
-  const relationship_stage = relationshipStageRow
-    ? { id: relationshipStageRow.status_id, name: relationshipStageRow.name, exclusive_group: relationshipStageRow.exclusive_group }
-    : null;
+  const stages = activeStatuses
+    .filter((s) => s.exclusive_group)
+    .map((s) => ({ id: s.status_id, name: s.name, exclusive_group: s.exclusive_group }));
 
-  return { self_stats: selfStats, statuses, relationship_stage };
+  return { self_stats: selfStats, statuses, stages };
 }

@@ -1,8 +1,10 @@
 import { db } from '../connection.js';
 
-// The 13 danbooru-tag category columns that replaced the old flat image_tags
-// column (see 0028_outfit_tag_categories.sql). Order matters for the "bare"
-// (no category key) composition in outfitTagCategories.js's resolveOutfitTags.
+// The danbooru-tag category columns that replaced the old flat image_tags
+// column (see 0028_outfit_tag_categories.sql, extended by
+// 0033_outfit_layers_and_underwear.sql with _outer/_equipment/underwear_*).
+// Order matters for the "bare" (no category key) composition in
+// outfitTagCategories.js's resolveOutfitTags.
 export const OUTFIT_TAG_FIELDS = [
   'main_features',
   'hairstyle',
@@ -12,10 +14,16 @@ export const OUTFIT_TAG_FIELDS = [
   'clothing_lower',
   'clothing_legs',
   'shoes',
-  'clothing_face_extra',
-  'clothing_upper_extra',
-  'clothing_lower_extra',
-  'clothing_legs_extra',
+  'clothing_face_outer',
+  'clothing_upper_outer',
+  'clothing_lower_outer',
+  'clothing_legs_outer',
+  'clothing_face_equipment',
+  'clothing_upper_equipment',
+  'clothing_lower_equipment',
+  'clothing_legs_equipment',
+  'underwear_upper',
+  'underwear_lower',
   'belongings',
 ];
 

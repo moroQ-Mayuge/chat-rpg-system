@@ -17,7 +17,7 @@ import { generateOutfitStandingImage, generateOutfitExpressionImage } from '../s
 import { enqueueImageJob } from '../services/imageQueue.js';
 
 // Lets the character edit form generate a preview using whatever's currently
-// typed in the 13 tag category fields, even if not saved yet — without this,
+// typed in the tag category fields, even if not saved yet — without this,
 // generation always re-read the last-saved outfit row, forcing a save before
 // every single prompt tweak could be tested (the exact workflow friction the
 // user reported). Only known tag fields are pulled from the body; anything

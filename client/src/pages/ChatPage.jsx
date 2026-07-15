@@ -9,11 +9,14 @@ import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useItemsForWorld } from '../hooks/useItems.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
 
-// Compact renderer for a status snapshot ({self_stats, statuses,
-// relationship_stage} — same shape whether live (participant.status) or
-// frozen at speak-time (message.status_snapshot)), gated per-category by the
-// effective visibility for whichever display location is calling it (strip/
-// panel/chat_log — see session.status_display_visibility).
+// Compact renderer for a status snapshot ({self_stats, statuses, stages} —
+// same shape whether live (participant.status) or frozen at speak-time
+// (message.status_snapshot)), gated per-category by the effective visibility
+// for whichever display location is calling it (strip/panel/chat_log — see
+// session.status_display_visibility). "stages" can hold more than one entry
+// when multiple exclusive_group families (e.g. 関係 and undress_state) are
+// active at once — all of them share the single "relationship_stage"
+// visibility toggle.
 function StatusInline({ status, visibility }) {
   if (!status || !visibility) return null;
   const parts = [];
@@ -23,8 +26,8 @@ function StatusInline({ status, visibility }) {
   if (visibility.status && status.statuses.length > 0) {
     parts.push(status.statuses.map((s) => `[${s.name}]`).join(''));
   }
-  if (visibility.relationship_stage && status.relationship_stage) {
-    parts.push(`《${status.relationship_stage.name}》`);
+  if (visibility.relationship_stage && status.stages?.length > 0) {
+    parts.push(status.stages.map((s) => `《${s.name}》`).join(''));
   }
   if (parts.length === 0) return null;
   return <span style={{ fontSize: 9, color: '#666', marginLeft: 6 }}>{parts.join('　')}</span>;

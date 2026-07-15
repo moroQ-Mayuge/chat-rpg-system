@@ -10,7 +10,7 @@ function formatAge(character) {
   return character.age_real || '不明';
 }
 
-export function serializeCharacter(character, outfit) {
+export function serializeCharacter(character, outfit, undressStateName) {
   const fields = [
     ['本名', character.full_name],
     ['あだ名', character.nickname],
@@ -37,6 +37,7 @@ export function serializeCharacter(character, outfit) {
     ['苦手', character.dislikes],
     ['服装', outfit?.clothing_description],
     ['装備', outfit?.equipment_description],
+    ...(undressStateName ? [[null, `現在の服装状態：${undressStateName}`]] : []),
     ['スキル技能', character.skills],
     ['特殊スキル', character.special_skills],
     ['弱点', character.weakness],
