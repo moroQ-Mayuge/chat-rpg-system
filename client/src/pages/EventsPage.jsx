@@ -353,6 +353,37 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
               <input value={p.value ?? ''} onChange={(e) => setParams({ value: e.target.value })} />
             </label>
           )}
+          <label>
+            <span style={label11}>対象キャラ（未指定=グローバル）</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">未指定（グローバル）</option>
+              <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {p.character_id != null && (
+            <label>
+              <span style={label11}>スコープ</span>
+              <select value={p.scope ?? 'playthrough'} onChange={(e) => setParams({ scope: e.target.value })}>
+                <option value="playthrough">ルート永続</option>
+                <option value="session">セッション内一時</option>
+              </select>
+            </label>
+          )}
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
@@ -742,6 +773,33 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <span style={label11}>値</span>
             <input value={p.value ?? ''} onChange={(e) => setParams({ value: e.target.value })} />
           </label>
+          <label>
+            <span style={label11}>対象キャラ（未指定=グローバル）</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">未指定（グローバル）</option>
+              <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {charOptions}
+            </select>
+          </label>
+          {p.character_id != null && (
+            <label>
+              <span style={label11}>スコープ</span>
+              <select value={p.scope ?? 'playthrough'} onChange={(e) => setParams({ scope: e.target.value })}>
+                <option value="playthrough">ルート永続</option>
+                <option value="session">セッション内一時</option>
+              </select>
+            </label>
+          )}
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
         </div>
       )}
 
