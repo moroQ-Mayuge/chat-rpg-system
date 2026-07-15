@@ -43,9 +43,40 @@ body {
   gap: 16px;
 }
 
+/* Mobile: the sidebar list pane (.sidebar-pane) is hidden by default and
+   the editor pane takes the full width — opened as a full-screen overlay
+   via the .mobile-list-open modifier (see useMobileListToggle.js), closed
+   again automatically once a row is picked. .mobile-list-toggle is the
+   "一覧を表示" button shown only at this width; desktop never needs it
+   since the sidebar is already always visible via the grid column above. */
+.mobile-list-toggle {
+  display: none;
+}
+
 @media (max-width: 700px) {
   .sidebar-layout {
     grid-template-columns: 1fr;
+  }
+
+  /* !important: pages set `display: flex` inline on .sidebar-pane for
+     desktop column layout, which otherwise wins on specificity over these
+     class rules. */
+  .sidebar-layout .sidebar-pane {
+    display: none !important;
+  }
+
+  .sidebar-layout.mobile-list-open .sidebar-pane {
+    display: flex !important;
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: #fff;
+    overflow: auto;
+    padding: 16px;
+  }
+
+  .mobile-list-toggle {
+    display: inline-block;
   }
 }
 

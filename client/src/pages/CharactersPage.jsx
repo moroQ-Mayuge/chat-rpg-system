@@ -2,11 +2,30 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCharacters, useCharacter, useCharacterMutations, useOutfitMutations } from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
+import { useWorlds } from '../hooks/useWorlds.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 import TagChips from '../components/ui/TagChips.jsx';
+import GroupedList from '../components/ui/GroupedList.jsx';
+import { groupByKeys } from '../utils/grouping.js';
+import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 import { charactersApi } from '../api/characters.js';
 import { outfitsApi } from '../api/outfits.js';
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
+
+// Mirrors server/src/services/attributeTagMatching.js's parseAttributeTags —
+// that module lives server-side (imports db), so this is a small client
+// copy rather than a shared import across the client/server boundary.
+function parseAttributeTags(text) {
+  return (text || '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+const GROUP_AXES = [
+  { value: 'world', label: '所属World' },
+  { value: 'attribute', label: '属性キー' },
+];
 
 const BASIC_FIELDS = [
   ['name', '名前（愛称）'],
@@ -101,6 +120,9 @@ export default function CharactersPage() {
   const queryClient = useQueryClient();
   const { data: characters, isLoading: loadingList } = useCharacters();
   const { data: expressionTypes } = useExpressionTypes();
+  const { data: worlds } = useWorlds();
+  const [groupAxis, setGroupAxis] = useState('world');
+  const { mobileListOpen, openList, closeList } = useMobileListToggle();
   const [selectedId, setSelectedId] = useState(null);
   const isNew = selectedId === 'new';
   const { data: existing } = useCharacter(isNew || selectedId == null ? null : selectedId);
@@ -163,6 +185,12 @@ export default function CharactersPage() {
     setShowPasteImport(false);
     setUnmatchedSegments([]);
     setAssistError(null);
+    closeList();
+  }
+
+  function selectCharacter(id) {
+    setSelectedId(id);
+    closeList();
   }
 
   async function save() {
@@ -354,48 +382,70 @@ export default function CharactersPage() {
     }
   }
 
-  if (loadingList || !expressionTypes) return <p>読み込み中...</p>;
+  if (loadingList || !expressionTypes || !worlds) return <p>読み込み中...</p>;
 
-  return (
-    <div className="sidebar-layout" style={{ '--sidebar-width': '180px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #ddd', paddingRight: 12 }}>
-        {characters.map((c) => (
-          <div
-            key={c.id}
-            onClick={() => setSelectedId(c.id)}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 6,
-              borderRadius: 6,
-              cursor: 'pointer',
-              background: selectedId === c.id ? '#dbeafe' : 'transparent',
+  const characterGroups =
+    groupAxis === 'world'
+      ? groupByKeys(
+          characters,
+          (c) => c.world_ids,
+          (worldId) => worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`,
+          '未所属',
+        )
+      : groupByKeys(characters, (c) => parseAttributeTags(c.attribute_tags), (tag) => tag, '未指定');
+
+  function renderCharacterRow(c) {
+    return (
+      <div
+        key={c.id}
+        onClick={() => selectCharacter(c.id)}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: 6,
+          borderRadius: 6,
+          cursor: 'pointer',
+          background: selectedId === c.id ? '#dbeafe' : 'transparent',
+        }}
+      >
+        <span>{c.name}</span>
+        <span style={{ display: 'flex', gap: 4 }}>
+          <button
+            style={{ fontSize: 11 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleExportCharacter(c.id);
             }}
           >
-            <span>{c.name}</span>
-            <span style={{ display: 'flex', gap: 4 }}>
-              <button
-                style={{ fontSize: 11 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExportCharacter(c.id);
-                }}
-              >
-                エクスポート
-              </button>
-              <button
-                style={{ fontSize: 11 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(c.id);
-                }}
-              >
-                削除
-              </button>
-            </span>
-          </div>
-        ))}
+            エクスポート
+          </button>
+          <button
+            style={{ fontSize: 11 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(c.id);
+            }}
+          >
+            削除
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`sidebar-layout${mobileListOpen ? ' mobile-list-open' : ''}`} style={{ '--sidebar-width': '220px' }}>
+      <div className="sidebar-pane" style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #ddd', paddingRight: 12 }}>
+        <div style={{ display: 'flex', gap: 6, fontSize: 12 }}>
+          {GROUP_AXES.map((axis) => (
+            <label key={axis.value} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}>
+              <input type="radio" name="char-group-axis" checked={groupAxis === axis.value} onChange={() => setGroupAxis(axis.value)} />
+              {axis.label}
+            </label>
+          ))}
+        </div>
+        <GroupedList groups={characterGroups} renderGroupItems={(group) => group.items.map(renderCharacterRow)} />
         <button onClick={startNew}>+ 新規キャラ</button>
         <label style={{ fontSize: 12, cursor: 'pointer' }}>
           インポート（zip）
@@ -404,6 +454,9 @@ export default function CharactersPage() {
       </div>
 
       <div>
+        <button className="mobile-list-toggle" onClick={openList} style={{ marginBottom: 8 }}>
+          ☰ 一覧を表示
+        </button>
         {selectedId == null && <p>左の一覧からキャラを選択するか、新規作成してください</p>}
 
         {selectedId != null && (

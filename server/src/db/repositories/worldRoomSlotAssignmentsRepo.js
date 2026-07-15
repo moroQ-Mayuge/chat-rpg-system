@@ -29,6 +29,20 @@ export function clearAssignment(worldId, slotId) {
   return { cleared: true };
 }
 
+// Which World(s) a character is currently placed into, derived from its
+// slot assignments (world_id lives directly on this table, no join needed).
+// Best-effort/display-only: a character with zero assignments simply has no
+// World here, and one placed in several Worlds' rooms shows up in all of
+// them -- there's no standalone "this character belongs to World X" concept
+// yet (see character_world_membership_and_list_ui_backlog item 1), this is
+// purely for CharactersPage's "所属World" grouping.
+export function listWorldIdsForCharacter(characterId) {
+  return db
+    .prepare('SELECT DISTINCT world_id FROM world_room_slot_assignments WHERE character_id = ?')
+    .all(characterId)
+    .map((r) => r.world_id);
+}
+
 // Used by roomSessionsRepo.createRoomSession at session-start time -- the
 // direct replacement for the old flat room_template_characters query.
 export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemplateId) {

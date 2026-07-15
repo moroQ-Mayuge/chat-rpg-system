@@ -7,7 +7,28 @@ import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
 import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
+import { useWorlds } from '../hooks/useWorlds.js';
+import GroupedList from '../components/ui/GroupedList.jsx';
+import { groupByKeys } from '../utils/grouping.js';
+import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 import { eventsApi } from '../api/events.js';
+
+// scope==='global' events have no World (they apply everywhere) — bucketed
+// separately from the World-unassigned "未分類" fallback groupByKeys would
+// otherwise use, since "global" and "unassigned" mean different things here.
+const GLOBAL_GROUP_KEY = '__global__';
+
+function buildEventGroups(definitions, worlds) {
+  const globalDefs = definitions.filter((d) => d.scope === 'global');
+  const scopedDefs = definitions.filter((d) => d.scope !== 'global');
+  const worldGroups = groupByKeys(
+    scopedDefs,
+    (d) => d.world_ids,
+    (worldId) => worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`,
+  );
+  if (globalDefs.length === 0) return worldGroups;
+  return [{ key: GLOBAL_GROUP_KEY, label: 'global（全部屋共通）', isUnassigned: false, items: globalDefs }, ...worldGroups];
+}
 
 const CONDITION_TYPES = [
   { value: 'probability', label: '確率' },
@@ -1039,7 +1060,9 @@ export default function EventsPage() {
   const { data: roomTemplates } = useRoomTemplates();
   const { data: items } = useAllItems();
   const { data: statuses } = useAllCharacterStatuses();
+  const { data: worlds } = useWorlds();
   const { create, update, remove } = useEventDefinitionMutations();
+  const { mobileListOpen, openList, closeList } = useMobileListToggle();
 
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -1053,7 +1076,12 @@ export default function EventsPage() {
     }
   }, [selectedId, definitions]);
 
-  if (isLoading || !draft || !characters || !axes || !expressionTypes) return <p>読み込み中...</p>;
+  if (isLoading || !draft || !characters || !axes || !expressionTypes || !worlds) return <p>読み込み中...</p>;
+
+  function selectEvent(id) {
+    setSelectedId(id);
+    closeList();
+  }
 
   async function handleSave() {
     if (!draft.name) return;
@@ -1105,12 +1133,45 @@ export default function EventsPage() {
     }
   }
 
+  const eventGroups = buildEventGroups(definitions ?? [], worlds);
+
+  function renderEventCard(def) {
+    return (
+      <div
+        key={def.id}
+        onClick={() => selectEvent(def.id)}
+        style={{
+          cursor: 'pointer',
+          background: def.id === selectedId ? '#eef2ff' : '#f7f7f7',
+          border: def.id === selectedId ? '1px solid #6366f1' : '1px solid #eee',
+          borderRadius: 6,
+          padding: '8px 10px',
+          opacity: def.enabled ? 1 : 0.5,
+          marginBottom: 8,
+        }}
+      >
+        <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>{def.name}</p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: '#888' }}>
+          <span>{def.scope}</span>
+          <span>優先度 {def.priority}</span>
+          {!def.enabled && <span>無効</span>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h2>イベント定義</h2>
-      <div className="sidebar-layout" style={{ '--sidebar-width': '220px' }}>
-        <div>
-          <button style={{ width: '100%', marginBottom: 8 }} onClick={() => setSelectedId(null)}>
+      <div className={`sidebar-layout${mobileListOpen ? ' mobile-list-open' : ''}`} style={{ '--sidebar-width': '220px' }}>
+        <div className="sidebar-pane">
+          <button
+            style={{ width: '100%', marginBottom: 8 }}
+            onClick={() => {
+              setSelectedId(null);
+              closeList();
+            }}
+          >
             + 新規イベント
           </button>
           <label style={{ display: 'block', width: '100%', marginBottom: 12 }}>
@@ -1119,32 +1180,13 @@ export default function EventsPage() {
             </span>
             <input type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
           </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(definitions ?? []).map((def) => (
-              <div
-                key={def.id}
-                onClick={() => setSelectedId(def.id)}
-                style={{
-                  cursor: 'pointer',
-                  background: def.id === selectedId ? '#eef2ff' : '#f7f7f7',
-                  border: def.id === selectedId ? '1px solid #6366f1' : '1px solid #eee',
-                  borderRadius: 6,
-                  padding: '8px 10px',
-                  opacity: def.enabled ? 1 : 0.5,
-                }}
-              >
-                <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>{def.name}</p>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: '#888' }}>
-                  <span>{def.scope}</span>
-                  <span>優先度 {def.priority}</span>
-                  {!def.enabled && <span>無効</span>}
-                </div>
-              </div>
-            ))}
-          </div>
+          <GroupedList groups={eventGroups} renderGroupItems={(group) => group.items.map(renderEventCard)} />
         </div>
 
         <div className="events-form" style={{ border: '1px solid #ddd', borderRadius: 8, padding: 16 }}>
+          <button className="mobile-list-toggle" onClick={openList} style={{ marginBottom: 8 }}>
+            ☰ 一覧を表示
+          </button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <input
               style={{ fontSize: 15, fontWeight: 500, maxWidth: 260 }}

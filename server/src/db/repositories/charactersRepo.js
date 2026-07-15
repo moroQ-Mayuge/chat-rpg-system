@@ -1,5 +1,6 @@
 import { db } from '../connection.js';
 import { listOutfitsForCharacter, createOutfit } from './outfitsRepo.js';
+import { listWorldIdsForCharacter } from './worldRoomSlotAssignmentsRepo.js';
 
 export const CHARACTER_TEXT_FIELDS = [
   'name',
@@ -56,7 +57,11 @@ export function listCharacters() {
     const defaultOutfit = db
       .prepare('SELECT standing_image_path FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(row.id);
-    return { ...row, default_outfit_standing_image: defaultOutfit?.standing_image_path ?? null };
+    return {
+      ...row,
+      default_outfit_standing_image: defaultOutfit?.standing_image_path ?? null,
+      world_ids: listWorldIdsForCharacter(row.id),
+    };
   });
 }
 

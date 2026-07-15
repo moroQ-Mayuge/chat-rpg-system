@@ -1,4 +1,5 @@
 import { db } from '../connection.js';
+import { listWorldsForRoomTemplate } from './worldRoomTemplatesRepo.js';
 
 function attachConditionsAndActions(def) {
   if (!def) return def;
@@ -13,8 +14,23 @@ function attachConditionsAndActions(def) {
   return { ...def, enabled: Boolean(def.enabled), has_outcome_branch: Boolean(def.has_outcome_branch), conditions, actions };
 }
 
+// World affiliation for a 'room_template'-scoped event is transitive, via
+// whichever World(s) currently include that room (world_room_templates —
+// rooms are shared master data, see 0030_room_world_decoupling.sql). A
+// 'global' event applies everywhere and has no World -- used by
+// EventsPage.jsx to bucket events into a dedicated "global" group rather
+// than the World-unassigned "未分類" fallback.
+function attachWorldIds(def) {
+  const worldIds = def.scope === 'room_template' && def.room_template_id ? listWorldsForRoomTemplate(def.room_template_id).map((w) => w.id) : [];
+  return { ...def, world_ids: worldIds };
+}
+
 export function listEventDefinitions() {
-  return db.prepare('SELECT * FROM event_definitions ORDER BY priority ASC, id ASC').all().map(attachConditionsAndActions);
+  return db
+    .prepare('SELECT * FROM event_definitions ORDER BY priority ASC, id ASC')
+    .all()
+    .map(attachConditionsAndActions)
+    .map(attachWorldIds);
 }
 
 export function getEventDefinition(id) {

@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
+import GroupedList from '../components/ui/GroupedList.jsx';
+import { groupByKeys } from '../utils/grouping.js';
 
 export default function RoomTemplatesPage() {
   const queryClient = useQueryClient();
@@ -12,16 +14,6 @@ export default function RoomTemplatesPage() {
   const [exportPanelRoomId, setExportPanelRoomId] = useState(null);
   const [exportIncludeCharacters, setExportIncludeCharacters] = useState(false);
   const [importTargetWorldId, setImportTargetWorldId] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
-
-  function toggleGroup(worldId) {
-    setCollapsedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(worldId)) next.delete(worldId);
-      else next.add(worldId);
-      return next;
-    });
-  }
 
   function toggleExportPanel(roomId) {
     setExportIncludeCharacters(false);
@@ -57,18 +49,11 @@ export default function RoomTemplatesPage() {
   // room can legitimately appear in more than one World's group here.
   // Rooms attached to zero Worlds fall into a synthetic "未分類" group,
   // same convention as prop_categories/item_categories' common fallback.
-  const groups = new Map();
-  for (const template of templates) {
-    const worldIds = template.world_ids.length > 0 ? template.world_ids : [null];
-    for (const worldId of worldIds) {
-      if (!groups.has(worldId)) {
-        const world = worldId != null ? worlds.find((w) => w.id === worldId) : null;
-        groups.set(worldId, { worldId, worldName: world?.name ?? '未分類', isUnassigned: worldId == null, items: [] });
-      }
-      groups.get(worldId).items.push(template);
-    }
-  }
-  const sortedGroups = [...groups.values()].sort((a, b) => Number(a.isUnassigned) - Number(b.isUnassigned));
+  const groups = groupByKeys(
+    templates,
+    (template) => template.world_ids,
+    (worldId) => worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`,
+  );
 
   return (
     <div>
@@ -96,19 +81,10 @@ export default function RoomTemplatesPage() {
         </div>
       </div>
 
-      {sortedGroups.length === 0 && <p>まだ部屋がありません</p>}
-
-      {sortedGroups.map((group) => {
-        const collapsed = collapsedGroups.has(group.worldId);
-        return (
-        <div key={group.worldId ?? 'unattached'} style={{ marginBottom: 20 }}>
-          <p
-            style={{ fontWeight: 500, color: group.isUnassigned ? '#888' : '#2563eb', cursor: 'pointer', userSelect: 'none' }}
-            onClick={() => toggleGroup(group.worldId)}
-          >
-            {collapsed ? '▶' : '▼'} {group.worldName}（{group.items.length}）
-          </p>
-          {!collapsed && (
+      <GroupedList
+        groups={groups}
+        emptyMessage="まだ部屋がありません"
+        renderGroupItems={(group) => (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
             {group.items.map((room) => (
               <div key={room.id} style={{ border: '1px solid #ddd', borderRadius: 12, overflow: 'hidden' }}>
@@ -154,10 +130,8 @@ export default function RoomTemplatesPage() {
               </div>
             ))}
           </div>
-          )}
-        </div>
-        );
-      })}
+        )}
+      />
     </div>
   );
 }
