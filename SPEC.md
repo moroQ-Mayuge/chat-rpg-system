@@ -305,6 +305,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - `flag_key`: string
 - `comparison`: `"=="` `"!="` `"exists"` `"not_exists"`（exists系は`value`不要）
 - `value`: string（比較対象。数値もstring格納し数値変換して比較）
+- `character_id`: nullable（未指定=ルート全体のグローバルフラグ、`session_flags`を参照。指定時はキャラ別フラグ`character_flags`を参照）。`"any_present"`で同席者のうち誰か1人でも満たせば真、`"mentioned"`でそのターンに@メンションされたキャラのうち誰か1人でも満たせば真、も許容（`mentioned_limit`で人数を絞り込み可）
+- `scope`: `"playthrough"`（ルート永続）/ `"session"`（セッション内一時）。`character_id`指定時のみ有効、デフォルト`"playthrough"`
 
 **participant_count** - 同席人数
 ```json
@@ -359,6 +361,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```
 - `operation`: `"set"` / `"increment"` / `"decrement"` / `"toggle"`
 - `value`: string（set時に使用。increment/decrementは数値文字列を数値変換して演算）
+- `character_id`: nullable（未指定=ルート全体のグローバルフラグ、`session_flags`に書き込み。指定時はキャラ別フラグ`character_flags`に書き込み）。`"all_present"`で同席者全員に適用、`"mentioned"`で@メンションされたキャラ全員に適用（`mentioned_limit`で人数を絞り込み可）
+- `scope`: `"playthrough"`（ルート永続）/ `"session"`（セッション内一時）。`character_id`指定時のみ有効、デフォルト`"playthrough"`
 
 **change_relationship** - 関係性パラメータ変更
 ```json
@@ -639,11 +643,30 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | id | PK | |
 | character_id | FK | |
 | name | text | 制服／私服／水着等 |
-| clothing_description | text | 服装 |
-| equipment_description | text | 装備 |
-| image_tags | text | danbooruタグ |
+| clothing_description | text | 服装（自然文、キャラ情報フォーマット用） |
+| equipment_description | text | 装備（自然文、キャラ情報フォーマット用） |
 | standing_image_path | text, nullable | 立ち絵（衣装につき1枚、表情バリエーションなし） |
 | is_default | bool | |
+| main_features 〜 belongings | text（19列） | danbooruタグカテゴリ群（下記参照）。旧`image_tags`（単一自由記述）を置き換え |
+
+**danbooruタグカテゴリ**（`OUTFIT_TAG_FIELDS`, `server/src/db/repositories/outfitsRepo.js`）：`main_features` `hairstyle` `clothing_main` `clothing_face` `clothing_upper` `clothing_lower` `clothing_legs` `shoes` `clothing_face_outer` `clothing_upper_outer` `clothing_lower_outer` `clothing_legs_outer` `clothing_face_equipment` `clothing_upper_equipment` `clothing_lower_equipment` `clothing_legs_equipment` `underwear_upper` `underwear_lower` `belongings`。CharactersPageのOutfitエディタでカテゴリごとに個別編集し、画像生成時は`resolveOutfitTags`（`server/src/services/outfitTagCategories.js`）が用途に応じて結合する。
+
+- `_outer`列：上着・重ね着（ジャケット・コートなど、脱ぎ着が自然なもの）
+- `_equipment`列：追加装備（鎧・銃ホルダーなど、普段着でないもの）
+- `underwear_upper`/`underwear_lower`：下着（`underwear_lower`は水着も含む想定）。`belongings`と同様にどのレンジプリセットにも含まれず、`${target1.underwear_upper}`のように個別参照する
+
+**ショット範囲プリセット**：イベント／シーン画像生成のプロンプトテンプレートで`${target1.upperbody}`のように参照できるショット範囲名。`upperbody`/`cowboyshot`/`lowerbody`/`fullbody`の4種類、それぞれ以下のバリエーションを持つ：
+
+| キー例 | 内容 |
+|---|---|
+| `upperbody`（無印） | ベース衣装のみ |
+| `upperbody_outer` | 上着・重ね着のみ |
+| `upperbody_equipment` | 追加装備のみ |
+| `upperbody_full` | ベース＋上着＋追加装備（下着は含まない） |
+
+下着を見せる演出をしたい場合はレンジプリセットではなく`${target1.underwear_upper}`／`${target1.underwear_lower}`を個別に指定する。
+
+**脱衣状態の表現**：`character_statuses`の`exclusive_group`を`undress_state`として登録したステータス群（例：未着手／上着なし／下着のみ／全裸）を使い、既存の関係性ステージ（[[relationship_stage]]、`exclusive_group`は任意の名前でよい）と同じ排他機構でキャラの脱衣段階を管理する。`exclusive_group: 'undress_state'`のアクティブステータスは`promptBuilder.js`のキャラクターカードに「現在の服装状態：{ステータス名}」として自動的に含まれる（LLMのシステムプロンプトに可視）。表示側（チャット欄ステータス表示）は`buildStatusSnapshot`（`server/src/db/repositories/statusSnapshotRepo.js`）の`stages`配列に他のexclusive_groupファミリーと並んで含まれ、既存の「関係ステージ」表示トグルで一括制御される。
 
 ### expression_types（表情マスター）
 | カラム | 型 | 備考 |
@@ -714,13 +737,26 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time |
 | params | json | 種別ごとのパラメータ |
 
-### session_flags（イベント連鎖用フラグ、ルート単位）
+### session_flags（イベント連鎖用フラグ、ルート単位・グローバル共有）
 | カラム | 型 | 備考 |
 |---|---|---|
 | playthrough_id | FK | 部屋をまたいでも共有されるルート単位のデータ |
 | flag_key | text | |
 | flag_value | text | |
 | set_at_turn | int, nullable | フラグ設定時のルート内累計ターン番号。`turn_count`条件の`reference: "flag_set"`が経過ターン数を計算するために使用（実装フェーズで追加） |
+
+### character_flags（イベント連鎖用フラグ、キャラ別）
+`session_flags`とは独立の名前空間 — `flag_state`/`set_flag`に`character_id`を指定した場合のみ使われる（未指定時は従来通り`session_flags`を使用）。`character_status_states`の`persistence_scope`二層化と同じ排他キー方式（`persistence_scope`に応じてplaythrough_id/room_session_idのどちらか一方だけを使用）。
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| character_id | FK | |
+| flag_key | text | |
+| flag_value | text | |
+| persistence_scope | text | `"playthrough"`（ルート永続）/ `"session"`（セッション内一時。部屋移動で参照不能になる） |
+| playthrough_id | FK, nullable | persistence_scope="playthrough"時のみセット |
+| room_session_id | FK, nullable | persistence_scope="session"時のみセット |
+| set_at_turn | int, nullable | |
 
 ### event_fire_history（イベント発火履歴、ルート単位）
 | カラム | 型 | 備考 |

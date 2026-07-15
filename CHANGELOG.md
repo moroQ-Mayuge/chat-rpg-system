@@ -1,5 +1,40 @@
 # 変更履歴
 
+## v0.1.2
+
+実際にプレイしながらの動作確認フェーズで出た不具合報告・機能改善要望への対応。部屋のマスタデータ化、@メンション連動、衣装の重ね着表現、キャラ別フラグなど
+
+**部屋のマスタデータ化（World単独所有からの脱却）**
+- `room_templates.world_id`がNOT NULL FKだったため、同じ部屋を複数Worldで使うには全フィールド＋背景画像込みの完全複製が必要だった（実際にWorld④分割時に発生）。部屋を共有マスタデータへ変更し、name/location/atmosphere/background/attribute_tags/is_placeは部屋自身に残したまま、World単位で変動すべきものを新規の`world_room_templates`（多対多の所属）、`room_connections.world_id`（経路もWorld別）、`room_template_participant_slots`＋`world_room_slot_assignments`（マスタは属性キーでの抽象スロット、Worldごとに実キャラを割り当て）、`prop_categories`＋`room_template_prop_categories`＋`world_room_props`/`world_room_free_props`（設備もカテゴリ候補はマスタ、具体配置はWorld別）に分離
+- マイグレーション0030は追加のみ＋旧1部屋1Worldデータからのバックフィル。0032が旧テーブル/列を削除するが、実プレイでの動作確認が済むまで意図的に未適用のまま保留
+- 管理UI: 部屋テンプレート編集画面（マスタ）とWorld別部屋設定画面（`RoomWorldConfigPage.jsx`、経路・スロット割当・設備配置）に分割。部屋一覧はWorldごとにグルーピングし折りたたみ可能、どのWorldにも属さない部屋は「未分類」グループに
+
+**イベント条件/アクションが「@メンション中のキャラ」をターゲットにできるように**
+- `relationship_threshold`/`has_status`/`has_outfit`条件と`change_relationship`/`change_status`/`set_address`アクションに、既存の`any_present`/`all_present`と並ぶ`"mentioned"`センチネルを追加。`mentioned_limit`でメンション順の先頭何人までを対象にするか絞り込み可能
+- `insert_dialogue`/`change_outfit`/`character_join`（specific）/`character_leave`（specific）にも単一ターゲット版の`"mentioned"`対応を追加。誰もメンションされていない場合はアクション自体をスキップ（`insert_dialogue`のnull=ナレーション扱いへの誤フォールバックを防止）
+- 併せて`generate_image`の`target_character_ids`が空配列時に@メンションへフォールバックしない既存バグ（UIの既定値が`null`ではなく`[]`のため`?? mentionedCharacterIds`が効かなかった）を修正
+
+**Worldバンドルにキャラ状態/しきい値トリガー/イベント定義を含める**
+- Worldエクスポートに`character_statuses`/`axis_status_triggers`/`event_definitions`を含めるオプションを追加し、「全部込み」zipが実際に遊べる状態一式を含むように
+- 副産物として発見した名前解決バグを修正：`resolveRoomTemplateAssociations`と`importEventDefinitionJson`が常にインストール全体を名前検索していたため、インポートバッチ内に同名エンティティがあると意図しない方へ紐づく不具合があった。バッチ内エンティティを優先する`preferredCharacters`/`preferredStatuses`/`preferredRoomTemplates`オプションを追加
+
+**管理UI改善（World並び替え・表情マスター編集・行動コマンド分離）**
+- `WorldsPage.jsx`に並び替え（名前／作成日／最終プレイ日時）を追加
+- `ExpressionTypesPage.jsx`に編集機能（APIは既存、UIのみ未対応だった）と、LLM向けタグとは別に画像生成用danbooruタグを個別指定できる`danbooru_tag`列を追加（未設定時は従来通り`llm_tag_key`にフォールバックし既存データの生成結果は変化なし）
+- 旧`ItemsPage.jsx`をアイテム管理と行動コマンド管理（新規`ActionCommandsPage.jsx`）に分割
+
+**衣装の重ね着表現（上着・追加装備・下着）**
+- 既存の`clothing_*_extra`タグ列を「上着・重ね着」（ジャケットなど）として再定義し、新たに本来の「追加装備」（鎧・銃ホルダーなど普段着でないもの）用の`clothing_*_equipment`列、および`underwear_upper`/`underwear_lower`（下半身は水着も含む想定）を追加。`OUTFIT_TAG_FIELDS`は13→19列に。CRUD・コンテンツバンドルはフィールドリスト駆動の実装のため無改修で対応
+- ショット範囲プリセット（`upperbody`/`cowboyshot`/`lowerbody`/`fullbody`）に`_outer`/`_equipment`バリアントを追加。`_full`はベース＋上着＋追加装備の合成で、下着は意図的に含まない（`${target1.underwear_upper}`のように個別参照）
+
+**脱衣状態のキャラステータス化**
+- 新規テーブルは追加せず、既存`character_statuses`の`exclusive_group`排他機構を`undress_state`という予約グループ名で再利用。付随して、`statusSnapshotRepo.js`の`buildStatusSnapshot`が排他グループステータスを1つしか同時追跡できない（`relationship_stage`単数形）既存バグを発見・修正——`stages`配列化し、`関係`と`undress_state`など複数ファミリーが同時にアクティブでも取りこぼさないように
+- `exclusive_group: 'undress_state'`のアクティブステータスは、`promptBuilder.js`のキャラクターカードに「現在の服装状態：{ステータス名}」として自動的に反映されLLMからも認識可能に（他のexclusive_groupファミリーは引き続きLLM非可視）
+
+**キャラ別フラグ（セッション一時／ルート永続）**
+- 既存の`session_flags`（ルート全体でグローバル共有、変更なし）とは独立した新規`character_flags`テーブルを追加。`character_status_states`の`persistence_scope`二層化（playthrough_id/room_session_idの排他キー）と同じパターンを再利用
+- `flag_state`条件／`set_flag`アクションに任意の`character_id`（固定ID／`any_present`・`all_present`／`mentioned`）と`scope`（ルート永続／セッション内一時）を追加。未指定時は既存のグローバル挙動を完全維持
+
 ## v0.1.1
 
 プリセットコンテンツ拡充フェーズ（デモWorld「現代学園ファンタジー」の部屋/キャラ/イベント拡充、①現代・②異能バトルへの分割）で発生した実装上の要望から生まれた、イベントエンジンの小さな機能追加
