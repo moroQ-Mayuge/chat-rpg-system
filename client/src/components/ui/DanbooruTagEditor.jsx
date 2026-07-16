@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from './TagChips.module.css';
 
 function parseTags(text) {
@@ -20,14 +20,31 @@ export default function DanbooruTagEditor({ value, onChange }) {
   const [chips, setChips] = useState(() => parseTags(value));
   const [draft, setDraft] = useState('');
   const [previewText, setPreviewText] = useState(value || '');
+  // Tracks the last value *we* emitted via onChange, so the re-sync effect
+  // below can tell "parent echoed our own edit back" (joinEnabled strips
+  // disabled tags, so re-parsing that echo would silently drop them) apart
+  // from "caller swapped to a genuinely different value" (e.g. switching to
+  // another character's outfit -- this component isn't remounted, so the
+  // lazy useState initializers above only run once and would otherwise keep
+  // showing the previous character's chips/preview).
+  const lastEmitted = useRef(value);
 
   useEffect(() => {
     setPreviewText(joinEnabled(chips));
   }, [chips]);
 
+  useEffect(() => {
+    if (value === lastEmitted.current) return;
+    setChips(parseTags(value));
+    setPreviewText(value || '');
+    lastEmitted.current = value;
+  }, [value]);
+
   function commitChips(next) {
     setChips(next);
-    onChange(joinEnabled(next));
+    const joined = joinEnabled(next);
+    lastEmitted.current = joined;
+    onChange(joined);
   }
 
   function toggleChip(index) {

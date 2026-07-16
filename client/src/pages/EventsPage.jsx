@@ -30,6 +30,35 @@ function buildEventGroups(definitions, worlds) {
   return [{ key: GLOBAL_GROUP_KEY, label: 'global（全部屋共通）', isUnassigned: false, items: globalDefs }, ...worldGroups];
 }
 
+// Mirrors server/src/db/repositories/outfitsRepo.js's OUTFIT_TAG_FIELDS and
+// server/src/services/outfitTagCategories.js's RANGE_NAMES -- client code
+// can't import server modules, so this is a display-only copy kept for the
+// ${target1.category} placeholder reference below. Order matches the server
+// arrays for easy comparison.
+const OUTFIT_TAG_CATEGORY_KEYS = [
+  'main_features',
+  'hairstyle',
+  'clothing_main',
+  'clothing_face',
+  'clothing_upper',
+  'clothing_lower',
+  'clothing_legs',
+  'shoes',
+  'clothing_face_outer',
+  'clothing_upper_outer',
+  'clothing_lower_outer',
+  'clothing_legs_outer',
+  'clothing_face_equipment',
+  'clothing_upper_equipment',
+  'clothing_lower_equipment',
+  'clothing_legs_equipment',
+  'underwear_upper',
+  'underwear_lower',
+  'belongings',
+];
+const OUTFIT_TAG_RANGE_NAMES = ['upperbody', 'cowboyshot', 'lowerbody', 'fullbody'];
+const OUTFIT_TAG_RANGE_SUFFIXES = ['', '_outer', '_equipment', '_full'];
+
 const CONDITION_TYPES = [
   { value: 'probability', label: '確率' },
   { value: 'turn_count', label: '経過ターン数' },
@@ -772,6 +801,25 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
             ${'{キャラ名}'} で固定のキャラを、${'{target1}'} ${'{target2}'} …で「対象キャラ」欄で選んだ順番のキャラを、それぞれ現在衣装のdanbooruタグに置換します（対象キャラ未選択時は同席者全員の順）。具体的な性的表現の内容はここで自由入力してください。
           </p>
+          <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+            ${'{target1.category}'} のように末尾に「.カテゴリ名」を付けると、衣装タグの一部だけを個別に指定できます（現在の脱衣状態で抑制されているタグ列は自動的に除外されます）。
+          </p>
+          <details style={{ marginTop: 2 }}>
+            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>使用可能なカテゴリ一覧</summary>
+            <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              <p style={{ margin: '0 0 4px' }}>
+                <strong>個別列</strong>：{OUTFIT_TAG_CATEGORY_KEYS.map((k) => `${'{target1.'}${k}${'}'}`).join('　')}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>範囲プリセット</strong>（末尾なし＝ベース衣装のみ、_outer＝上着、_equipment＝追加装備、_full＝ベース＋上着＋追加装備）：
+                {OUTFIT_TAG_RANGE_NAMES.map((range) => (
+                  <span key={range} style={{ display: 'block', marginTop: 2 }}>
+                    {range}：{OUTFIT_TAG_RANGE_SUFFIXES.map((suf) => `${'{target1.'}${range}${suf}${'}'}`).join('　')}
+                  </span>
+                ))}
+              </p>
+            </div>
+          </details>
         </div>
       )}
 

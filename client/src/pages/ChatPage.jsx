@@ -452,15 +452,18 @@ export default function ChatPage() {
       </div>
 
       {session.room_is_place && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6, flexShrink: 0 }}>
-          {(connections ?? []).map((c) => (
-            <button key={c.id} onClick={() => handleMove(c.id)} style={{ fontSize: 12 }}>
-              → {c.to_room_name}
-              {c.label && `（${c.label}）`} [消費{c.movement_cost}]
-            </button>
-          ))}
-          {connections?.length === 0 && <span style={{ fontSize: 11, color: '#888' }}>移動先が設定されていません</span>}
-        </div>
+        <details style={{ marginBottom: 6, flexShrink: 0 }} open={(connections?.length ?? 0) <= 3}>
+          <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>移動先（{connections?.length ?? 0}）</summary>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {(connections ?? []).map((c) => (
+              <button key={c.id} onClick={() => handleMove(c.id)} style={{ fontSize: 12 }}>
+                → {c.to_room_name}
+                {c.label && `（${c.label}）`} [消費{c.movement_cost}]
+              </button>
+            ))}
+            {connections?.length === 0 && <span style={{ fontSize: 11, color: '#888' }}>移動先が設定されていません</span>}
+          </div>
+        </details>
       )}
 
       <p style={{ fontSize: 11, color: '#888', flexShrink: 0, margin: '0 0 4px' }}>
