@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
+import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
@@ -46,6 +47,8 @@ export default function WorldsPage() {
   const { data: stylePresets } = useStylePresets();
   const { create, update, remove, uploadThumbnailImage, generateThumbnailImage } = useWorldMutations();
   const [editingId, setEditingId] = useState(null);
+  const worldRoomsWorldId = editingId != null && editingId !== 'new' ? editingId : null;
+  const { data: worldRooms } = useRoomTemplates(worldRoomsWorldId);
   const [form, setForm] = useState(emptyForm);
   const [thumbGenerating, setThumbGenerating] = useState(false);
   const [thumbGenerateError, setThumbGenerateError] = useState(null);
@@ -526,6 +529,29 @@ export default function WorldsPage() {
               </>
             )}
           </div>
+
+          {editingId !== 'new' && (
+            <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 16 }}>
+              <p style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>この世界観の部屋</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {(worldRooms ?? []).map((r) => (
+                  <div
+                    key={r.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, border: '1px solid #eee', borderRadius: 6, padding: '4px 8px' }}
+                  >
+                    <span style={{ flex: 1 }}>{r.name}</span>
+                    <Link to={`/rooms/${r.id}/worlds/${editingId}`}>
+                      <button>設定</button>
+                    </Link>
+                  </div>
+                ))}
+                {(worldRooms ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>この世界観にアタッチされた部屋がまだありません</p>}
+              </div>
+              <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+                部屋の新規作成・World全体へのアタッチは「部屋テンプレート」画面から行います。「設定」ボタンから移動先（つながり）や参加キャラ枠などを編集できます。
+              </p>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button onClick={cancelEdit}>キャンセル</button>

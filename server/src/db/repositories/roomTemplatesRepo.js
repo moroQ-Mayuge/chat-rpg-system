@@ -4,7 +4,6 @@ import { listCandidateCategoriesForRoom, replaceCandidateCategoriesForRoom } fro
 import { listWorldsForRoomTemplate } from './worldRoomTemplatesRepo.js';
 import { listAssignmentsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPropsRepo.js';
-import { getUnassignedWorld } from './worldsRepo.js';
 
 // Rooms are shared master data (see 0030_room_world_decoupling.sql): a room
 // no longer belongs to a single World. Slots (abstract participant "枠") and
@@ -51,22 +50,15 @@ export function getRoomTemplateForWorld(roomTemplateId, worldId) {
 }
 
 export function createRoomTemplate(data) {
-  // world_id is legacy dead weight, kept only because the column is still
-  // physically present (NOT NULL) until cleanup migration
-  // 0032_room_world_decoupling_cleanup.sql is applied — see
-  // 0030_room_world_decoupling.sql's additive-then-cleanup two-step design.
-  // Real World membership lives in world_room_templates now
-  // (attachRoomToWorld); this value is never read by any app code.
   const result = db
     .prepare(
       `INSERT INTO room_templates
-        (world_id, worldview_mode, name, initial_situation, location_text, location_tags,
+        (worldview_mode, name, initial_situation, location_text, location_tags,
          atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place)
-       VALUES (@world_id, @worldview_mode, @name, @initial_situation, @location_text, @location_tags,
+       VALUES (@worldview_mode, @name, @initial_situation, @location_text, @location_tags,
          @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place)`,
     )
     .run({
-      world_id: getUnassignedWorld().id,
       worldview_mode: data.worldview_mode ?? 'inherit',
       name: data.name,
       initial_situation: data.initial_situation ?? '',
