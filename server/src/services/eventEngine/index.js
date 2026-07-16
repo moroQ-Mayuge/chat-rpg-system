@@ -12,23 +12,31 @@ import { executeAction } from './actions/registry.js';
 // available anyway (step 5 happens after step 3), all condition types — including
 // keyword's user_message/ai_response targets — are evaluated together in one pass
 // once both texts are on hand.
-function passesCooldownAndMaxFires(def, playthroughId, turnNumber) {
-  if (def.max_fires_per_session != null && getFireCount(playthroughId, def.id) >= def.max_fires_per_session) {
+function passesCooldownAndMaxFires(def, playthroughId, roomSessionId, turnNumber) {
+  const scope = { roomSessionId, resetScope: def.reset_scope };
+  if (def.max_fires_per_session != null && getFireCount(playthroughId, def.id, scope) >= def.max_fires_per_session) {
     return false;
   }
   if (def.cooldown_turns > 0) {
-    const lastFire = getLastFireTurn(playthroughId, def.id);
+    const lastFire = getLastFireTurn(playthroughId, def.id, scope);
     if (lastFire != null && turnNumber - lastFire < def.cooldown_turns) return false;
   }
   return true;
 }
 
 // Event chaining (chat enhancement backlog item 6): if this event names a
-// prerequisite, it isn't eligible until that prerequisite has fired in this
-// same playthrough — optionally requiring a specific resolved outcome.
-function passesPrerequisite(def, playthroughId) {
+// prerequisite, it isn't eligible until that prerequisite has fired —
+// optionally requiring a specific resolved outcome. Scoped by *this* event's
+// own prerequisite_reset_scope (not the prerequisite event's reset_scope):
+// the decision of whether a staged chain like イチャイチャする→キスする should
+// stay unlocked for the whole route or reset on leaving the room belongs to
+// the event doing the requiring (see 0037_event_fire_reset_scope.sql).
+function passesPrerequisite(def, playthroughId, roomSessionId) {
   if (!def.prerequisite_event_definition_id) return true;
-  return hasFiredWithOutcome(playthroughId, def.prerequisite_event_definition_id, def.requires_prerequisite_outcome);
+  return hasFiredWithOutcome(playthroughId, def.prerequisite_event_definition_id, def.requires_prerequisite_outcome, {
+    roomSessionId,
+    resetScope: def.prerequisite_reset_scope,
+  });
 }
 
 function resolveExclusiveGroups(eligibleDefs) {
@@ -68,8 +76,8 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
 
   const eligible = [];
   for (const def of defs) {
-    if (!passesCooldownAndMaxFires(def, playthroughId, turnNumber)) continue;
-    if (!passesPrerequisite(def, playthroughId)) continue;
+    if (!passesCooldownAndMaxFires(def, playthroughId, sessionId, turnNumber)) continue;
+    if (!passesPrerequisite(def, playthroughId, sessionId)) continue;
 
     const override = getOverride(roomTemplateId, def.id);
     // 'outcome'-phase conditions are checked separately, after the event has
@@ -108,7 +116,7 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
 
     // Recorded with the resolved outcome (if any) so a later event's
     // prerequisite check can require a specific success/failure result.
-    recordFire(playthroughId, def.id, turnNumber, outcome);
+    recordFire(playthroughId, def.id, turnNumber, outcome, sessionId);
 
     const actionResults = [];
     for (const action of def.actions) {

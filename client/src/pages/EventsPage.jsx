@@ -162,10 +162,12 @@ const emptyEvent = {
   cooldown_turns: 0,
   max_fires_per_session: null,
   exclusive_group: null,
+  reset_scope: 'playthrough',
   has_outcome_branch: false,
   outcome_logic: 'AND',
   prerequisite_event_definition_id: null,
   requires_prerequisite_outcome: 'any',
+  prerequisite_reset_scope: 'playthrough',
   conditions: [],
   actions: [],
 };
@@ -1281,7 +1283,7 @@ export default function EventsPage() {
             </label>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 10, marginBottom: 16 }}>
             <label>
               <span style={label11}>優先度</span>
               <input type="number" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: Number(e.target.value) })} />
@@ -1302,6 +1304,13 @@ export default function EventsPage() {
                 value={draft.max_fires_per_session ?? ''}
                 onChange={(e) => setDraft({ ...draft, max_fires_per_session: e.target.value === '' ? null : Number(e.target.value) })}
               />
+            </label>
+            <label>
+              <span style={label11}>クールダウン／最大発火回数のリセット範囲</span>
+              <select value={draft.reset_scope ?? 'playthrough'} onChange={(e) => setDraft({ ...draft, reset_scope: e.target.value })}>
+                <option value="playthrough">ルート全体（従来通り）</option>
+                <option value="session">部屋滞在（セッション）単位でリセット</option>
+              </select>
             </label>
             <label>
               <span style={label11}>排他グループ</span>
@@ -1372,10 +1381,22 @@ export default function EventsPage() {
                   </select>
                 </label>
               )}
+              {draft.prerequisite_event_definition_id != null && (
+                <label>
+                  <span style={label11}>前提判定のリセット範囲</span>
+                  <select
+                    value={draft.prerequisite_reset_scope ?? 'playthrough'}
+                    onChange={(e) => setDraft({ ...draft, prerequisite_reset_scope: e.target.value })}
+                  >
+                    <option value="playthrough">ルート全体で一度成立すれば継続（従来通り）</option>
+                    <option value="session">同じ部屋滞在（セッション）内でのみ有効</option>
+                  </select>
+                </label>
+              )}
             </div>
             {draft.prerequisite_event_definition_id != null && (
               <p style={{ fontSize: 11, color: '#888', margin: '8px 0 0' }}>
-                前提イベントがこのルート内で（指定した結果条件を満たして）発火するまで、このイベントは発火対象になりません。
+                前提イベントが（指定した結果条件を満たして）発火するまで、このイベントは発火対象になりません。「ルート全体」なら一度満たせばそのルート内でずっと有効、「部屋滞在単位」なら部屋を移動すると前提の成立状態はリセットされ、再度前提イベントを満たす必要があります。
               </p>
             )}
           </div>

@@ -260,7 +260,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | condition_logic | "AND" \| "OR" | 複数条件の結合方法（デフォルトAND） |
 | priority | int | 同一tickで複数イベントが該当した場合の実行順（小さいほど先） |
 | cooldown_turns | int | このイベントが発火してから再度発火可能になるまでのターン数 |
-| max_fires_per_session | int, nullable | セッション内での最大発火回数（null=無制限、1にすれば一回限りのシナリオイベントに使える） |
+| max_fires_per_session | int, nullable | 最大発火回数（null=無制限、1にすれば一回限りのシナリオイベントに使える）。**カラム名に反し、集計範囲は`reset_scope`で決まる**（歴史的経緯：当初はルート全体累計のみだった） |
+| reset_scope | "playthrough" \| "session" | `cooldown_turns`／`max_fires_per_session`の集計をルート全体（デフォルト）にするか、部屋滞在（room_session）単位でリセットするかを選ぶ（2026-07-17、migration 0037） |
 | exclusive_group | text, nullable | 同じグループ名を持つイベント同士は同一tickで排他（優先度が高い方のみ発火）。null なら排他制御なし＝該当イベントは全て発火 |
 
 #### 3.6.3 条件（Condition）パラメータ仕様
@@ -778,16 +779,21 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | room_session_id | FK, nullable | persistence_scope="session"時のみセット |
 | set_at_turn | int, nullable | |
 
-### event_fire_history（イベント発火履歴、ルート単位）
+### event_fire_history（イベント発火履歴）
 | カラム | 型 | 備考 |
 |---|---|---|
 | id | PK | |
 | playthrough_id | FK | |
+| room_session_id | FK, nullable | 発火時の部屋滞在（2026-07-17、migration 0037で追加。`recordFire`は常に記録するが、参照は`reset_scope`次第） |
 | event_definition_id | FK | |
 | fired_at_turn | int | 発火時のターン番号（ルート内累計） |
 | fired_at | datetime | |
 
 `cooldown_turns`／`max_fires_per_session`／`turn_count`条件の`reference: "last_fire_of_this_event"`は、いずれもイベントの過去の発火履歴を参照する必要があるため、実装フェーズでこのテーブルを追加した。関係性・フラグ・発火履歴をルート単位にまとめたことで、部屋を移動してもこれらの状態は引き継がれる。
+
+**リセット範囲（2026-07-17）**：`event_definitions`に`reset_scope`／`prerequisite_reset_scope`（いずれも"playthrough"（デフォルト）\|"session"）を追加し、以下2つの判定を独立に「ルート全体累計」か「部屋滞在単位でリセット」か選べるようにした：
+- `reset_scope`：このイベント自身の`cooldown_turns`／`max_fires_per_session`判定
+- `prerequisite_reset_scope`：`prerequisite_event_definition_id`が「前提イベントが発火済みか」を判定する際のスコープ。**要求側イベント自身の設定**が使われる（前提イベント自身の`reset_scope`とは独立）——「イチャイチャする」→「キスする」のような段階式イベントを、ルート全体で一度成立すれば継続させるのではなく、部屋を移動すると前提の成立状態がリセットされ、再度イチャイチャする必要がある形にできる。
 
 ### messages
 | カラム | 型 | 備考 |

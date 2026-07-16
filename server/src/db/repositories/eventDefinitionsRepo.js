@@ -63,9 +63,11 @@ export function createEventDefinition(data) {
     .prepare(
       `INSERT INTO event_definitions
         (name, scope, room_template_id, enabled, condition_logic, priority, cooldown_turns, max_fires_per_session, exclusive_group,
-         has_outcome_branch, outcome_logic, prerequisite_event_definition_id, requires_prerequisite_outcome)
+         has_outcome_branch, outcome_logic, prerequisite_event_definition_id, requires_prerequisite_outcome,
+         reset_scope, prerequisite_reset_scope)
        VALUES (@name, @scope, @room_template_id, @enabled, @condition_logic, @priority, @cooldown_turns, @max_fires_per_session, @exclusive_group,
-               @has_outcome_branch, @outcome_logic, @prerequisite_event_definition_id, @requires_prerequisite_outcome)`,
+               @has_outcome_branch, @outcome_logic, @prerequisite_event_definition_id, @requires_prerequisite_outcome,
+               @reset_scope, @prerequisite_reset_scope)`,
     )
     .run({
       name: data.name,
@@ -81,6 +83,8 @@ export function createEventDefinition(data) {
       outcome_logic: data.outcome_logic ?? 'AND',
       prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
       requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
+      reset_scope: data.reset_scope ?? 'playthrough',
+      prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
     });
   replaceConditionsAndActions(result.lastInsertRowid, data);
   return getEventDefinition(result.lastInsertRowid);
@@ -93,7 +97,8 @@ export function updateEventDefinition(id, data) {
        condition_logic = @condition_logic, priority = @priority, cooldown_turns = @cooldown_turns,
        max_fires_per_session = @max_fires_per_session, exclusive_group = @exclusive_group,
        has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic,
-       prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome
+       prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome,
+       reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope
      WHERE id = @id`,
   ).run({
     id,
@@ -110,6 +115,8 @@ export function updateEventDefinition(id, data) {
     outcome_logic: data.outcome_logic ?? 'AND',
     prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
     requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
+    reset_scope: data.reset_scope ?? 'playthrough',
+    prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
   });
   replaceConditionsAndActions(id, data);
   return getEventDefinition(id);
