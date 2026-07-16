@@ -12,4 +12,8 @@ export const worldsApi = {
     return api.post(`/worlds/${id}/thumbnail-image`, formData);
   },
   generateThumbnailImage: (id, extraHint) => api.post(`/worlds/${id}/generate-thumbnail-image`, { extra_hint: extraHint }),
+  listCalendarHolidays: (id) => api.get(`/worlds/${id}/calendar-holidays`),
+  createCalendarHoliday: (id, data) => api.post(`/worlds/${id}/calendar-holidays`, data),
+  updateCalendarHoliday: (id, holidayId, data) => api.put(`/worlds/${id}/calendar-holidays/${holidayId}`, data),
+  removeCalendarHoliday: (id, holidayId) => api.del(`/worlds/${id}/calendar-holidays/${holidayId}`),
 };

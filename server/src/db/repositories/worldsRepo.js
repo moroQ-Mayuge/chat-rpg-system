@@ -8,6 +8,8 @@ function parseWorld(row) {
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
+    day_of_week_labels: JSON.parse(row.day_of_week_labels),
+    holiday_weekday_indices: JSON.parse(row.holiday_weekday_indices),
     status_display_settings: JSON.parse(row.status_display_settings),
   };
 }
@@ -39,6 +41,8 @@ const DEFAULT_TIME_SLOT_LABELS = ['朝', '昼', '放課後', '夜'];
 const DEFAULT_WEATHER_OPTIONS = ['晴れ', '曇り', '雨'];
 const DEFAULT_SEASON_LABELS = ['春', '夏', '秋', '冬'];
 const DEFAULT_DAYS_PER_SEASON = 30;
+const DEFAULT_DAY_OF_WEEK_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
+const DEFAULT_HOLIDAY_WEEKDAY_INDICES = [];
 const DEFAULT_STATUS_DISPLAY_SETTINGS = {
   strip: { self_stat: false, status: false, relationship_stage: false },
   panel: { self_stat: false, status: false, relationship_stage: false },
@@ -52,6 +56,8 @@ export function createWorld({
   weather_options = DEFAULT_WEATHER_OPTIONS,
   season_labels = DEFAULT_SEASON_LABELS,
   days_per_season = DEFAULT_DAYS_PER_SEASON,
+  day_of_week_labels = DEFAULT_DAY_OF_WEEK_LABELS,
+  holiday_weekday_indices = DEFAULT_HOLIDAY_WEEKDAY_INDICES,
   image_style_preset_id = null,
   image_tags = '',
   protagonist_name = '',
@@ -70,10 +76,10 @@ export function createWorld({
   const result = db
     .prepare(
       `INSERT INTO worlds
-        (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, image_style_preset_id, image_tags,
+        (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, day_of_week_labels, holiday_weekday_indices, image_style_preset_id, image_tags,
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -82,6 +88,8 @@ export function createWorld({
       JSON.stringify(weather_options),
       JSON.stringify(season_labels),
       days_per_season,
+      JSON.stringify(day_of_week_labels),
+      JSON.stringify(holiday_weekday_indices),
       image_style_preset_id,
       image_tags ?? '',
       protagonist_name ?? '',
@@ -109,6 +117,8 @@ export function updateWorld(
     weather_options,
     season_labels,
     days_per_season,
+    day_of_week_labels,
+    holiday_weekday_indices,
     image_style_preset_id,
     image_tags,
     protagonist_name,
@@ -127,7 +137,7 @@ export function updateWorld(
 ) {
   db.prepare(
     `UPDATE worlds
-     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, image_style_preset_id = ?, image_tags = ?,
+     SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, day_of_week_labels = ?, holiday_weekday_indices = ?, image_style_preset_id = ?, image_tags = ?,
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
          attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
@@ -138,6 +148,8 @@ export function updateWorld(
     JSON.stringify(weather_options ?? DEFAULT_WEATHER_OPTIONS),
     JSON.stringify(season_labels ?? DEFAULT_SEASON_LABELS),
     days_per_season ?? DEFAULT_DAYS_PER_SEASON,
+    JSON.stringify(day_of_week_labels ?? DEFAULT_DAY_OF_WEEK_LABELS),
+    JSON.stringify(holiday_weekday_indices ?? DEFAULT_HOLIDAY_WEEKDAY_INDICES),
     image_style_preset_id ?? null,
     image_tags ?? '',
     protagonist_name ?? '',

@@ -486,6 +486,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | weather_options | json | 天候候補の配列（日をまたぐ際にランダム抽選） |
 | season_labels | json | 季節ラベルの順序付き配列（例：["春","夏","秋","冬"]） |
 | days_per_season | int | 季節が1つ進む日数間隔 |
+| day_of_week_labels | json | 曜日ラベルの順序付き配列（デフォルト["月","火","水","木","金","土","日"]、7日固定ではなくWorldごとに自由に変更可能。2026-07-17） |
+| holiday_weekday_indices | json | 休日にする曜日の`day_of_week_labels`インデックス配列（例：[5,6]で土日、2026-07-17） |
 | image_style_preset_id | FK, nullable | 使用する画像スタイルプリセット（3.7）。null時は既定のプリセットを使用 |
 | image_tags | text | World代表画像（3.7）の生成用danbooruタグ |
 | thumbnail_image_path | text, nullable | World代表画像のファイルパス（アップロードまたはAI生成） |
@@ -509,6 +511,16 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | current_weather | text | 直近で抽選された天候 |
 | current_season_index | int | worldsのseason_labels中のインデックス |
 | status | text | active / ended |
+
+`current_day`から曜日・休日は毎回導出する（永続列は持たない）：`(current_day - 1) % day_of_week_labels.length`が曜日index、`((current_day - 1) % (days_per_season × season_labels数)) + 1`が「年内の日数」。休日判定は`holiday_weekday_indices`に該当曜日indexが含まれるか、または後述の`world_calendar_holidays`に該当日が登録されているかのOR。`advanceTime`が変化時に`flag_state`条件用のフラグ（`day_of_week`／`is_holiday`）をセットする（season/time_slot/weatherと同じ仕組み、専用condition_typeは新設していない）。APIレスポンスには`current_day_of_week_label`／`current_is_holiday`として付与される。
+
+### world_calendar_holidays（個別の休日、2026-07-17）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | |
+| world_id | FK | |
+| day_of_year | int | 「年内の日数」（1始まり）。暦が一周するたび毎年繰り返す。曜日ベースの休日とは独立に判定される |
+| label | text | 管理用の表示名（例：「文化祭」）。フラグ値には使われない、UI表示のみ |
 | use_custom_protagonist | bool | false時はworldsの主人公設定一式を継承。true時は以下の列を使用（3.2.1） |
 | protagonist_mode | text | `character` / `narrator`。use_custom_protagonist=true時のみ使用 |
 | protagonist_name | text | ルート専用の主人公名。use_custom_protagonist=true時のみ使用 |

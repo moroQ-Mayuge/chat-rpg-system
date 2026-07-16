@@ -22,3 +22,20 @@ export function useWorldMutations() {
     }),
   };
 }
+
+export function useCalendarHolidays(worldId) {
+  return useQuery({
+    queryKey: ['worlds', worldId, 'calendar-holidays'],
+    queryFn: () => worldsApi.listCalendarHolidays(worldId),
+    enabled: worldId != null && worldId !== 'new',
+  });
+}
+
+export function useCalendarHolidayMutations(worldId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['worlds', worldId, 'calendar-holidays'] });
+  return {
+    create: useMutation({ mutationFn: (data) => worldsApi.createCalendarHoliday(worldId, data), onSuccess: invalidate }),
+    remove: useMutation({ mutationFn: (holidayId) => worldsApi.removeCalendarHoliday(worldId, holidayId), onSuccess: invalidate }),
+  };
+}

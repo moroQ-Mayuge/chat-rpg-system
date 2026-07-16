@@ -3,14 +3,32 @@ import { getWorld } from './worldsRepo.js';
 import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
 import { adjustValue } from './relationshipStatesRepo.js';
 import { setFlag } from './sessionFlagsRepo.js';
+import { listHolidaysForWorld } from './worldCalendarHolidaysRepo.js';
+
+// day is the playthrough's 1-based absolute day count (current_day).
+// dayOfYear wraps every days_per_season * season_labels.length days (an
+// in-game "year") so a World's calendar holidays repeat identically across
+// every playthrough of it, rather than being tied to one specific route.
+function calendarInfoForDay(world, day) {
+  const dayOfWeekIndex = (day - 1) % world.day_of_week_labels.length;
+  const totalDaysInYear = world.days_per_season * world.season_labels.length;
+  const dayOfYear = ((day - 1) % totalDaysInYear) + 1;
+  const isHoliday =
+    world.holiday_weekday_indices.includes(dayOfWeekIndex) ||
+    listHolidaysForWorld(world.id).some((h) => h.day_of_year === dayOfYear);
+  return { dayOfWeekIndex, dayOfYear, isHoliday };
+}
 
 function attachLabels(playthrough) {
   if (!playthrough) return playthrough;
   const world = getWorld(playthrough.world_id);
+  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, playthrough.current_day);
   return {
     ...playthrough,
     current_time_slot_label: world.time_slot_labels[playthrough.current_time_slot_index] ?? null,
     current_season_label: world.season_labels[playthrough.current_season_index] ?? null,
+    current_day_of_week_label: world.day_of_week_labels[dayOfWeekIndex] ?? null,
+    current_is_holiday: isHoliday,
   };
 }
 
@@ -34,12 +52,15 @@ export function createPlaythrough(worldId, name) {
        VALUES (?, ?, 1, 0, ?, 0, 'active')`,
     )
     .run(worldId, name, initialWeather);
-  // Lets flag_state("season"/"time_slot"/"weather", ...) event conditions
-  // work from turn 1, not just after the first change (see advanceTime's
-  // matching update).
+  // Lets flag_state("season"/"time_slot"/"weather"/"day_of_week"/"is_holiday", ...)
+  // event conditions work from turn 1, not just after the first change (see
+  // advanceTime's matching update).
   setFlag(result.lastInsertRowid, 'season', world.season_labels[0] ?? '', null);
   setFlag(result.lastInsertRowid, 'time_slot', world.time_slot_labels[0] ?? '', null);
   setFlag(result.lastInsertRowid, 'weather', initialWeather, null);
+  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, 1);
+  setFlag(result.lastInsertRowid, 'day_of_week', world.day_of_week_labels[dayOfWeekIndex] ?? '', null);
+  setFlag(result.lastInsertRowid, 'is_holiday', isHoliday ? 'true' : 'false', null);
   return getPlaythrough(result.lastInsertRowid);
 }
 
@@ -85,6 +106,7 @@ export function advanceTime(playthroughId, slots = 1) {
     }
   }
   const seasonIndex = Math.floor((day - 1) / world.days_per_season) % world.season_labels.length;
+  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, day);
 
   db.prepare(
     `UPDATE playthroughs
@@ -92,9 +114,9 @@ export function advanceTime(playthroughId, slots = 1) {
      WHERE id = ?`,
   ).run(day, slotIndex, weather, seasonIndex, playthroughId);
 
-  // Lets event authors gate content on the current season/time-of-day/weather
-  // via a plain flag_state condition, since no dedicated condition type for
-  // any of these exists.
+  // Lets event authors gate content on the current season/time-of-day/weather/
+  // day-of-week/holiday status via a plain flag_state condition, since no
+  // dedicated condition type for any of these exists.
   if (seasonIndex !== playthrough.current_season_index) {
     setFlag(playthroughId, 'season', world.season_labels[seasonIndex] ?? '', null);
   }
@@ -103,6 +125,13 @@ export function advanceTime(playthroughId, slots = 1) {
   }
   if (weather !== playthrough.current_weather) {
     setFlag(playthroughId, 'weather', weather ?? '', null);
+  }
+  const previousCalendarInfo = calendarInfoForDay(world, playthrough.current_day);
+  if (dayOfWeekIndex !== previousCalendarInfo.dayOfWeekIndex) {
+    setFlag(playthroughId, 'day_of_week', world.day_of_week_labels[dayOfWeekIndex] ?? '', null);
+  }
+  if (isHoliday !== previousCalendarInfo.isHoliday) {
+    setFlag(playthroughId, 'is_holiday', isHoliday ? 'true' : 'false', null);
   }
 
   applySelfStatRegen(playthroughId, slots);

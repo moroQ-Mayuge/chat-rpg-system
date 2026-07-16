@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { listWorlds, getWorld, createWorld, updateWorld, deleteWorld, setThumbnailImage } from '../db/repositories/worldsRepo.js';
+import { listHolidaysForWorld, createHoliday, updateHoliday, deleteHoliday } from '../db/repositories/worldCalendarHolidaysRepo.js';
 import { generateWorldThumbnail } from '../services/worldThumbnailGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { exportWorldBundle } from '../services/contentBundle/index.js';
@@ -71,6 +72,23 @@ worldsRouter.get('/:id/export-bundle', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'export_failed', message: err.message });
   }
+});
+
+worldsRouter.get('/:id/calendar-holidays', (req, res) => {
+  res.json(listHolidaysForWorld(req.params.id));
+});
+
+worldsRouter.post('/:id/calendar-holidays', (req, res) => {
+  if (req.body.day_of_year == null) return res.status(400).json({ error: 'day_of_year_required' });
+  res.status(201).json(createHoliday({ ...req.body, world_id: req.params.id }));
+});
+
+worldsRouter.put('/:id/calendar-holidays/:holidayId', (req, res) => {
+  res.json(updateHoliday(req.params.holidayId, req.body));
+});
+
+worldsRouter.delete('/:id/calendar-holidays/:holidayId', (req, res) => {
+  res.json(deleteHoliday(req.params.holidayId));
 });
 
 worldsRouter.post('/:id/generate-thumbnail-image', (req, res) => {

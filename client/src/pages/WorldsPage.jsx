@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useWorlds, useWorldMutations } from '../hooks/useWorlds.js';
+import { useWorlds, useWorldMutations, useCalendarHolidays, useCalendarHolidayMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
@@ -22,6 +22,8 @@ const emptyForm = {
   weather_options: ['晴れ', '曇り', '雨'],
   season_labels: ['春', '夏', '秋', '冬'],
   days_per_season: 30,
+  day_of_week_labels: ['月', '火', '水', '木', '金', '土', '日'],
+  holiday_weekday_indices: [],
   image_style_preset_id: null,
   image_tags: '',
   protagonist_name: '',
@@ -65,6 +67,8 @@ export default function WorldsPage() {
         weather_options: world.weather_options,
         season_labels: world.season_labels,
         days_per_season: world.days_per_season,
+        day_of_week_labels: world.day_of_week_labels,
+        holiday_weekday_indices: world.holiday_weekday_indices,
         image_style_preset_id: world.image_style_preset_id ?? null,
         image_tags: world.image_tags ?? '',
         thumbnail_image_path: world.thumbnail_image_path,
@@ -418,7 +422,38 @@ export default function WorldsPage() {
                   onChange={(e) => setForm({ ...form, movement_points_per_time_slot: Number(e.target.value) })}
                 />
               </div>
+              <div>
+                <p>曜日ラベル（順序付き）</p>
+                <TagChips
+                  tags={form.day_of_week_labels}
+                  onChange={(tags) => setForm({ ...form, day_of_week_labels: tags })}
+                  placeholder="+ 曜日を追加"
+                />
+              </div>
+              <div>
+                <p>休日にする曜日</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {form.day_of_week_labels.map((label, index) => (
+                    <label key={index} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.holiday_weekday_indices.includes(index)}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            holiday_weekday_indices: e.target.checked
+                              ? [...form.holiday_weekday_indices, index]
+                              : form.holiday_weekday_indices.filter((i) => i !== index),
+                          })
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
+            {editingId !== 'new' && <CalendarHolidaysSection worldId={editingId} />}
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
@@ -561,6 +596,50 @@ export default function WorldsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CalendarHolidaysSection({ worldId }) {
+  const { data: holidays } = useCalendarHolidays(worldId);
+  const { create, remove } = useCalendarHolidayMutations(worldId);
+  const [dayOfYear, setDayOfYear] = useState('');
+  const [label, setLabel] = useState('');
+
+  async function handleAdd() {
+    if (!dayOfYear) return;
+    await create.mutateAsync({ day_of_year: Number(dayOfYear), label });
+    setDayOfYear('');
+    setLabel('');
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p>個別の休日（年内の日付、毎年繰り返す）</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+        「年内の日付」は季節ラベル数×季節が切り替わる日数間隔で一周する暦の中の日数（1始まり）です
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {(holidays ?? []).map((h) => (
+          <div
+            key={h.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, border: '1px solid #eee', borderRadius: 6, padding: '4px 8px' }}
+          >
+            <span style={{ flex: 1 }}>
+              {h.day_of_year}日目{h.label && `（${h.label}）`}
+            </span>
+            <button onClick={() => remove.mutateAsync(h.id)}>削除</button>
+          </div>
+        ))}
+        {(holidays ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ個別の休日はありません</p>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input type="number" min="1" style={{ width: 80 }} placeholder="日数" value={dayOfYear} onChange={(e) => setDayOfYear(e.target.value)} />
+        <input style={{ flex: 1 }} placeholder="表示名（任意、例：文化祭）" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <button onClick={handleAdd} disabled={!dayOfYear}>
+          + 追加
+        </button>
+      </div>
     </div>
   );
 }
