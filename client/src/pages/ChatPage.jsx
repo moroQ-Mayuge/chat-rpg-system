@@ -43,26 +43,138 @@ const COMMAND_ICON_STYLE = {
   whiteSpace: 'nowrap',
 };
 
+const CATEGORY_PILL_STYLE = {
+  ...COMMAND_ICON_STYLE,
+  background: '#f3f4f6',
+  fontWeight: 500,
+};
+
+const CATEGORY_PILL_STYLE_ACTIVE = {
+  ...CATEGORY_PILL_STYLE,
+  background: '#6366f1',
+  color: '#fff',
+  borderColor: '#6366f1',
+};
+
+// Every status id currently held by any session participant (both plain
+// category statuses and exclusive_group "stage" statuses) -- used for
+// visible_when_status_ids' any_present gating (2026-07-16 action-command
+// categorization plan): a command with that field set only shows once at
+// least one participant currently holds one of the listed statuses.
+function activeStatusIdSet(participants) {
+  const ids = new Set();
+  for (const p of participants ?? []) {
+    for (const s of p.status?.statuses ?? []) ids.add(s.id);
+    for (const s of p.status?.stages ?? []) ids.add(s.id);
+  }
+  return ids;
+}
+
+function commandVisible(cmd, activeIds) {
+  const required = (cmd.visible_when_status_ids ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number);
+  if (required.length === 0) return true;
+  return required.some((id) => activeIds.has(id));
+}
+
 // Icon-based quick actions above the chat input (chat enhancement backlog
 // item 3): 'keyword' commands submit their fixed text as if typed (an easy
 // way to fire keyword-condition events without free-typing exact phrasing);
 // the item_* types open a small inline panel instead of sending immediately.
-function ActionCommandBar({ worldId, onKeywordSend, onOpenPanel }) {
+// Commands with a non-empty `category` are grouped behind a category pill
+// (and a subcategory pill below that, if any command in the category sets
+// one) -- a PC98風コマンド選択メニュー layout agreed in the 2026-07-16
+// categorization plan. Commands with no category (legacy / not yet tagged)
+// render as a flat row, unchanged from before.
+function ActionCommandBar({ worldId, participants, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
+  const [openCategory, setOpenCategory] = useState(null);
+  const [openSubcategory, setOpenSubcategory] = useState(null);
   if (!commands || commands.length === 0) return null;
 
+  const activeIds = activeStatusIdSet(participants);
+  const visibleCommands = commands.filter((cmd) => commandVisible(cmd, activeIds));
+
+  const uncategorized = visibleCommands.filter((cmd) => !cmd.category);
+  const categorized = visibleCommands.filter((cmd) => cmd.category);
+  const categories = [...new Set(categorized.map((cmd) => cmd.category))];
+
+  function runCommand(cmd) {
+    if (cmd.command_type === 'keyword') onKeywordSend(cmd.keyword_text);
+    else onOpenPanel(cmd);
+  }
+
+  function selectCategory(category) {
+    setOpenSubcategory(null);
+    setOpenCategory(openCategory === category ? null : category);
+  }
+
+  const currentCategoryCommands = categorized.filter((cmd) => cmd.category === openCategory);
+  const subcategories = [...new Set(currentCategoryCommands.filter((cmd) => cmd.subcategory).map((cmd) => cmd.subcategory))];
+  const hasUncategorizedInCurrentCategory = currentCategoryCommands.some((cmd) => !cmd.subcategory);
+  const commandsToShow =
+    subcategories.length === 0
+      ? currentCategoryCommands
+      : currentCategoryCommands.filter((cmd) => (openSubcategory ? cmd.subcategory === openSubcategory : !cmd.subcategory));
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6, flexShrink: 0 }}>
-      {commands.map((cmd) => (
-        <button
-          key={cmd.id}
-          type="button"
-          style={COMMAND_ICON_STYLE}
-          onClick={() => (cmd.command_type === 'keyword' ? onKeywordSend(cmd.keyword_text) : onOpenPanel(cmd))}
-        >
-          {cmd.icon} {cmd.label}
-        </button>
-      ))}
+    <div style={{ marginBottom: 6, flexShrink: 0 }}>
+      {(uncategorized.length > 0 || categories.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: openCategory ? 4 : 0 }}>
+          {uncategorized.map((cmd) => (
+            <button key={cmd.id} type="button" style={COMMAND_ICON_STYLE} onClick={() => runCommand(cmd)}>
+              {cmd.icon} {cmd.label}
+            </button>
+          ))}
+          {categories.map((category) => (
+            <button
+              key={category}
+              type="button"
+              style={openCategory === category ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
+              onClick={() => selectCategory(category)}
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {openCategory && subcategories.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+          {hasUncategorizedInCurrentCategory && (
+            <button
+              type="button"
+              style={!openSubcategory ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
+              onClick={() => setOpenSubcategory(null)}
+            >
+              全般
+            </button>
+          )}
+          {subcategories.map((sub) => (
+            <button
+              key={sub}
+              type="button"
+              style={openSubcategory === sub ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
+              onClick={() => setOpenSubcategory(sub)}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {openCategory && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {commandsToShow.map((cmd) => (
+            <button key={cmd.id} type="button" style={COMMAND_ICON_STYLE} onClick={() => runCommand(cmd)}>
+              {cmd.icon} {cmd.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -538,7 +650,12 @@ export default function ChatPage() {
         </div>
       )}
 
-      <ActionCommandBar worldId={playthrough.world_id} onKeywordSend={sendKeywordCommand} onOpenPanel={setItemPanel} />
+      <ActionCommandBar
+        worldId={playthrough.world_id}
+        participants={session.participants}
+        onKeywordSend={sendKeywordCommand}
+        onOpenPanel={setItemPanel}
+      />
 
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
         <input

@@ -24,12 +24,17 @@ export function createActionCommand({
   sort_order,
   consumes_item,
   transfers_to_target,
+  category,
+  subcategory,
+  sub_subcategory,
+  visible_when_status_ids,
 }) {
   const result = db
     .prepare(
       `INSERT INTO action_commands
-        (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target,
+         category, subcategory, sub_subcategory, visible_when_status_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       world_id ?? null,
@@ -40,17 +45,35 @@ export function createActionCommand({
       sort_order ?? 0,
       consumes_item ? 1 : 0,
       transfers_to_target ? 1 : 0,
+      category ?? '',
+      subcategory ?? '',
+      sub_subcategory ?? '',
+      visible_when_status_ids ?? '',
     );
   return getActionCommand(result.lastInsertRowid);
 }
 
 export function updateActionCommand(
   id,
-  { world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target },
+  {
+    world_id,
+    label,
+    icon,
+    command_type,
+    keyword_text,
+    sort_order,
+    consumes_item,
+    transfers_to_target,
+    category,
+    subcategory,
+    sub_subcategory,
+    visible_when_status_ids,
+  },
 ) {
   db.prepare(
     `UPDATE action_commands
-     SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?
+     SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?,
+         category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?
      WHERE id = ?`,
   ).run(
     world_id ?? null,
@@ -61,6 +84,10 @@ export function updateActionCommand(
     sort_order ?? 0,
     consumes_item ? 1 : 0,
     transfers_to_target ? 1 : 0,
+    category ?? '',
+    subcategory ?? '',
+    sub_subcategory ?? '',
+    visible_when_status_ids ?? '',
     id,
   );
   return getActionCommand(id);
