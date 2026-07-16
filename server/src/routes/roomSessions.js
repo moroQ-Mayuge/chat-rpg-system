@@ -46,9 +46,25 @@ roomSessionsRouter.get('/:id/messages', (req, res) => {
 // Resolves "@name" tokens against the session's current participants
 // (Teams/Slack-style mention, chat enhancement backlog item 3c) — lets the
 // player explicitly select an action/utterance's target rather than the
-// event engine having to infer it from context.
+// event engine having to infer it from context. Order matters here: this
+// drives ${target1}/${target2}/... resolution (mentionResolution.js), so the
+// result must reflect the left-to-right order @names actually appear in the
+// message, not participants' fixed list order.
 function resolveMentions(content, participants) {
-  const ids = participants.filter((p) => content.includes(`@${p.name}`)).map((p) => p.character_id);
+  const matches = [];
+  for (const p of participants) {
+    const idx = content.indexOf(`@${p.name}`);
+    if (idx !== -1) matches.push({ idx, len: p.name.length, character_id: p.character_id });
+  }
+  matches.sort((a, b) => a.idx - b.idx || b.len - a.len);
+  const ids = [];
+  const seen = new Set();
+  for (const m of matches) {
+    if (!seen.has(m.character_id)) {
+      seen.add(m.character_id);
+      ids.push(m.character_id);
+    }
+  }
   return ids.length > 0 ? ids : null;
 }
 
