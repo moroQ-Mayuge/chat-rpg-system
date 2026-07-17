@@ -144,7 +144,8 @@ settingsRouter.put('/image-generation-settings/:kind', (req, res) => {
 settingsRouter.post('/image-generation-settings/:kind/test-generate', (req, res) => {
   enqueueImageJob(async () => {
     try {
-      const result = await testGenerateForKind(req.params.kind, req.body);
+      const { previewFullCanvas, ...settings } = req.body;
+      const result = await testGenerateForKind(req.params.kind, settings, { previewFullCanvas });
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err.message });

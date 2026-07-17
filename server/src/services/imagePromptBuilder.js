@@ -124,6 +124,22 @@ export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWid
   const canvasWidth = mainWidth + anchorOffset;
   const canvasHeight = mainHeight;
 
+  // A thin divider line at the anchor/main boundary, purely as a visual cue
+  // in the generation input -- nudges the model toward treating this as a
+  // paneled/2koma-style composite (reference panel + generated panel) rather
+  // than one continuous image. Cosmetic only: not reflected in the mask, and
+  // sits on the anchor side of the boundary so cropMainRegion's extraction
+  // (starting at anchorOffset) never includes it in the final output.
+  const DIVIDER_WIDTH = 3;
+  if (anchorWidth > 0) {
+    const dividerLine = await sharp({
+      create: { width: DIVIDER_WIDTH, height: mainHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .png()
+      .toBuffer();
+    canvasComposites.push({ input: dividerLine, left: anchorWidth - DIVIDER_WIDTH, top: 0 });
+  }
+
   const canvasBuffer = await sharp({
     create: { width: canvasWidth, height: canvasHeight, channels: 3, background: { r: 128, g: 128, b: 128 } },
   })
@@ -145,6 +161,14 @@ export async function buildReferenceAnchorCanvas(referenceImageWebPaths, mainWid
     canvasHeight,
     anchorOffset,
   };
+}
+
+// Shared by cropMainRegion and the Settings-page test-generate preview
+// (imageSettingsTestGenerator.js's previewFullCanvas option) -- see
+// cropMainRegion's own comment for why the resize-back step exists.
+export async function resizeToCanvas(resultBuffer, anchorOffset, mainWidth = MAIN_WIDTH, mainHeight = MAIN_HEIGHT) {
+  const canvasWidth = mainWidth + anchorOffset;
+  return sharp(resultBuffer).resize(canvasWidth, mainHeight, { fit: 'fill' }).png().toBuffer();
 }
 
 // KoboldCpp's img2img does not reliably return an image at the exact

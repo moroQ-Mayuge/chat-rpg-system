@@ -417,6 +417,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 
 高速化のため、Illustrious XLにSDXL-Lightning系LoRA（`--sdlora`で指定）を適用し、生成ステップ数を4〜8程度に抑える構成を基本とする。denoising_strengthやアンカー領域の配置・マスクの境界処理は実機でのチューニングが必要な項目として残す。
 
+**アンカー境界の区切り線（2026-07-17追加）**：`buildReferenceAnchorCanvas`は参照アンカー領域とその右の本編生成領域の境界に幅3pxの黒い縦線を合成する。マスクには反映されない（あくまで生成入力画像側の視覚的ヒントで、i2iの塗り替え可否には影響しない）——「2koma」等のタグを使ったコマ割り構図をより誘発しやすくする目的。区切り線はアンカー領域側の右端3pxに乗るため、本編領域の切り出し（`cropMainRegion`）には含まれない。Settings画面のtest-generateには`previewFullCanvas`オプションがあり、有効にするとクロップ前の全体キャンバス（アンカー領域＋区切り線込み）をそのままプレビューできる。
+
 **表示位置**
 - 生成されたシーン・イベント画像は会話ログの流れの中に、発生した時点のメッセージとして割り込み挿入する（別枠パネルへの表示に留めない）
 - セッション開始直後、まだシーン転換が発生していない間はRoomTemplateの固定「背景イメージ」をデフォルト表示する
@@ -550,11 +552,27 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | created_at | datetime | |
 
 ### room_template_characters
+（`0030_room_world_decoupling.sql`で`room_template_participant_slots`＋`world_room_slot_assignments`に置き換え済み。以下が現行の実データ）
+
+### room_template_participant_slots（部屋マスタ側の抽象枠）
 | カラム | 型 | 備考 |
 |---|---|---|
+| id | PK | |
 | room_template_id | FK | |
+| attribute_tags | text | この枠の属性タグ（管理UIでの候補キャラ強調表示にのみ使用） |
+| note | text | 枠の説明（例：「生徒B」） |
+| sort_order | int | |
+
+### world_room_slot_assignments（Worldごとの具体キャラ割り当て、2026-07-17拡張）
+| カラム | 型 | 備考 |
+|---|---|---|
+| id | PK | 2026-07-17に複合PK(world_id, slot_id)から変更——1枠に複数キャラを割り当てられるようにするため |
+| world_id | FK | |
+| slot_id | FK | `room_template_participant_slots.id` |
 | character_id | FK | |
-| is_default_participant | bool | |
+| time_slot_indices | json | `worlds.time_slot_labels`へのindex配列。空＝常に在室、非空＝その時間帯のみ在室（1枠に時間帯違いの複数行を持たせることで「朝はキャラX、夜はキャラY」を表現できる） |
+
+**部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は、上記の明示的な枠割り当て（現在の時間帯でフィルタ）に加えて、**属性キー一致による自動出現**も合算する：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ全キャラ（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。
 
 ### props（設備・機材マスター）
 | カラム | 型 | 備考 |
@@ -678,6 +696,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | `upperbody_full` | ベース＋上着＋追加装備（下着は含まない） |
 
 下着を見せる演出をしたい場合はレンジプリセットではなく`${target1.underwear_upper}`／`${target1.underwear_lower}`を個別に指定する。
+
+**World所属（2026-07-17変更）**：`character_statuses`は部屋テンプレートと同じくWorld横断の共有マスタになった。`world_character_statuses(world_id, status_id)`中間テーブルに行が無いステータスは共通（全Worldで使用可能）、行があるステータスはそのWorldのみで使用可能——旧`character_statuses.world_id`列（nullable、null=共通）による1行=1World限定方式は廃止（列自体は物理的に残るがアプリからは書き込まれない）。`CharacterStatusesPage.jsx`の「アタッチ済みWorld」セクションで管理する。
 
 **脱衣状態の表現**：`character_statuses`の`exclusive_group`を以下4つの予約名として登録したステータス群を使い、既存の関係性ステージ（`exclusive_group`は任意の名前でよい）と同じ排他機構で、上半身/下半身×服/下着を**独立に**管理する（服は半脱ぎだが下着はまだ着衣、のような組み合わせも表現できる）：
 

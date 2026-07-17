@@ -1,7 +1,7 @@
 import { db } from '../db/connection.js';
 import { getRoomSession } from '../db/repositories/roomSessionsRepo.js';
 import { resolveStylePromptForWorld, resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsRepo.js';
-import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion } from './imagePromptBuilder.js';
+import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, resizeToCanvas } from './imagePromptBuilder.js';
 import { renderPromptTemplate } from './promptTemplate.js';
 import { generateTxt2Image, generateImage } from './koboldClient.js';
 import { saveTestImage } from '../storage/imageStorage.js';
@@ -99,7 +99,8 @@ const ALWAYS_PROMPT_ONLY_KINDS = new Set(['standing', 'room_background', 'world_
 // prompt/canvas/parameter edit before saving it. Never persists to any
 // character/room/world entity — output goes to the same test/ folder as the
 // standalone test-generate-image tool.
-export async function testGenerateForKind(kind, settings) {
+export async function testGenerateForKind(kind, settings, options = {}) {
+  const { previewFullCanvas = false } = options;
   const { variables, referencePaths } = resolveSample(kind);
   const prompt = renderPromptTemplate(settings.prompt_template, variables);
 
@@ -132,7 +133,8 @@ export async function testGenerateForKind(kind, settings) {
     denoisingStrength,
     samplerName,
   });
-  const finalBuffer = await cropMainRegion(resultBuffer, anchorOffset, width, height);
+  const finalBuffer =
+    previewFullCanvas ? await resizeToCanvas(resultBuffer, anchorOffset, width, height) : await cropMainRegion(resultBuffer, anchorOffset, width, height);
   const imagePath = await saveTestImage(finalBuffer, 'png');
-  return { imagePath, prompt, usedMode: 'anchor_i2i' };
+  return { imagePath, prompt, usedMode: 'anchor_i2i', previewFullCanvas };
 }

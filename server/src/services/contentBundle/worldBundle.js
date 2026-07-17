@@ -2,7 +2,7 @@ import { db } from '../../db/connection.js';
 import { getWorld, createWorld, setThumbnailImage } from '../../db/repositories/worldsRepo.js';
 import { listRoomTemplatesForWorld } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { listSlotsForRoom } from '../../db/repositories/roomParticipantSlotsRepo.js';
-import { listAssignmentsForWorldRoom, setAssignment } from '../../db/repositories/worldRoomSlotAssignmentsRepo.js';
+import { listAssignmentsForWorldRoom, replaceAssignmentsForSlot } from '../../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom, replacePropsForWorldRoom } from '../../db/repositories/worldRoomPropsRepo.js';
 import { listConnectionsFrom, createConnection } from '../../db/repositories/roomConnectionsRepo.js';
 import { saveWorldImage } from '../../storage/imageStorage.js';
@@ -72,11 +72,16 @@ export function collectWorldRoomConfigEntries(worldId) {
   return rooms.map((room) => {
     const slots = listSlotsForRoom(room.id);
     const assignments = listAssignmentsForWorldRoom(worldId, room.id);
-    const assignmentByslotId = new Map(assignments.map((a) => [a.slot_id, a.character_id]));
+    const assignmentsByslotId = new Map(assignments.map((a) => [a.slot_id, a.assignments]));
     const slotAssignments = slots.map((slot, index) => {
-      const characterId = assignmentByslotId.get(slot.id);
-      const character = characterId ? db.prepare('SELECT name FROM characters WHERE id = ?').get(characterId) : null;
-      return { slot_index: index, character_name: character?.name ?? null };
+      const slotAssignmentList = assignmentsByslotId.get(slot.id) ?? [];
+      return {
+        slot_index: index,
+        assignments: slotAssignmentList.map((a) => {
+          const character = db.prepare('SELECT name FROM characters WHERE id = ?').get(a.character_id);
+          return { character_name: character?.name ?? null, time_slot_indices: a.time_slot_indices };
+        }),
+      };
     });
     return {
       room_template_name: room.name,
@@ -109,15 +114,23 @@ export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemp
     }
 
     const slots = listSlotsForRoom(roomId);
-    for (const assignment of entry.slot_assignments ?? []) {
-      const slot = slots[assignment.slot_index];
-      if (!slot || !assignment.character_name) continue;
-      const characterId = characterByName.get(assignment.character_name) ?? db.prepare('SELECT id FROM characters WHERE name = ?').get(assignment.character_name)?.id;
-      if (characterId == null) {
-        warnings.push(`部屋「${entry.room_template_name}」の参加キャラ「${assignment.character_name}」が見つからず、割り当てをスキップしました`);
-        continue;
+    for (const slotAssignment of entry.slot_assignments ?? []) {
+      const slot = slots[slotAssignment.slot_index];
+      if (!slot) continue;
+      // Backward compat: pre-multi-assignment bundles had a single
+      // { character_name } per slot instead of an `assignments` array.
+      const list = slotAssignment.assignments ?? (slotAssignment.character_name ? [{ character_name: slotAssignment.character_name, time_slot_indices: [] }] : []);
+      const resolved = [];
+      for (const a of list) {
+        if (!a.character_name) continue;
+        const characterId = characterByName.get(a.character_name) ?? db.prepare('SELECT id FROM characters WHERE name = ?').get(a.character_name)?.id;
+        if (characterId == null) {
+          warnings.push(`部屋「${entry.room_template_name}」の参加キャラ「${a.character_name}」が見つからず、割り当てをスキップしました`);
+          continue;
+        }
+        resolved.push({ character_id: characterId, time_slot_indices: a.time_slot_indices ?? [] });
       }
-      setAssignment(worldId, slot.id, characterId);
+      if (resolved.length > 0) replaceAssignmentsForSlot(worldId, slot.id, resolved);
     }
 
     const propIds = (entry.prop_names ?? [])

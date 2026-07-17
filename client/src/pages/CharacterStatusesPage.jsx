@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
-import { useAllCharacterStatuses, useCharacterStatusMutations } from '../hooks/useCharacterStatuses.js';
+import { useAllCharacterStatuses, useCharacterStatusMutations, useStatusWorlds, useStatusWorldMutations } from '../hooks/useCharacterStatuses.js';
 import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useAxisStatusTriggers, useAxisStatusTriggerMutations } from '../hooks/useAxisStatusTriggers.js';
 
 const emptyForm = {
-  world_id: '',
   name: '',
   persistence_scope: 'session',
   removes_from_session: false,
@@ -20,18 +19,8 @@ const SCOPE_LABELS = {
   accompanying: '同行中のみ継続（同行が続く限り引き継ぎ）',
 };
 
-function worldLabel(worldId, worlds) {
-  if (worldId == null) return '共通';
-  return worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`;
-}
-
-function formToPayload(form) {
-  return { ...form, world_id: form.world_id ? Number(form.world_id) : null };
-}
-
 function statusToForm(s) {
   return {
-    world_id: s.world_id ?? '',
     name: s.name,
     persistence_scope: s.persistence_scope,
     removes_from_session: s.removes_from_session,
@@ -62,10 +51,10 @@ export default function CharacterStatusesPage() {
   async function handleSave() {
     if (!form.name) return;
     if (isNew) {
-      await create.mutateAsync(formToPayload(form));
+      await create.mutateAsync(form);
       setSelectedId(null);
     } else {
-      await update.mutateAsync({ id: selectedId, data: formToPayload(form) });
+      await update.mutateAsync({ id: selectedId, data: form });
     }
     setForm(emptyForm);
   }
@@ -103,7 +92,7 @@ export default function CharacterStatusesPage() {
             <span>
               {s.name}{' '}
               <span style={{ fontSize: 11, color: '#888' }}>
-                [{worldLabel(s.world_id, worlds)}] {SCOPE_LABELS[s.persistence_scope]}
+                {SCOPE_LABELS[s.persistence_scope]}
                 {s.removes_from_session ? '／セッション参加者から自動除外' : ''}
                 {s.exclusive_group ? `／排他グループ:${s.exclusive_group}` : ''}
                 {s.default_address_on_grant ? `／付与時に呼び方を「${s.default_address_on_grant}」へ変更` : ''}
@@ -127,23 +116,10 @@ export default function CharacterStatusesPage() {
       {selectedId != null && (
         <div style={{ border: '1px solid #ccc', borderRadius: 8, padding: 16 }}>
           <p style={{ fontWeight: 500 }}>{isNew ? '新規登録' : '編集'}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <label>
-              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
-              <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：気絶" />
-            </label>
-            <label>
-              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>所属World</span>
-              <select style={{ width: '100%' }} value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })}>
-                <option value="">共通</option>
-                {worlds.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>名前</span>
+            <input style={{ width: '100%' }} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="例：気絶" />
+          </label>
           <label style={{ display: 'block', marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: '#888', display: 'block' }}>持続範囲</span>
             <select
@@ -200,10 +176,61 @@ export default function CharacterStatusesPage() {
               {isNew ? '追加' : '保存'}
             </button>
           </div>
+
+          {!isNew && <StatusWorldsSection statusId={selectedId} worlds={worlds} />}
         </div>
       )}
 
       <AxisStatusTriggersSection statuses={statuses} />
+    </div>
+  );
+}
+
+function StatusWorldsSection({ statusId, worlds }) {
+  const { data: attachedWorlds } = useStatusWorlds(statusId);
+  const { attach, detach } = useStatusWorldMutations(statusId);
+  const [attachWorldId, setAttachWorldId] = useState('');
+
+  const attachedIds = new Set((attachedWorlds ?? []).map((w) => w.id));
+  const attachCandidates = (worlds ?? []).filter((w) => !attachedIds.has(w.id));
+
+  async function handleAttach() {
+    if (!attachWorldId) return;
+    await attach.mutateAsync(Number(attachWorldId));
+    setAttachWorldId('');
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 16 }}>
+      <p style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>アタッチ済みWorld</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        どのWorldにもアタッチされていない場合は共通（全Worldで使用可能）として扱われます。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {(attachedWorlds ?? []).map((w) => (
+          <div
+            key={w.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, border: '1px solid #eee', borderRadius: 6, padding: '4px 8px' }}
+          >
+            <span style={{ flex: 1 }}>{w.name}</span>
+            <button onClick={() => detach.mutateAsync(w.id)}>切り離す</button>
+          </div>
+        ))}
+        {(attachedWorlds ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>共通（全Worldで使用可能）</p>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <select style={{ flex: 1 }} value={attachWorldId} onChange={(e) => setAttachWorldId(e.target.value)}>
+          <option value="">アタッチするWorldを選択</option>
+          {attachCandidates.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+        <button onClick={handleAttach} disabled={!attachWorldId}>
+          + アタッチ
+        </button>
+      </div>
     </div>
   );
 }

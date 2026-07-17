@@ -223,6 +223,7 @@ function ImageGenerationSettingRow({ setting }) {
   const [isTestGenerating, setIsTestGenerating] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [testError, setTestError] = useState(null);
+  const [previewFullCanvas, setPreviewFullCanvas] = useState(false);
 
   useEffect(() => {
     setForm(setting);
@@ -269,6 +270,7 @@ function ImageGenerationSettingRow({ setting }) {
         cfg_scale: Number(form.cfg_scale),
         denoising_strength: Number(form.denoising_strength),
         sampler_name: form.sampler_name,
+        previewFullCanvas: form.default_mode === 'anchor_i2i' && previewFullCanvas,
       });
       setTestResult(result);
     } catch (err) {
@@ -380,9 +382,17 @@ function ImageGenerationSettingRow({ setting }) {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <button onClick={testGenerate} disabled={isTestGenerating}>
-              {isTestGenerating ? 'テスト生成中...' : 'この設定でテスト生成'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={testGenerate} disabled={isTestGenerating}>
+                {isTestGenerating ? 'テスト生成中...' : 'この設定でテスト生成'}
+              </button>
+              {form.default_mode === 'anchor_i2i' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#888' }}>
+                  <input type="checkbox" checked={previewFullCanvas} onChange={(e) => setPreviewFullCanvas(e.target.checked)} />
+                  アンカー全体を表示（プレビュー用）
+                </label>
+              )}
+            </div>
             <button onClick={save} disabled={!dirty || update.isPending}>
               {update.isPending ? '保存中...' : '保存'}
             </button>

@@ -1,5 +1,5 @@
 import { db } from '../../db/connection.js';
-import { listAllStatuses, createStatus } from '../../db/repositories/characterStatusesRepo.js';
+import { listAllStatuses, createStatus, attachStatusToWorld } from '../../db/repositories/characterStatusesRepo.js';
 import { listRelationshipAxes } from '../../db/repositories/relationshipAxesRepo.js';
 import { createTrigger } from '../../db/repositories/axisStatusTriggersRepo.js';
 import { listEventDefinitions } from '../../db/repositories/eventDefinitionsRepo.js';
@@ -8,7 +8,11 @@ import { exportEventDefinitionJson, importEventDefinitionJson, collectCharacterI
 
 export function collectCharacterStatusEntries(worldId) {
   return db
-    .prepare('SELECT * FROM character_statuses WHERE world_id = ?')
+    .prepare(
+      `SELECT cs.* FROM character_statuses cs
+       JOIN world_character_statuses wcs ON wcs.status_id = cs.id
+       WHERE wcs.world_id = ?`,
+    )
     .all(worldId)
     .map((s) => ({
       name: s.name,
@@ -20,7 +24,13 @@ export function collectCharacterStatusEntries(worldId) {
 }
 
 export function collectAxisStatusTriggerEntries(worldId) {
-  const statuses = db.prepare('SELECT id, name FROM character_statuses WHERE world_id = ?').all(worldId);
+  const statuses = db
+    .prepare(
+      `SELECT cs.id, cs.name FROM character_statuses cs
+       JOIN world_character_statuses wcs ON wcs.status_id = cs.id
+       WHERE wcs.world_id = ?`,
+    )
+    .all(worldId);
   if (!statuses.length) return [];
   const statusNameById = new Map(statuses.map((s) => [s.id, s.name]));
   const axisNameById = new Map(listRelationshipAxes().map((a) => [a.id, a.name]));
@@ -71,7 +81,12 @@ export function collectEventDefinitionEntriesForWorld(worldId) {
       .all(worldId)
       .map((r) => r.character_id),
   );
-  const worldStatusIds = new Set(db.prepare('SELECT id FROM character_statuses WHERE world_id = ?').all(worldId).map((r) => r.id));
+  const worldStatusIds = new Set(
+    db
+      .prepare('SELECT status_id FROM world_character_statuses WHERE world_id = ?')
+      .all(worldId)
+      .map((r) => r.status_id),
+  );
 
   function classify(def) {
     const charIds = [...collectCharacterIds(def)];
@@ -108,7 +123,8 @@ export function importCharacterStatusEntries(entries, worldId) {
   const created = [];
   const nameToId = new Map();
   for (const entry of entries) {
-    const status = createStatus({ ...entry, world_id: worldId });
+    const status = createStatus(entry);
+    attachStatusToWorld(worldId, status.id);
     created.push(status);
     nameToId.set(entry.name, status.id);
   }

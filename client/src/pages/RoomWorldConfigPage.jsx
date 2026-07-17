@@ -48,15 +48,40 @@ export default function RoomWorldConfigPage() {
 
   if (isLoading || !worlds || !characters || !allProps || !config) return <p>読み込み中...</p>;
 
-  const currentAssignments = assignments ?? Object.fromEntries(config.slot_assignments.map((a) => [a.slot_id, a.character_id ?? '']));
+  const currentAssignments =
+    assignments ??
+    Object.fromEntries(
+      config.slot_assignments.map((slot) => [
+        slot.slot_id,
+        slot.assignments.map((a) => ({ character_id: a.character_id, time_slot_indices: a.time_slot_indices })),
+      ]),
+    );
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
 
   const candidateCategoryIds = new Set(config.candidate_prop_categories.map((c) => c.id));
   const candidateProps = allProps.filter((p) => candidateCategoryIds.has(p.category_id));
 
-  function setAssignment(slotId, characterId) {
-    setAssignments({ ...currentAssignments, [slotId]: characterId });
+  function addAssignmentRow(slotId) {
+    const firstCharacterId = characters[0]?.id;
+    if (firstCharacterId == null) return;
+    setAssignments({
+      ...currentAssignments,
+      [slotId]: [...(currentAssignments[slotId] ?? []), { character_id: firstCharacterId, time_slot_indices: [] }],
+    });
+  }
+
+  function updateAssignmentRow(slotId, index, patch) {
+    const rows = currentAssignments[slotId] ?? [];
+    setAssignments({
+      ...currentAssignments,
+      [slotId]: rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    });
+  }
+
+  function removeAssignmentRow(slotId, index) {
+    const rows = currentAssignments[slotId] ?? [];
+    setAssignments({ ...currentAssignments, [slotId]: rows.filter((_, i) => i !== index) });
   }
 
   function toggleProp(propId) {
@@ -65,9 +90,12 @@ export default function RoomWorldConfigPage() {
 
   async function handleSave() {
     await save.mutateAsync({
-      slot_assignments: config.slot_assignments.map((a) => ({
-        slot_id: a.slot_id,
-        character_id: currentAssignments[a.slot_id] ? Number(currentAssignments[a.slot_id]) : null,
+      slot_assignments: config.slot_assignments.map((slot) => ({
+        slot_id: slot.slot_id,
+        assignments: (currentAssignments[slot.slot_id] ?? []).map((a) => ({
+          character_id: Number(a.character_id),
+          time_slot_indices: a.time_slot_indices,
+        })),
       })),
       prop_ids: currentPropIds,
       free_props: currentFreeProps,
@@ -111,24 +139,56 @@ export default function RoomWorldConfigPage() {
                   (c) => slotTags.size > 0 && tagsToArray(c.attribute_tags).some((t) => slotTags.has(t)),
                 );
                 const tagMatchedIds = new Set(tagMatched.map((c) => c.id));
+                const rows = currentAssignments[slot.slot_id] ?? [];
                 return (
                   <div key={slot.slot_id} style={{ border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
                     <p style={{ fontSize: 12, margin: '0 0 4px' }}>
                       {slot.note || '（無題の枠）'}
                       {slot.attribute_tags && <span style={{ color: '#888' }}> [{slot.attribute_tags}]</span>}
                     </p>
-                    <select
-                      style={{ width: '100%' }}
-                      value={currentAssignments[slot.slot_id] ?? ''}
-                      onChange={(e) => setAssignment(slot.slot_id, e.target.value)}
-                    >
-                      <option value="">未割当</option>
-                      {characters.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {tagMatchedIds.has(c.id) ? `★ ${c.name}` : c.name}
-                        </option>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {rows.map((row, index) => (
+                        <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #f0f0f0', borderRadius: 4, padding: 4 }}>
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            <select
+                              style={{ flex: 1 }}
+                              value={row.character_id}
+                              onChange={(e) => updateAssignmentRow(slot.slot_id, index, { character_id: Number(e.target.value) })}
+                            >
+                              {characters.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {tagMatchedIds.has(c.id) ? `★ ${c.name}` : c.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button onClick={() => removeAssignmentRow(slot.slot_id, index)}>削除</button>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {(world?.time_slot_labels ?? []).map((label, tsIndex) => (
+                              <label key={tsIndex} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={row.time_slot_indices.includes(tsIndex)}
+                                  onChange={(e) =>
+                                    updateAssignmentRow(slot.slot_id, index, {
+                                      time_slot_indices: e.target.checked
+                                        ? [...row.time_slot_indices, tsIndex]
+                                        : row.time_slot_indices.filter((i) => i !== tsIndex),
+                                    })
+                                  }
+                                />
+                                {label}
+                              </label>
+                            ))}
+                            {row.time_slot_indices.length === 0 && (
+                              <span style={{ fontSize: 10, color: '#888' }}>（未選択＝常に在室）</span>
+                            )}
+                          </div>
+                        </div>
                       ))}
-                    </select>
+                      {rows.length === 0 && <p style={{ fontSize: 11, color: '#888' }}>未割当</p>}
+                      <button onClick={() => addAssignmentRow(slot.slot_id)}>+ キャラを追加</button>
+                    </div>
                   </div>
                 );
               })}

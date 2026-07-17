@@ -149,7 +149,11 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // declares abstract slots (room_template_participant_slots), and which
   // concrete character fills each slot is a per-World decision
   // (world_room_slot_assignments) — see 0030_room_world_decoupling.sql.
-  const defaultParticipantIds = listDefaultParticipantCharacterIdsForWorldRoom(playthrough.world_id, roomTemplateId);
+  const defaultParticipantIds = listDefaultParticipantCharacterIdsForWorldRoom(
+    playthrough.world_id,
+    roomTemplateId,
+    playthrough.current_time_slot_index,
+  );
   for (const characterId of defaultParticipantIds) {
     const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db

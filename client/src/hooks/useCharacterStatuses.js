@@ -22,3 +22,20 @@ export function useCharacterStatusMutations() {
     remove: useMutation({ mutationFn: characterStatusesApi.remove, onSuccess: invalidate }),
   };
 }
+
+export function useStatusWorlds(statusId) {
+  return useQuery({
+    queryKey: ['characterStatuses', statusId, 'worlds'],
+    queryFn: () => characterStatusesApi.listWorlds(statusId),
+    enabled: statusId != null && statusId !== 'new',
+  });
+}
+
+export function useStatusWorldMutations(statusId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['characterStatuses', statusId, 'worlds'] });
+  return {
+    attach: useMutation({ mutationFn: (worldId) => characterStatusesApi.attachWorld(statusId, worldId), onSuccess: invalidate }),
+    detach: useMutation({ mutationFn: (worldId) => characterStatusesApi.detachWorld(statusId, worldId), onSuccess: invalidate }),
+  };
+}

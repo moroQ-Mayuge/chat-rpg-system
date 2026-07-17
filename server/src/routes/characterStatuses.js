@@ -6,6 +6,9 @@ import {
   createStatus,
   updateStatus,
   deleteStatus,
+  listWorldsForStatus,
+  attachStatusToWorld,
+  detachStatusFromWorld,
 } from '../db/repositories/characterStatusesRepo.js';
 
 export const characterStatusesRouter = Router();
@@ -27,4 +30,16 @@ characterStatusesRouter.put('/:id', (req, res) => {
 
 characterStatusesRouter.delete('/:id', (req, res) => {
   res.json(deleteStatus(req.params.id));
+});
+
+characterStatusesRouter.get('/:id/worlds', (req, res) => {
+  res.json(listWorldsForStatus(req.params.id));
+});
+
+characterStatusesRouter.post('/:id/worlds', (req, res) => {
+  res.json(attachStatusToWorld(req.body.world_id, req.params.id));
+});
+
+characterStatusesRouter.delete('/:id/worlds/:worldId', (req, res) => {
+  res.json(detachStatusFromWorld(req.params.worldId, req.params.id));
 });
