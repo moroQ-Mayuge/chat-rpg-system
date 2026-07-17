@@ -17,7 +17,7 @@ export function buildStatusSnapshot(playthroughId, characterId, { roomSessionId 
   const selfStats = listSelfStatAxes().map((axis) => ({
     axis_id: axis.id,
     name: axis.name,
-    value: getValue(playthroughId, characterId, axis.id),
+    value: getValue(playthroughId, characterId, axis.id, roomSessionId),
     min: axis.min_value,
     max: axis.max_value,
   }));

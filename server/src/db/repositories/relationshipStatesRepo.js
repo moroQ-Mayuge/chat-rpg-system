@@ -1,16 +1,31 @@
 import { db } from '../connection.js';
 import { evaluateAxisStatusTriggers } from './axisStatusTriggersRepo.js';
+import { isMobCharacter } from './charactersRepo.js';
 
 export function getAxis(axisId) {
   return db.prepare('SELECT * FROM relationship_axes WHERE id = ?').get(axisId);
 }
 
-export function getValue(playthroughId, characterId, axisId) {
+// Mob characters (characters.is_mob) never accumulate relationship/self-stat
+// state across the whole playthrough -- the same character_id can represent a
+// different in-fiction person in several concurrent room_sessions, so their
+// values are scoped to room_session_id instead of playthrough_id and simply
+// vanish once that session ends. Mirrors character_status_states.js's
+// scopeColumns for the 'session' persistence_scope.
+function scopeColumns(characterId, playthroughId, roomSessionId) {
+  if (isMobCharacter(characterId)) {
+    return { playthrough_id: null, room_session_id: roomSessionId };
+  }
+  return { playthrough_id: playthroughId, room_session_id: null };
+}
+
+export function getValue(playthroughId, characterId, axisId, roomSessionId) {
+  const { playthrough_id, room_session_id } = scopeColumns(characterId, playthroughId, roomSessionId);
   const row = db
     .prepare(
-      'SELECT current_value FROM relationship_states WHERE playthrough_id = ? AND character_id = ? AND relationship_axis_id = ?',
+      'SELECT current_value FROM relationship_states WHERE character_id = ? AND relationship_axis_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
     )
-    .get(playthroughId, characterId, axisId);
+    .get(characterId, axisId, playthrough_id, room_session_id);
   if (row) return row.current_value;
   return getAxis(axisId)?.default_value ?? 0;
 }
@@ -20,20 +35,28 @@ function clamp(value, axis) {
 }
 
 // operation: "add" | "subtract" | "set". Result is clamped to the axis's min/max.
-export function adjustValue(playthroughId, characterId, axisId, operation, amount) {
+export function adjustValue(playthroughId, characterId, axisId, operation, amount, roomSessionId) {
   const axis = getAxis(axisId);
-  const current = getValue(playthroughId, characterId, axisId);
+  const current = getValue(playthroughId, characterId, axisId, roomSessionId);
   let next = current;
   if (operation === 'add') next = current + amount;
   else if (operation === 'subtract') next = current - amount;
   else if (operation === 'set') next = amount;
   next = clamp(next, axis);
 
-  db.prepare(
-    `INSERT INTO relationship_states (playthrough_id, character_id, relationship_axis_id, current_value)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT (playthrough_id, character_id, relationship_axis_id) DO UPDATE SET current_value = excluded.current_value`,
-  ).run(playthroughId, characterId, axisId, next);
+  const { playthrough_id, room_session_id } = scopeColumns(characterId, playthroughId, roomSessionId);
+  const existing = db
+    .prepare(
+      'SELECT id FROM relationship_states WHERE character_id = ? AND relationship_axis_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+    )
+    .get(characterId, axisId, playthrough_id, room_session_id);
+  if (existing) {
+    db.prepare('UPDATE relationship_states SET current_value = ? WHERE id = ?').run(next, existing.id);
+  } else {
+    db.prepare(
+      'INSERT INTO relationship_states (playthrough_id, room_session_id, character_id, relationship_axis_id, current_value) VALUES (?, ?, ?, ?, ?)',
+    ).run(playthrough_id, room_session_id, characterId, axisId, next);
+  }
 
   evaluateAxisStatusTriggers(playthroughId, characterId, axisId, next);
 

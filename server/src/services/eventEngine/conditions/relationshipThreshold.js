@@ -15,12 +15,12 @@ export function evaluateRelationshipThreshold(params, ctx) {
   const { character_id, axis_id, comparison, value, mentioned_limit } = params;
 
   if (character_id === 'any_present') {
-    return ctx.participants.some((p) => compare(getValue(ctx.playthroughId, p.character_id, axis_id), comparison, value));
+    return ctx.participants.some((p) => compare(getValue(ctx.playthroughId, p.character_id, axis_id, ctx.session.id), comparison, value));
   }
   if (character_id === 'mentioned') {
     const ids = resolveMentionedList(ctx.mentionedCharacterIds, mentioned_limit);
-    return ids.some((id) => compare(getValue(ctx.playthroughId, id, axis_id), comparison, value));
+    return ids.some((id) => compare(getValue(ctx.playthroughId, id, axis_id, ctx.session.id), comparison, value));
   }
 
-  return compare(getValue(ctx.playthroughId, character_id, axis_id), comparison, value);
+  return compare(getValue(ctx.playthroughId, character_id, axis_id, ctx.session.id), comparison, value);
 }

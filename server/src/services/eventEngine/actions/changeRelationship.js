@@ -16,11 +16,11 @@ export async function executeChangeRelationship(params, execCtx) {
   // previous_value/axis_name included so the caller (roomSessions.js) can
   // broadcast a relationship-change notice without a second DB round trip.
   const results = targetIds.map((id) => {
-    const previousValue = getValue(execCtx.playthroughId, id, axis_id);
+    const previousValue = getValue(execCtx.playthroughId, id, axis_id, execCtx.sessionId);
     return {
       character_id: id,
       previous_value: previousValue,
-      new_value: adjustValue(execCtx.playthroughId, id, axis_id, operation, value),
+      new_value: adjustValue(execCtx.playthroughId, id, axis_id, operation, value, execCtx.sessionId),
       axis_name: axis.name,
     };
   });

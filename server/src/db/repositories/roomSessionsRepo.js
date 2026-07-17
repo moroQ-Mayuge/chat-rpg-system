@@ -4,6 +4,7 @@ import { carryOverAccompanyingStatuses } from './characterStatusStatesRepo.js';
 import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
+import { isMobCharacter } from './charactersRepo.js';
 
 const STATUS_DISPLAY_LOCATIONS = ['strip', 'panel', 'chat_log'];
 const STATUS_DISPLAY_CATEGORIES = ['self_stat', 'status', 'relationship_stage'];
@@ -21,18 +22,24 @@ function computeStatusDisplayVisibility(worldSettings, playerPrefs) {
   return visibility;
 }
 
-export function ensureRelationshipStatesSeeded(playthroughId, characterId) {
+// Mob characters (characters.is_mob) are seeded per room_session instead of
+// per playthrough, so a fresh session always starts them at their defaults
+// again -- see 0041_mob_characters.sql / relationshipStatesRepo.js.
+export function ensureRelationshipStatesSeeded(playthroughId, characterId, roomSessionId) {
+  const isMob = isMobCharacter(characterId);
+  const scopeColumn = isMob ? 'room_session_id' : 'playthrough_id';
+  const scopeValue = isMob ? roomSessionId : playthroughId;
   const alreadySeeded = db
-    .prepare('SELECT 1 FROM relationship_states WHERE playthrough_id = ? AND character_id = ? LIMIT 1')
-    .get(playthroughId, characterId);
+    .prepare(`SELECT 1 FROM relationship_states WHERE ${scopeColumn} = ? AND character_id = ? LIMIT 1`)
+    .get(scopeValue, characterId);
   if (alreadySeeded) return;
   const defaults = db
     .prepare('SELECT relationship_axis_id, initial_value FROM character_relationship_defaults WHERE character_id = ?')
     .all(characterId);
   for (const d of defaults) {
     db.prepare(
-      'INSERT INTO relationship_states (playthrough_id, character_id, relationship_axis_id, current_value) VALUES (?, ?, ?, ?)',
-    ).run(playthroughId, characterId, d.relationship_axis_id, d.initial_value);
+      'INSERT INTO relationship_states (playthrough_id, room_session_id, character_id, relationship_axis_id, current_value) VALUES (?, ?, ?, ?, ?)',
+    ).run(isMob ? null : playthroughId, isMob ? roomSessionId : null, characterId, d.relationship_axis_id, d.initial_value);
   }
 }
 
@@ -162,7 +169,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     db.prepare(
       'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)',
     ).run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
-    ensureRelationshipStatesSeeded(playthroughId, characterId);
+    ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId);
     if (carryOver && options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(characterId, options.fromRoomSessionId, sessionId);
     }
@@ -175,7 +182,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     db.prepare(
       'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)',
     ).run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
-    ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id);
+    ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId);
     if (options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(carryOver.character_id, options.fromRoomSessionId, sessionId);
     }
@@ -247,7 +254,7 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
       'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)',
     ).run(sessionId, characterId, resolvedOutfitId);
   }
-  ensureRelationshipStatesSeeded(session.playthrough_id, characterId);
+  ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId);
   return getRoomSession(sessionId);
 }
 

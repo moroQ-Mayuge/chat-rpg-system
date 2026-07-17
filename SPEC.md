@@ -667,6 +667,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | notes | text | 備考 |
 | event_participation_weight | float | ランダム参加重み |
 | created_at | datetime | |
+| attribute_tags | text | 属性キー（カンマ区切り）。World・部屋の属性キーと一致すると自動登場/同席の対象になる |
+| is_mob | bool | モブキャラフラグ（2026-07-17追加、migration 0041）。関係値・呼び方・自己ステータスが`playthrough_id`でなく`room_session_id`スコープになり、部屋セッションごとにリセットされる |
 
 ### outfits
 | カラム | 型 | 備考 |
@@ -752,13 +754,17 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | relationship_axis_id | FK | |
 | initial_value | int | |
 
-### relationship_states（ルート実データ）
+### relationship_states（ルート実データ、2026-07-17拡張）
 | カラム | 型 | 備考 |
 |---|---|---|
-| playthrough_id | FK | 部屋をまたいでも共有されるルート単位のデータ |
+| id | PK | surrogate key（0041で複合PKから移行） |
+| playthrough_id | FK, nullable | 通常キャラはこちらでルート単位に永続 |
+| room_session_id | FK, nullable | モブキャラ（`characters.is_mob`）はこちらで部屋セッション単位にスコープ（永続しない） |
 | character_id | FK | |
 | relationship_axis_id | FK | |
 | current_value | int | |
+
+**モブキャラ（`characters.is_mob`、migration 0041）**：同じ`character_id`が複数の部屋セッションで同時に「別人」として使われうる（例：複数の部屋に別々の「モブ・小学生」が同時出現）ため、`relationship_states`・`character_address_states`（呼び方）はどちらも`room_session_id`スコープで書き込まれ、そのセッションが終われば値は参照されなくなる（`playthrough_id`は常にNULL）。判定は`relationshipStatesRepo.js`/`characterAddressStatesRepo.js`内の`scopeColumns()`が`charactersRepo.js`の`isMobCharacter()`を見て自動的に切り替える——呼び出し元は常に`playthroughId`と`roomSessionId`の両方を渡すだけでよい。`character_status_states`（関係ステージ等）は既存の`persistence_scope`（`session`/`accompanying`）をそのステータス定義側で選べば同様にセッションごとリセットされる（モブ用に別途コード変更は不要）。自己ステータスの時間経過による自然回復（`playthroughsRepo.js`の`applySelfStatRegen`）はモブキャラには適用されない（`playthrough_id`スコープの行のみを対象にしているため、意図的な仕様簡略化）。
 
 ### event_definitions
 | カラム | 型 | 備考 |

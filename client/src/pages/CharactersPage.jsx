@@ -70,6 +70,7 @@ const PERSONALITY_FIELDS = [
 const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
+  is_mob: false,
 };
 
 // Matches server/src/db/repositories/outfitsRepo.js's OUTFIT_TAG_FIELDS order.
@@ -165,6 +166,7 @@ export default function CharactersPage() {
       fields[key] = existing[key] ?? '';
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
+    fields.is_mob = Boolean(existing.is_mob);
     setForm({ ...fields, relationship_defaults: existing.relationship_defaults, outfits: existing.outfits });
     if (existing.outfits?.length && !existing.outfits.find((o) => o.id === activeOutfitId)) {
       setActiveOutfitId(existing.outfits.find((o) => o.is_default)?.id ?? existing.outfits[0].id);
@@ -197,6 +199,7 @@ export default function CharactersPage() {
     const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
     payload.relationship_defaults = form.relationship_defaults;
     payload.attribute_tags = form.attribute_tags;
+    payload.is_mob = form.is_mob;
     if (isNew) {
       const created = await create.mutateAsync(payload);
       if (pendingOutfitTags && created.outfits?.[0]) {
@@ -409,7 +412,14 @@ export default function CharactersPage() {
           background: selectedId === c.id ? '#dbeafe' : 'transparent',
         }}
       >
-        <span>{c.name}</span>
+        <span>
+          {c.name}
+          {c.is_mob && (
+            <span style={{ marginLeft: 6, fontSize: 10, color: '#888', border: '1px solid #ccc', borderRadius: 4, padding: '0 4px' }}>
+              モブ
+            </span>
+          )}
+        </span>
         <span style={{ display: 'flex', gap: 4 }}>
           <button
             style={{ fontSize: 11 }}
@@ -555,6 +565,16 @@ export default function CharactersPage() {
                     onChange={(tags) => setField('attribute_tags', tags.join(', '))}
                     placeholder="例: 学生, 幼馴染"
                   />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.is_mob)}
+                      onChange={(e) => setField('is_mob', e.target.checked)}
+                    />
+                    モブキャラ（関係値・呼び方・自己ステータスを部屋セッションごとにリセット）
+                  </label>
                 </div>
               </div>
             )}

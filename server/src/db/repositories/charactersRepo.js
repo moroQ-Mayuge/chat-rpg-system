@@ -95,9 +95,9 @@ export function createCharacter(data) {
   const placeholders = CHARACTER_TEXT_FIELDS.map((f) => `@${f}`).join(', ');
   const result = db
     .prepare(
-      `INSERT INTO characters (${columns}, event_participation_weight) VALUES (${placeholders}, @event_participation_weight)`,
+      `INSERT INTO characters (${columns}, event_participation_weight, is_mob) VALUES (${placeholders}, @event_participation_weight, @is_mob)`,
     )
-    .run({ ...values, event_participation_weight: data.event_participation_weight ?? 1.0 });
+    .run({ ...values, event_participation_weight: data.event_participation_weight ?? 1.0, is_mob: data.is_mob ? 1 : 0 });
   const characterId = result.lastInsertRowid;
   replaceRelationshipDefaults(characterId, data.relationship_defaults);
   createOutfit(characterId, { name: '通常', is_default: true });
@@ -107,15 +107,21 @@ export function createCharacter(data) {
 export function updateCharacter(id, data) {
   const values = buildFieldValues(data);
   const setClause = CHARACTER_TEXT_FIELDS.map((f) => `${f} = @${f}`).join(', ');
-  db.prepare(`UPDATE characters SET ${setClause}, event_participation_weight = @event_participation_weight WHERE id = @id`).run(
-    {
-      ...values,
-      event_participation_weight: data.event_participation_weight ?? 1.0,
-      id,
-    },
-  );
+  db.prepare(
+    `UPDATE characters SET ${setClause}, event_participation_weight = @event_participation_weight, is_mob = @is_mob WHERE id = @id`,
+  ).run({
+    ...values,
+    event_participation_weight: data.event_participation_weight ?? 1.0,
+    is_mob: data.is_mob ? 1 : 0,
+    id,
+  });
   replaceRelationshipDefaults(id, data.relationship_defaults);
   return getCharacter(id);
+}
+
+export function isMobCharacter(characterId) {
+  const row = db.prepare('SELECT is_mob FROM characters WHERE id = ?').get(characterId);
+  return Boolean(row?.is_mob);
 }
 
 export function deleteCharacter(id) {

@@ -71,7 +71,7 @@ function buildSystemPrompt(session, participants) {
   const characterCards = disambiguated
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
-      const currentAddress = getCurrentAddress(session.playthrough_id, character.id);
+      const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id);
       const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
       const undressStateLines = getUndressStateLines(session.playthrough_id, session.id, character.id);
       return serializeCharacter(effectiveCharacter, outfit, undressStateLines);

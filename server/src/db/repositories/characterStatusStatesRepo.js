@@ -112,7 +112,7 @@ export function grantStatus(characterId, statusId, ctx, locked = false, options 
   }
 
   if (status.default_address_on_grant && ctx.playthroughId != null) {
-    setCurrentAddress(ctx.playthroughId, characterId, status.default_address_on_grant);
+    setCurrentAddress(ctx.playthroughId, characterId, status.default_address_on_grant, ctx.roomSessionId);
   }
 
   return result;

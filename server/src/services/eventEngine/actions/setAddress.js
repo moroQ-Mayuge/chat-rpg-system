@@ -10,6 +10,6 @@ export async function executeSetAddress(params, execCtx) {
       : character_id === 'mentioned'
         ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
         : [character_id];
-  const changes = targetIds.map((id) => ({ character_id: id, ...setCurrentAddress(execCtx.playthroughId, id, address) }));
+  const changes = targetIds.map((id) => ({ character_id: id, ...setCurrentAddress(execCtx.playthroughId, id, address, execCtx.sessionId) }));
   return { changes };
 }
