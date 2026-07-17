@@ -25,6 +25,20 @@
         "--gpulayers", "999"
       ],
       "port": 5001
+    },
+    {
+      "name": "koboldcpp-anima",
+      "runtimeExecutable": "koboldcpp/models/koboldcpp.exe",
+      "runtimeArgs": [
+        "--model", "koboldcpp/models/llm/Mistral-nemo-ja-rp-v0.2.Q3_K_M.gguf",
+        "--sdmodel", "koboldcpp/models/anima/animafranken_v10.safetensors",
+        "--sdvae", "koboldcpp/models/anima/qwen_image_vae.safetensors",
+        "--sdclip1", "koboldcpp/models/anima/Qwen3-0.6B-Q4_K_M.gguf",
+        "--port", "5001",
+        "--contextsize", "8192",
+        "--gpulayers", "999"
+      ],
+      "port": 5001
     }
   ]
 }
