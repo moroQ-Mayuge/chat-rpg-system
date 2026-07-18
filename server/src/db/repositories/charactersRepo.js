@@ -1,6 +1,6 @@
 import { db } from '../connection.js';
 import { listOutfitsForCharacter, createOutfit } from './outfitsRepo.js';
-import { listWorldIdsForCharacter } from './worldRoomSlotAssignmentsRepo.js';
+import { listWorldIdsForCharacter, listTagDerivedWorldIdsByCharacter } from './worldRoomSlotAssignmentsRepo.js';
 
 export const CHARACTER_TEXT_FIELDS = [
   'name',
@@ -53,14 +53,18 @@ function attachAssociations(character) {
 
 export function listCharacters() {
   const rows = db.prepare('SELECT * FROM characters ORDER BY name ASC').all();
+  // Computed once for the whole list (not per character) -- see its own
+  // comment in worldRoomSlotAssignmentsRepo.js for why that matters.
+  const tagDerivedWorldIds = listTagDerivedWorldIdsByCharacter();
   return rows.map((row) => {
     const defaultOutfit = db
       .prepare('SELECT standing_image_path FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(row.id);
+    const world_ids = [...new Set([...listWorldIdsForCharacter(row.id), ...(tagDerivedWorldIds.get(row.id) ?? [])])];
     return {
       ...row,
       default_outfit_standing_image: defaultOutfit?.standing_image_path ?? null,
-      world_ids: listWorldIdsForCharacter(row.id),
+      world_ids,
     };
   });
 }

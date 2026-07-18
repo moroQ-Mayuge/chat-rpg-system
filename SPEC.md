@@ -682,6 +682,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | attribute_tags | text | 属性キー（カンマ区切り）。World・部屋の属性キーと一致すると自動登場/同席の対象になる |
 | is_mob | bool | モブキャラフラグ（2026-07-17追加、migration 0041）。関係値・呼び方・自己ステータスが`playthrough_id`でなく`room_session_id`スコープになり、部屋セッションごとにリセットされる |
 
+**「所属World」の算出**（`CharactersPage.jsx`表示用、実体を持つ列ではない）：`charactersRepo.js`の`listCharacters()`が`world_ids`を合成して各キャラに付与する。2つの経路を合算する——(1) `world_room_slot_assignments`の固定`character_id`割り当て（`listWorldIdsForCharacter`）、(2) 属性キー一致で出現しうる経路（`listTagDerivedWorldIdsByCharacter`、2026-07-19追加）：Worldごとに「そのWorldの全部屋の文脈タグ（部屋自身のタグ、無ければWorldへフォールバック）＋全部屋の行単位ランダム枠のタグ」を1回だけ集計してタグ集合を作り、キャラテーブルを1回だけ走査して一致判定する（キャラ単位でWorldごとに再計算するより低コスト）。時間帯・確率は考慮しない（「出現しうるか」だけを見る）。`getCharacter()`単体取得には付与されない。
+
 ### outfits
 | カラム | 型 | 備考 |
 |---|---|---|

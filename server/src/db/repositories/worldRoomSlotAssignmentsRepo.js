@@ -89,6 +89,67 @@ export function listWorldIdsForCharacter(characterId) {
     .map((r) => r.world_id);
 }
 
+// Which World(s) a character could appear in purely via attribute-tag
+// matching (tagMatchedCharacterIds' "everyone auto-appears" mechanism and
+// row-level random slots), not just fixed assignments -- listWorldIdsForCharacter
+// above can never see this, since a tag-matched character has no row in
+// world_room_slot_assignments naming their character_id at all. Time-slot
+// restrictions and random_probability are deliberately ignored here: this
+// answers "could X ever show up in this World", not "will X show up right
+// now", so any row-level random row's tags count regardless of when it fires.
+//
+// Computed once per World (not once per character) precisely to keep this
+// cheap: for each World, build a flat set of every tag that could pull
+// someone in across all its rooms (room's own tags per the same
+// fallback-to-World logic as getContextTags, unioned with every row-level
+// random slot's own tags), then scan the character table once per World
+// against that pool -- O(worlds x rooms/slots + worlds x characters) instead
+// of the O(characters x worlds x rooms) a per-character version would cost.
+export function listTagDerivedWorldIdsByCharacter() {
+  const worlds = db.prepare('SELECT id, attribute_tags FROM worlds').all();
+  const characters = db.prepare('SELECT id, attribute_tags FROM characters').all();
+
+  const result = new Map();
+
+  for (const world of worlds) {
+    const rooms = db
+      .prepare(
+        `SELECT rt.id, rt.attribute_tags FROM room_templates rt
+         JOIN world_room_templates wrt ON wrt.room_template_id = rt.id
+         WHERE wrt.world_id = ?`,
+      )
+      .all(world.id);
+
+    const pool = new Set();
+    for (const room of rooms) {
+      const roomTags = parseAttributeTags(room.attribute_tags);
+      const contextTags = roomTags.length > 0 ? roomTags : parseAttributeTags(world.attribute_tags);
+      contextTags.forEach((t) => pool.add(t));
+
+      const slotTagRows = db
+        .prepare(
+          `SELECT DISTINCT s.attribute_tags FROM room_template_participant_slots s
+           JOIN world_room_slot_assignments wrsa ON wrsa.slot_id = s.id AND wrsa.world_id = ?
+           WHERE s.room_template_id = ? AND wrsa.character_id IS NULL`,
+        )
+        .all(world.id, room.id);
+      for (const row of slotTagRows) {
+        parseAttributeTags(row.attribute_tags).forEach((t) => pool.add(t));
+      }
+    }
+
+    if (pool.size === 0) continue;
+    const poolArr = [...pool];
+    for (const character of characters) {
+      if (!tagsOverlapOrWildcard(parseAttributeTags(character.attribute_tags), poolArr)) continue;
+      if (!result.has(character.id)) result.set(character.id, new Set());
+      result.get(character.id).add(world.id);
+    }
+  }
+
+  return result;
+}
+
 // The context tags eligible in this room: the room master's own
 // attribute_tags if it has any, otherwise falling back to its World's --
 // NOT a union (2026-07-19 change) -- a room with its own tags fully
