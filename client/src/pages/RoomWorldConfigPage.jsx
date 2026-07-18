@@ -38,6 +38,7 @@ export default function RoomWorldConfigPage() {
   const { data: worldRooms } = useRoomTemplates(worldIdNum);
 
   const [assignments, setAssignments] = useState(null);
+  const [randomTagMatch, setRandomTagMatch] = useState(null);
   const [propIds, setPropIds] = useState(null);
   const [freeProps, setFreeProps] = useState(null);
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
@@ -56,6 +57,8 @@ export default function RoomWorldConfigPage() {
         slot.assignments.map((a) => ({ character_id: a.character_id, time_slot_indices: a.time_slot_indices })),
       ]),
     );
+  const currentRandomTagMatch =
+    randomTagMatch ?? Object.fromEntries(config.slot_assignments.map((slot) => [slot.slot_id, slot.random_tag_match]));
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
 
@@ -84,6 +87,10 @@ export default function RoomWorldConfigPage() {
     setAssignments({ ...currentAssignments, [slotId]: rows.filter((_, i) => i !== index) });
   }
 
+  function toggleRandomTagMatch(slotId) {
+    setRandomTagMatch({ ...currentRandomTagMatch, [slotId]: !currentRandomTagMatch[slotId] });
+  }
+
   function toggleProp(propId) {
     setPropIds(currentPropIds.includes(propId) ? currentPropIds.filter((i) => i !== propId) : [...currentPropIds, propId]);
   }
@@ -96,11 +103,13 @@ export default function RoomWorldConfigPage() {
           character_id: Number(a.character_id),
           time_slot_indices: a.time_slot_indices,
         })),
+        random_tag_match: Boolean(currentRandomTagMatch[slot.slot_id]),
       })),
       prop_ids: currentPropIds,
       free_props: currentFreeProps,
     });
     setAssignments(null);
+    setRandomTagMatch(null);
     setPropIds(null);
     setFreeProps(null);
   }
@@ -188,6 +197,20 @@ export default function RoomWorldConfigPage() {
                       ))}
                       {rows.length === 0 && <p style={{ fontSize: 11, color: '#888' }}>未割当</p>}
                       <button onClick={() => addAssignmentRow(slot.slot_id)}>+ キャラを追加</button>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(currentRandomTagMatch[slot.slot_id])}
+                          disabled={slotTags.size === 0}
+                          onChange={() => toggleRandomTagMatch(slot.slot_id)}
+                        />
+                        入室時にランダムに属性キーに該当するキャラを割り当て
+                      </label>
+                      {slotTags.size === 0 && (
+                        <span style={{ fontSize: 10, color: '#888' }}>
+                          このスロットに属性キー未設定のため対象キャラがいません（部屋マスタ編集画面で設定できます）
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

@@ -18,7 +18,7 @@ import {
   attachRoomToWorld,
   detachRoomFromWorld,
 } from '../db/repositories/worldRoomTemplatesRepo.js';
-import { replaceAssignmentsForSlot } from '../db/repositories/worldRoomSlotAssignmentsRepo.js';
+import { replaceAssignmentsForSlot, setSlotRandomTagMatch } from '../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { replacePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { generateRoomBackgroundImage } from '../services/roomBackgroundImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
@@ -101,6 +101,7 @@ roomTemplatesRouter.put('/:id/worlds/:worldId/config', (req, res) => {
   const roomTemplateId = req.params.id;
   for (const slot of req.body.slot_assignments ?? []) {
     replaceAssignmentsForSlot(worldId, slot.slot_id, slot.assignments ?? []);
+    setSlotRandomTagMatch(worldId, slot.slot_id, Boolean(slot.random_tag_match));
   }
   replacePropsForWorldRoom(worldId, roomTemplateId, {
     propIds: req.body.prop_ids ?? [],

@@ -560,7 +560,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 |---|---|---|
 | id | PK | |
 | room_template_id | FK | |
-| attribute_tags | text | この枠の属性タグ（管理UIでの候補キャラ強調表示にのみ使用） |
+| attribute_tags | text | この枠の属性タグ。管理UIでの候補キャラ強調表示に加え、2026-07-18からはランダム属性マッチ（下記`world_room_slot_random_tag_match`）の照合対象としても使用 |
 | note | text | 枠の説明（例：「生徒B」） |
 | sort_order | int | |
 
@@ -574,6 +574,14 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | time_slot_indices | json | `worlds.time_slot_labels`へのindex配列。空＝常に在室、非空＝その時間帯のみ在室（1枠に時間帯違いの複数行を持たせることで「朝はキャラX、夜はキャラY」を表現できる） |
 
 **部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は、上記の明示的な枠割り当て（現在の時間帯でフィルタ）に加えて、**属性キー一致による自動出現**も合算する：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ全キャラ（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。
+
+### world_room_slot_random_tag_match（枠単位のランダム属性マッチ、2026-07-18追加）
+| カラム | 型 | 備考 |
+|---|---|---|
+| world_id | FK | |
+| slot_id | FK | `room_template_participant_slots.id` |
+
+複合PK`(world_id, slot_id)`。行の存在＝有効（`world_character_statuses`等と同じ中間テーブル慣習）。有効な枠では、部屋セッション開始時に**その枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**1人だけ**選出し、デフォルト参加者に加える（`worldRoomSlotAssignmentsRepo.js`の`randomTagMatchCharacterIds`、`characterJoin.js`の`tag_match`と同じ抽選ロジックを流用）。上記の「属性キー一致による自動出現」（該当者全員を無条件で含める）とは別軸の仕組みで、既に確定した参加者（明示割り当て・全員自動出現）とは重複しないよう除外される。候補が0人の枠は何も追加しない。
 
 ### props（設備・機材マスター）
 | カラム | 型 | 備考 |

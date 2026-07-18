@@ -12,13 +12,15 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
   const rows = db
     .prepare(
       `SELECT s.id AS slot_id, s.attribute_tags, s.note, s.sort_order,
-              wrsa.id AS assignment_id, wrsa.character_id, wrsa.time_slot_indices
+              wrsa.id AS assignment_id, wrsa.character_id, wrsa.time_slot_indices,
+              rtm.world_id AS random_tag_match_world_id
        FROM room_template_participant_slots s
        LEFT JOIN world_room_slot_assignments wrsa ON wrsa.slot_id = s.id AND wrsa.world_id = ?
+       LEFT JOIN world_room_slot_random_tag_match rtm ON rtm.slot_id = s.id AND rtm.world_id = ?
        WHERE s.room_template_id = ?
        ORDER BY s.sort_order ASC, s.id ASC, wrsa.id ASC`,
     )
-    .all(worldId, roomTemplateId);
+    .all(worldId, worldId, roomTemplateId);
 
   const slots = new Map();
   for (const row of rows) {
@@ -28,6 +30,7 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
         attribute_tags: row.attribute_tags,
         note: row.note,
         sort_order: row.sort_order,
+        random_tag_match: row.random_tag_match_world_id != null,
         assignments: [],
       });
     }
@@ -40,6 +43,16 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
     }
   }
   return [...slots.values()];
+}
+
+// Toggles the per-(World, slot) random tag-match mode -- row presence = enabled.
+export function setSlotRandomTagMatch(worldId, slotId, enabled) {
+  if (enabled) {
+    db.prepare('INSERT OR IGNORE INTO world_room_slot_random_tag_match (world_id, slot_id) VALUES (?, ?)').run(worldId, slotId);
+  } else {
+    db.prepare('DELETE FROM world_room_slot_random_tag_match WHERE world_id = ? AND slot_id = ?').run(worldId, slotId);
+  }
+  return { random_tag_match: enabled };
 }
 
 // Replaces every assignment for one (world, slot) with the given list --
@@ -103,6 +116,59 @@ function tagMatchedCharacterIds(worldId, roomTemplateId) {
     .map((c) => c.id);
 }
 
+// Same weighted-random pick as characterJoin.js's tag_match selection mode,
+// duplicated here rather than imported -- this module resolves worldId
+// directly rather than via a playthrough_id, same reasoning as
+// getContextTags above.
+function pickWeighted(candidateIds) {
+  const weights = candidateIds.map(
+    (id) => db.prepare('SELECT event_participation_weight FROM characters WHERE id = ?').get(id)?.event_participation_weight ?? 1,
+  );
+  const total = weights.reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total;
+  for (let i = 0; i < candidateIds.length; i += 1) {
+    roll -= weights[i];
+    if (roll <= 0) return candidateIds[i];
+  }
+  return candidateIds[candidateIds.length - 1];
+}
+
+// For each slot in this room that has random tag-match enabled for this
+// World (world_room_slot_random_tag_match), picks ONE character (weighted)
+// whose attribute_tags overlap that slot's OWN attribute_tags -- distinct
+// from tagMatchedCharacterIds above, which includes everyone matching the
+// room/World's combined tags unconditionally. A slot with no eligible
+// candidates is silently skipped (mirrors characterJoin.js's tag_match
+// "no eligible candidates -> skip"). excludeIds keeps this from picking a
+// character already present via explicit assignment or the broader tag
+// match, and from two slots in the same room picking the same character.
+function randomTagMatchCharacterIds(worldId, roomTemplateId, excludeIds) {
+  const slots = db
+    .prepare(
+      `SELECT s.id, s.attribute_tags FROM room_template_participant_slots s
+       JOIN world_room_slot_random_tag_match rtm ON rtm.slot_id = s.id AND rtm.world_id = ?
+       WHERE s.room_template_id = ?`,
+    )
+    .all(worldId, roomTemplateId);
+  if (slots.length === 0) return [];
+
+  const allCharacters = db.prepare('SELECT id, attribute_tags FROM characters').all();
+  const picked = [];
+  const taken = new Set(excludeIds);
+  for (const slot of slots) {
+    const slotTags = parseAttributeTags(slot.attribute_tags);
+    if (slotTags.length === 0) continue;
+    const pool = allCharacters
+      .filter((c) => !taken.has(c.id) && tagsOverlap(parseAttributeTags(c.attribute_tags), slotTags))
+      .map((c) => c.id);
+    if (pool.length === 0) continue;
+    const chosenId = pickWeighted(pool);
+    picked.push(chosenId);
+    taken.add(chosenId);
+  }
+  return picked;
+}
+
 // Used by roomSessionsRepo.createRoomSession at session-start time. Combines
 // explicit per-slot assignments (filtered to the current time slot, empty
 // time_slot_indices = always present) with attribute-tag auto-matched
@@ -125,6 +191,7 @@ export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemp
     .map((r) => r.character_id);
 
   const tagMatchedIds = tagMatchedCharacterIds(worldId, roomTemplateId);
+  const randomPickedIds = randomTagMatchCharacterIds(worldId, roomTemplateId, new Set([...assignedIds, ...tagMatchedIds]));
 
-  return [...new Set([...assignedIds, ...tagMatchedIds])];
+  return [...new Set([...assignedIds, ...tagMatchedIds, ...randomPickedIds])];
 }
