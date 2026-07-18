@@ -8,8 +8,11 @@ export default function SessionLogPage() {
   const { id } = useParams();
   const { data: session, isLoading } = useRoomSession(id);
 
+  // all_participants includes departed characters (unlike session.participants,
+  // which is active-only) so past messages from someone who since left still
+  // resolve a name/expression image instead of "???".
   function participantFor(characterId) {
-    return session?.participants.find((p) => p.character_id === characterId);
+    return session?.all_participants.find((p) => p.character_id === characterId);
   }
 
   function expressionImageFor(characterId, emotionTag) {

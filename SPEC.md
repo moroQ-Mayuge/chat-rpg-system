@@ -577,7 +577,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 
 **部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は3つの仕組みを合算する：
 1. **固定割り当て**（`character_id`が非NULLの行、現在の時間帯でフィルタ）
-2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）
+2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`（設定されていればそれのみ）、無ければWorldの`attribute_tags`にフォールバック——**合算ではなくフォールバック**（2026-07-19変更、`characterJoin.js`の`getContextTags`も同様）——と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。部屋をWorldにアタッチした際、部屋側の`attribute_tags`が空ならWorldの値を初期値として自動コピーする（`worldRoomTemplatesRepo.js`の`attachRoomToWorld`、以後は独立して編集可能）
 3. **行単位ランダム割り当て**（`character_id IS NULL`の行、2026-07-18追加、前回実装した枠単位トグル`world_room_slot_random_tag_match`を完全に置き換え）：行ごとに、**その行が属する枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**最大1人**選出。`random_fill_mode='probability'`なら抽選が外れた行は0人のまま。1枠に複数のランダム行を作ることで「0〜行数」の範囲で人数が変動する状況を作れる。既に確定した参加者（固定割り当て・属性一致全員）とは重複しないよう除外されるが、**`characters.is_mob`のキャラのみ例外的に重複選出を許可**——同じモブが複数のランダム行から選ばれると、`room_session_characters`に同一`character_id`の複数行が作られ（2026-07-18に複合PKからsurrogate `id` PKへ変更、重複を許可）、`participantNaming.js`の`withDisambiguatedNames`が英字接尾辞（`モブ・中学生`／`モブ・中学生A`／`モブ・中学生B`...）で区別する。**既知の制約**：モブ重複インスタンス間の関係性・ステータス・呼び方は`(character_id, room_session_id)`単位でしか管理できないため内部状態は共有される（見た目上は別人だが、関係値やステータスは連動する）。
 
 **属性キー`すべて`ワイルドカード**（2026-07-18、`attributeTagMatching.js`の`tagsOverlapOrWildcard`）：部屋マスタ・World・枠のいずれかの`attribute_tags`に特殊トークン`すべて`を含めると、そのタグ集合との照合は無条件でマッチしたことになる——候補キャラ側が`attribute_tags`を1件も持たない（未所属）場合でも対象になる。上記2の属性一致自動出現・3の行単位ランダム割り当て（枠自身のタグが対象）、および`characterJoin.js`の`tag_match`選出・`require_attribute_match`ガードの計4箇所で共通して有効。管理UIのタグ入力は既存のカンマ区切りテキストのままで、`すべて`を1つのタグとして入力するだけでよい。
@@ -637,8 +637,10 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | joined_at | datetime | |
 | left_at | datetime, nullable | |
 | current_outfit_id | FK, nullable | 未指定時はデフォルト衣装 |
-| is_active | bool | 現在同席中か |
+| is_active | bool | 現在同席中か。退席（`removeParticipant`）は`is_active=0`+`left_at`更新のみで行自体は残す |
 | is_accompanying | bool | 部屋移動時に同行するか |
+
+**退席キャラの扱い**（2026-07-19）：`roomSessionsRepo.js`の`attachParticipants`は`participants`（現在アクティブのみ、既存UI各所が使用）と`all_participants`（退席済み含む全員）の両方をセッションに含める。`ChatPage.jsx`/`SessionLogPage.jsx`の過去メッセージ名前・表情画像解決は`all_participants`を参照するため、退席後も過去ログの表示が「???」にならない。また`promptBuilder.js`の`buildHistoryMessages`は退席イベントをメッセージ履歴と時系列マージし、実際に退席が起きた位置に`[NARRATION]: （ここで◯◯は退席した...）`という合成行を挿入してLLMへ送る——退席後もそのキャラが発言し続けてしまう問題への対策（`buildSystemPrompt`にも退席済みキャラを名指しで禁止する行を追加）。
 
 ### characters
 | カラム | 型 | 備考 |

@@ -90,15 +90,20 @@ export function listWorldIdsForCharacter(characterId) {
 }
 
 // The context tags eligible in this room: the room master's own
-// attribute_tags plus its World's -- same definition as characterJoin.js's
-// getContextTags, duplicated here (rather than imported) since that module
-// resolves the World from a playthrough_id and this one already has the
-// worldId directly.
+// attribute_tags if it has any, otherwise falling back to its World's --
+// NOT a union (2026-07-19 change) -- a room with its own tags fully
+// overrides the World's, so an author can narrow a specific room's cast
+// without the World's broader tags leaking back in. Same definition as
+// characterJoin.js's getContextTags, duplicated here (rather than imported)
+// since that module resolves the World from a playthrough_id and this one
+// already has the worldId directly.
 function getContextTags(worldId, roomTemplateId) {
   const template = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
+  const roomTags = parseAttributeTags(template.attribute_tags);
+  if (roomTags.length > 0) return roomTags;
   const world = db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(worldId);
-  return [...parseAttributeTags(template.attribute_tags), ...parseAttributeTags(world?.attribute_tags)];
+  return parseAttributeTags(world?.attribute_tags);
 }
 
 // Characters whose own attribute_tags overlap this room+World's context tags

@@ -68,6 +68,20 @@ function buildSystemPrompt(session, participants) {
   // expected to echo back, so roomSessions.js's parsing lookup agrees.
   const disambiguated = withDisambiguatedNames(participants);
 
+  // Small local models don't reliably infer "stop voicing this character"
+  // from the positive participant list alone (same lesson as the
+  // protagonist self-speech guard below) -- naming departed characters
+  // explicitly gives the model a concrete negative constraint instead of
+  // relying on it noticing their absence from the list.
+  const departedNames = db
+    .prepare(
+      `SELECT DISTINCT c.name FROM room_session_characters rsc
+       JOIN characters c ON c.id = rsc.character_id
+       WHERE rsc.room_session_id = ? AND rsc.is_active = 0`,
+    )
+    .all(session.id)
+    .map((r) => r.name);
+
   const characterCards = disambiguated
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
@@ -114,6 +128,9 @@ function buildSystemPrompt(session, participants) {
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（キャラクターが物語上、実際にユーザーへ具体的な物を渡した場合のみ。世間話や比喩表現では使わない）。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
+    departedNames.length > 0
+      ? `特に、以下のキャラクターは既にこの場を離れており、絶対に発言・行動を書いてはいけません：${departedNames.join('、')}`
+      : null,
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
     noSelfSpeechRule,
     '',
@@ -151,6 +168,25 @@ function buildHistoryMessages(sessionId) {
     return characterNameCache.get(characterId);
   }
 
+  // Interleaves a synthetic departure marker at the point in the replayed
+  // history where each character actually left, so the model sees an
+  // explicit "they're gone" signal instead of just their lines trailing off
+  // (which small local models don't reliably infer on their own -- see
+  // bugreports_2026-07-19). Sorted by timestamp alongside the message rows;
+  // ties resolve message-before-departure via the stable sort below, which
+  // is fine since left_at/created_at share second-level resolution anyway.
+  const departures = db
+    .prepare(
+      `SELECT rsc.character_id, rsc.left_at FROM room_session_characters rsc
+       WHERE rsc.room_session_id = ? AND rsc.is_active = 0 AND rsc.left_at IS NOT NULL`,
+    )
+    .all(sessionId);
+
+  const timeline = [
+    ...rows.map((row) => ({ type: 'message', at: row.created_at, row })),
+    ...departures.map((d) => ({ type: 'departure', at: d.left_at, characterId: d.character_id })),
+  ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+
   const messages = [];
   let assistantBuffer = [];
 
@@ -160,7 +196,13 @@ function buildHistoryMessages(sessionId) {
     assistantBuffer = [];
   }
 
-  for (const row of rows) {
+  for (const entry of timeline) {
+    if (entry.type === 'departure') {
+      const name = nameFor(entry.characterId);
+      assistantBuffer.push(`[NARRATION]: （ここで${name}は退席した。以降${name}はこの場におらず、発言も行動もしない）`);
+      continue;
+    }
+    const row = entry.row;
     if (row.sender_type === 'user') {
       flushAssistantBuffer();
       messages.push({ role: 'user', content: row.content });

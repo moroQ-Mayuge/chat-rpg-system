@@ -18,7 +18,9 @@ function pickWeighted(candidateIds) {
   return candidateIds[candidateIds.length - 1];
 }
 
-// The current room template's attribute_tags plus its World's — the shared
+// The current room template's own attribute_tags if it has any, otherwise
+// falling back to its World's -- NOT a union (2026-07-19 change), matching
+// worldRoomSlotAssignmentsRepo.js's identical getContextTags -- the shared
 // "eligible here" tag set used both for tag_match candidate selection and
 // for the require_attribute_match guard below. The room's World is resolved
 // from the playthrough, not the room itself, since rooms are shared master
@@ -26,9 +28,11 @@ function pickWeighted(candidateIds) {
 function getContextTags(roomTemplateId, playthroughId) {
   const template = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
+  const roomTags = parseAttributeTags(template.attribute_tags);
+  if (roomTags.length > 0) return roomTags;
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(playthroughId)?.world_id;
   const world = worldId ? db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(worldId) : null;
-  return [...parseAttributeTags(template.attribute_tags), ...parseAttributeTags(world?.attribute_tags)];
+  return parseAttributeTags(world?.attribute_tags);
 }
 
 // Candidates whose own attribute_tags overlap with the context tags (chat

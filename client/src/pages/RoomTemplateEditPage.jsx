@@ -85,7 +85,7 @@ export default function RoomTemplateEditPage() {
   }, [attachedWorlds, bgGenerateWorldId]);
 
   function addSlot() {
-    setForm((f) => ({ ...f, slots: [...f.slots, { attribute_tags: [], note: '' }] }));
+    setForm((f) => ({ ...f, slots: [...f.slots, { attribute_tags: [...f.attribute_tags], note: '' }] }));
   }
 
   function updateSlot(index, patch) {

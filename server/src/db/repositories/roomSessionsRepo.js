@@ -43,18 +43,26 @@ export function ensureRelationshipStatesSeeded(playthroughId, characterId, roomS
   }
 }
 
+// Returns both `participants` (currently active only -- the existing
+// semantics every other UI usage relies on: the top strip, status panel,
+// mention buttons, action-command gating, item-transfer targets) and
+// `all_participants` (active + departed) for name/expression-image
+// resolution of past chat messages, which must still work after a character
+// leaves (see bugreports_2026-07-19). left_at/current_outfit_id are
+// preserved on departure (removeParticipant only flips is_active), so a
+// departed row still resolves a sensible expression image.
 function attachParticipants(session) {
   if (!session) return session;
-  const participants = db
+  const allParticipants = db
     .prepare(
       `SELECT rsc.id, rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active, rsc.is_accompanying
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
-       WHERE rsc.room_session_id = ? AND rsc.is_active = 1`,
+       WHERE rsc.room_session_id = ?`,
     )
     .all(session.id);
 
-  for (const participant of participants) {
+  for (const participant of allParticipants) {
     participant.expression_images = participant.current_outfit_id
       ? db
           .prepare(
@@ -68,6 +76,8 @@ function attachParticipants(session) {
     participant.status = buildStatusSnapshot(session.playthrough_id, participant.character_id, { roomSessionId: session.id });
   }
 
+  const participants = allParticipants.filter((p) => p.is_active);
+
   const worldRow = db
     .prepare('SELECT w.status_display_settings FROM worlds w JOIN playthroughs p ON p.world_id = w.id WHERE p.id = ?')
     .get(session.playthrough_id);
@@ -75,7 +85,7 @@ function attachParticipants(session) {
   const playerPrefs = getStatusDisplayPreferences();
   const status_display_visibility = computeStatusDisplayVisibility(worldSettings, playerPrefs);
 
-  return { ...session, participants, status_display_visibility };
+  return { ...session, participants, all_participants: allParticipants, status_display_visibility };
 }
 
 // Lists every session (active or ended) a playthrough has ever had, newest

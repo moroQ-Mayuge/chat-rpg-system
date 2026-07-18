@@ -31,8 +31,22 @@ export function isRoomInWorld(worldId, roomTemplateId) {
   );
 }
 
+// Seeds the room's attribute_tags from the World's on first attach (only
+// when the room doesn't already have its own -- never overwrites an
+// existing value, since a shared room master may already be attached to
+// other Worlds with intentionally different tags). Just a convenience
+// initial value for the room-tag/World-tag fallback in
+// worldRoomSlotAssignmentsRepo.js's getContextTags -- editable afterward,
+// not a synced/locked relationship.
 export function attachRoomToWorld(worldId, roomTemplateId) {
   db.prepare('INSERT OR IGNORE INTO world_room_templates (world_id, room_template_id) VALUES (?, ?)').run(worldId, roomTemplateId);
+  const room = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
+  if (room && !room.attribute_tags) {
+    const world = db.prepare('SELECT attribute_tags FROM worlds WHERE id = ?').get(worldId);
+    if (world?.attribute_tags) {
+      db.prepare('UPDATE room_templates SET attribute_tags = ? WHERE id = ?').run(world.attribute_tags, roomTemplateId);
+    }
+  }
   return { attached: true };
 }
 

@@ -387,8 +387,12 @@ export default function ChatPage() {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
   });
 
+  // all_participants includes departed characters (unlike session.participants,
+  // which is active-only and drives the live UI elsewhere) so past messages
+  // from someone who since left still resolve a name/expression image
+  // instead of "???".
   function participantFor(characterId) {
-    return session?.participants.find((p) => p.character_id === characterId);
+    return session?.all_participants.find((p) => p.character_id === characterId);
   }
 
   function expressionImageFor(characterId, emotionTag) {
