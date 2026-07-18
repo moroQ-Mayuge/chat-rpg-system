@@ -2,7 +2,7 @@ import { db } from '../../../db/connection.js';
 import { addParticipant } from '../../../db/repositories/roomSessionsRepo.js';
 import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
-import { parseAttributeTags, tagsOverlap } from '../../attributeTagMatching.js';
+import { parseAttributeTags, tagsOverlapOrWildcard } from '../../attributeTagMatching.js';
 import { resolveMentionedSingle } from '../mentionResolution.js';
 
 function pickWeighted(candidateIds) {
@@ -43,7 +43,7 @@ function tagMatchCandidates(roomTemplateId, playthroughId) {
   return db
     .prepare('SELECT id, attribute_tags FROM characters')
     .all()
-    .filter((c) => tagsOverlap(parseAttributeTags(c.attribute_tags), contextTags))
+    .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
     .map((c) => c.id);
 }
 
@@ -70,7 +70,7 @@ export async function executeCharacterJoin(params, execCtx) {
       const contextTags = getContextTags(execCtx.roomTemplateId, execCtx.playthroughId);
       if (contextTags.length > 0) {
         const target = db.prepare('SELECT name, attribute_tags FROM characters WHERE id = ?').get(targetId);
-        const matches = target && tagsOverlap(parseAttributeTags(target.attribute_tags), contextTags);
+        const matches = target && tagsOverlapOrWildcard(parseAttributeTags(target.attribute_tags), contextTags);
         if (!matches) {
           const rejectionText = (params.rejection_narration || DEFAULT_REJECTION_NARRATION).replaceAll(
             '{character_name}',

@@ -580,6 +580,8 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）
 3. **行単位ランダム割り当て**（`character_id IS NULL`の行、2026-07-18追加、前回実装した枠単位トグル`world_room_slot_random_tag_match`を完全に置き換え）：行ごとに、**その行が属する枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**最大1人**選出。`random_fill_mode='probability'`なら抽選が外れた行は0人のまま。1枠に複数のランダム行を作ることで「0〜行数」の範囲で人数が変動する状況を作れる。既に確定した参加者（固定割り当て・属性一致全員）とは重複しないよう除外されるが、**`characters.is_mob`のキャラのみ例外的に重複選出を許可**——同じモブが複数のランダム行から選ばれると、`room_session_characters`に同一`character_id`の複数行が作られ（2026-07-18に複合PKからsurrogate `id` PKへ変更、重複を許可）、`participantNaming.js`の`withDisambiguatedNames`が英字接尾辞（`モブ・中学生`／`モブ・中学生A`／`モブ・中学生B`...）で区別する。**既知の制約**：モブ重複インスタンス間の関係性・ステータス・呼び方は`(character_id, room_session_id)`単位でしか管理できないため内部状態は共有される（見た目上は別人だが、関係値やステータスは連動する）。
 
+**属性キー`すべて`ワイルドカード**（2026-07-18、`attributeTagMatching.js`の`tagsOverlapOrWildcard`）：部屋マスタ・World・枠のいずれかの`attribute_tags`に特殊トークン`すべて`を含めると、そのタグ集合との照合は無条件でマッチしたことになる——候補キャラ側が`attribute_tags`を1件も持たない（未所属）場合でも対象になる。上記2の属性一致自動出現・3の行単位ランダム割り当て（枠自身のタグが対象）、および`characterJoin.js`の`tag_match`選出・`require_attribute_match`ガードの計4箇所で共通して有効。管理UIのタグ入力は既存のカンマ区切りテキストのままで、`すべて`を1つのタグとして入力するだけでよい。
+
 ### props（設備・機材マスター）
 | カラム | 型 | 備考 |
 |---|---|---|

@@ -1,5 +1,5 @@
 import { db } from '../connection.js';
-import { parseAttributeTags, tagsOverlap } from '../../services/attributeTagMatching.js';
+import { parseAttributeTags, tagsOverlapOrWildcard } from '../../services/attributeTagMatching.js';
 
 // World level: which concrete character(s) fill a given room-master slot,
 // for this World's instance of that room. A slot with no rows here is
@@ -115,7 +115,7 @@ function tagMatchedCharacterIds(worldId, roomTemplateId) {
   return db
     .prepare('SELECT id, attribute_tags FROM characters')
     .all()
-    .filter((c) => tagsOverlap(parseAttributeTags(c.attribute_tags), contextTags))
+    .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
     .map((c) => c.id);
 }
 
@@ -158,7 +158,7 @@ function resolveRandomRows(eligibleRandomRows, taken) {
     const slotTags = parseAttributeTags(row.slot_attribute_tags);
     if (slotTags.length === 0) continue;
     const pool = allCharacters
-      .filter((c) => (!taken.has(c.id) || c.is_mob) && tagsOverlap(parseAttributeTags(c.attribute_tags), slotTags))
+      .filter((c) => (!taken.has(c.id) || c.is_mob) && tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), slotTags))
       .map((c) => c.id);
     if (pool.length === 0) continue;
     const chosenId = pickWeighted(pool);
