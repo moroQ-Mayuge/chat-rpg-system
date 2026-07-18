@@ -191,6 +191,19 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   // shown ("みお" / "みお(2)") instead of colliding on the bare name.
   const participantsByName = new Map(withDisambiguatedNames(session.participants).map((p) => [p.display_name, p]));
 
+  // Safety net for when the model doesn't echo back the exact display_name
+  // (e.g. it shortens a longer/compound name to just part of it) — falls
+  // back to a substring match only when it resolves to exactly one
+  // participant, so an ambiguous partial name still falls through to the
+  // hallucinated-name handling below rather than guessing wrong.
+  function resolveParticipantFuzzy(name) {
+    if (participantsByName.has(name)) return participantsByName.get(name);
+    const candidates = [...participantsByName.entries()].filter(
+      ([displayName]) => displayName.includes(name) || name.includes(displayName),
+    );
+    return candidates.length === 1 ? candidates[0][1] : null;
+  }
+
   // The system prompt tells the model never to speak/act as the protagonist
   // by name, but small local models don't reliably follow negative
   // instructions — observed live: it still emitted "[<protagonist name>]: ..."
@@ -239,7 +252,7 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
 
     if (forbiddenNames.has(parsed.characterName.trim())) return;
 
-    const participant = participantsByName.get(parsed.characterName);
+    const participant = resolveParticipantFuzzy(parsed.characterName);
     if (!participant) {
       // Model hallucinated a name that isn't actually present — keep the line
       // visible as narration rather than silently discarding generated content.
@@ -263,6 +276,12 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
         content = `${content}（${parsed.emotionKey}）`;
       }
     }
+
+    // A recognized character name with no actual dialogue after it (format
+    // slip, or the model just emitted the tag on its own) would otherwise
+    // persist as a real character message with empty content -- a "name
+    // only" bubble. Nothing useful to show, so drop the line entirely.
+    if (!content.trim()) return;
 
     const message = createMessage(sessionId, {
       sender_type: 'character',

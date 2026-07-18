@@ -106,6 +106,7 @@ function buildSystemPrompt(session, participants) {
     characterCards,
     '「秘密」の項目は関係性や状況に応じて慎重に扱い、安易に暴露しないでください。',
     '',
+    'セリフや地の文は自然でくだけた口語にし、説明的で硬い言い回しは避けてください。',
     'あなたは上記のキャラクターたちになりきって、日本語で応答してください。以下の出力フォーマットに厳密に従ってください。',
     '[キャラ名]: セリフ本文 [EMOTION:感情キー]',
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
@@ -125,6 +126,9 @@ function buildSystemPrompt(session, participants) {
     '[みお]: これ、あげる [EMOTION:smile]',
     `[ITEM_GRANT: 手作りクッキー|${itemCategoryNames[0] ?? '未分類'}]: みおが焼いた素朴な味のクッキー`,
     '[NARRATION]: みおは小さな包みを差し出した。',
+    '',
+    '❌ 誤った例（名前がブラケットの外に出ている）: 陽葵[困り顔]: 今日は暇だなあ',
+    '✅ 正しい例: [陽葵]: 今日は暇だなあ [EMOTION:smile]',
   ].join('\n');
 }
 

@@ -10,7 +10,13 @@
 // full text in one pass by feeding it through the same per-line parser.
 
 const LINE_PATTERN = /^\[(.+?)\]:\s*(.*)$/;
+// Fallback for a model putting the name outside the brackets and the
+// emotion tag inside instead of the reverse, e.g. "陽葵[困り顔]: ..." instead
+// of "[陽葵]: ... [EMOTION:smile]" -- observed live with longer/compound
+// character names. Only tried when LINE_PATTERN doesn't match.
+const NAME_THEN_BRACKET_PATTERN = /^([^[\]:]+?)\[(.+?)\]:\s*(.*)$/;
 const EMOTION_PATTERN = /\[EMOTION:([a-zA-Z0-9_]+)\]\s*$/;
+const EMOTION_KEY_ONLY_PATTERN = /^EMOTION:([a-zA-Z0-9_]+)$/i;
 const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 
 // Returns null for a blank line, otherwise one of:
@@ -28,6 +34,17 @@ export function parseScriptLine(rawLine) {
 
   const m = line.match(LINE_PATTERN);
   if (!m) {
+    const alt = line.match(NAME_THEN_BRACKET_PATTERN);
+    if (alt) {
+      const [, name, bracketContent, rest] = alt;
+      const emotionKeyMatch = bracketContent.trim().match(EMOTION_KEY_ONLY_PATTERN);
+      return {
+        type: 'character',
+        characterName: name.trim(),
+        text: rest.trim(),
+        emotionKey: emotionKeyMatch ? emotionKeyMatch[1] : bracketContent.trim() || null,
+      };
+    }
     return { type: 'narration', text: line, emotionKey: null };
   }
 
