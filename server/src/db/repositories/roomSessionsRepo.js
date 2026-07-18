@@ -47,7 +47,7 @@ function attachParticipants(session) {
   if (!session) return session;
   const participants = db
     .prepare(
-      `SELECT rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active, rsc.is_accompanying
+      `SELECT rsc.id, rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active, rsc.is_accompanying
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
        WHERE rsc.room_session_id = ? AND rsc.is_active = 1`,

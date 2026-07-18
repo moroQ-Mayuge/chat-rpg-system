@@ -5,22 +5,25 @@ import { parseAttributeTags, tagsOverlap } from '../../services/attributeTagMatc
 // for this World's instance of that room. A slot with no rows here is
 // simply unfilled -- not an error state (mirrors the existing tag_match "no
 // eligible candidates -> skip" precedent in characterJoin.js). A slot can
-// now hold multiple assignments, each restricted to a subset of the World's
-// time_slot_labels via time_slot_indices (empty = always present) -- see
-// 0039_room_slot_time_and_tag_presence.sql.
+// hold multiple assignment rows, each independently restricted to a subset
+// of the World's time_slot_labels via time_slot_indices (empty = always
+// present) -- see 0039_room_slot_time_and_tag_presence.sql. A row with
+// character_id IS NULL is a "random" row (2026-07-18, 0043): at
+// room-session-creation time it picks (or doesn't -- see random_fill_mode)
+// ONE character matching the slot's own attribute_tags, rather than a fixed
+// character_id.
 export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
   const rows = db
     .prepare(
       `SELECT s.id AS slot_id, s.attribute_tags, s.note, s.sort_order,
               wrsa.id AS assignment_id, wrsa.character_id, wrsa.time_slot_indices,
-              rtm.world_id AS random_tag_match_world_id
+              wrsa.random_fill_mode, wrsa.random_probability
        FROM room_template_participant_slots s
        LEFT JOIN world_room_slot_assignments wrsa ON wrsa.slot_id = s.id AND wrsa.world_id = ?
-       LEFT JOIN world_room_slot_random_tag_match rtm ON rtm.slot_id = s.id AND rtm.world_id = ?
        WHERE s.room_template_id = ?
        ORDER BY s.sort_order ASC, s.id ASC, wrsa.id ASC`,
     )
-    .all(worldId, worldId, roomTemplateId);
+    .all(worldId, roomTemplateId);
 
   const slots = new Map();
   for (const row of rows) {
@@ -30,7 +33,6 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
         attribute_tags: row.attribute_tags,
         note: row.note,
         sort_order: row.sort_order,
-        random_tag_match: row.random_tag_match_world_id != null,
         assignments: [],
       });
     }
@@ -39,33 +41,34 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
         id: row.assignment_id,
         character_id: row.character_id,
         time_slot_indices: JSON.parse(row.time_slot_indices),
+        random_fill_mode: row.random_fill_mode,
+        random_probability: row.random_probability,
       });
     }
   }
   return [...slots.values()];
 }
 
-// Toggles the per-(World, slot) random tag-match mode -- row presence = enabled.
-export function setSlotRandomTagMatch(worldId, slotId, enabled) {
-  if (enabled) {
-    db.prepare('INSERT OR IGNORE INTO world_room_slot_random_tag_match (world_id, slot_id) VALUES (?, ?)').run(worldId, slotId);
-  } else {
-    db.prepare('DELETE FROM world_room_slot_random_tag_match WHERE world_id = ? AND slot_id = ?').run(worldId, slotId);
-  }
-  return { random_tag_match: enabled };
-}
-
-// Replaces every assignment for one (world, slot) with the given list --
+// Replaces every assignment row for one (world, slot) with the given list --
 // same "swap the whole array" pattern as replaceSlotsForRoom etc.
-// assignments: [{ character_id, time_slot_indices: number[] }]
+// assignments: [{ character_id: number|null, time_slot_indices: number[], random_fill_mode?, random_probability? }]
+// character_id null = a "random" row (see module comment above).
 export function replaceAssignmentsForSlot(worldId, slotId, assignments) {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM world_room_slot_assignments WHERE world_id = ? AND slot_id = ?').run(worldId, slotId);
     const insert = db.prepare(
-      'INSERT INTO world_room_slot_assignments (world_id, slot_id, character_id, time_slot_indices) VALUES (?, ?, ?, ?)',
+      `INSERT INTO world_room_slot_assignments (world_id, slot_id, character_id, time_slot_indices, random_fill_mode, random_probability)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     );
     for (const a of assignments) {
-      insert.run(worldId, slotId, a.character_id, JSON.stringify(a.time_slot_indices ?? []));
+      insert.run(
+        worldId,
+        slotId,
+        a.character_id ?? null,
+        JSON.stringify(a.time_slot_indices ?? []),
+        a.random_fill_mode ?? 'always',
+        a.random_probability ?? 1.0,
+      );
     }
   });
   tx();
@@ -102,10 +105,10 @@ function getContextTags(worldId, roomTemplateId) {
 // (chat enhancement backlog item 23's auto-matching, extended to room-entry
 // default presence per [[bugreports_2026-07-16]] item 8's follow-up
 // request): everyone matching is included as a default participant,
-// supplementing (not replacing) explicit slot assignments. Unlike
-// characterJoin.js's tag_match (which picks ONE candidate for an event's
-// "someone shows up" moment), this represents "everyone who'd naturally be
-// here" and isn't time-of-day gated.
+// supplementing (not replacing) explicit slot assignments. Unlike the
+// per-row random assignment below (which picks at most one candidate per
+// row), this represents "everyone who'd naturally be here" and isn't
+// time-of-day gated.
 function tagMatchedCharacterIds(worldId, roomTemplateId) {
   const contextTags = getContextTags(worldId, roomTemplateId);
   if (contextTags.length === 0) return [];
@@ -133,65 +136,71 @@ function pickWeighted(candidateIds) {
   return candidateIds[candidateIds.length - 1];
 }
 
-// For each slot in this room that has random tag-match enabled for this
-// World (world_room_slot_random_tag_match), picks ONE character (weighted)
-// whose attribute_tags overlap that slot's OWN attribute_tags -- distinct
-// from tagMatchedCharacterIds above, which includes everyone matching the
-// room/World's combined tags unconditionally. A slot with no eligible
-// candidates is silently skipped (mirrors characterJoin.js's tag_match
-// "no eligible candidates -> skip"). excludeIds keeps this from picking a
-// character already present via explicit assignment or the broader tag
-// match, and from two slots in the same room picking the same character.
-function randomTagMatchCharacterIds(worldId, roomTemplateId, excludeIds) {
-  const slots = db
-    .prepare(
-      `SELECT s.id, s.attribute_tags FROM room_template_participant_slots s
-       JOIN world_room_slot_random_tag_match rtm ON rtm.slot_id = s.id AND rtm.world_id = ?
-       WHERE s.room_template_id = ?`,
-    )
-    .all(worldId, roomTemplateId);
-  if (slots.length === 0) return [];
-
-  const allCharacters = db.prepare('SELECT id, attribute_tags FROM characters').all();
+// Resolves every "random" row (character_id IS NULL) eligible for the
+// current time slot into 0 or 1 picked character_id each, matched against
+// the OWNING SLOT's own attribute_tags (not the room/World's combined tags
+// -- distinct from tagMatchedCharacterIds above). 'probability' rows roll
+// first and contribute nothing on a miss; a row with no eligible candidates
+// also contributes nothing (mirrors characterJoin.js's tag_match "no
+// eligible candidates -> skip"). Mob characters (characters.is_mob) are
+// exempt from the `taken` exclusion set -- the same mob can be picked by
+// more than one random row in the same call, becoming multiple distinct
+// participant instances (room_session_characters no longer enforces
+// per-character uniqueness, see 0043) -- non-mob characters are added to
+// `taken` once picked so they can't also be picked by a later row. Returns a
+// raw array (NOT deduplicated) since mob duplicates are intentional.
+function resolveRandomRows(eligibleRandomRows, taken) {
+  if (eligibleRandomRows.length === 0) return [];
+  const allCharacters = db.prepare('SELECT id, attribute_tags, is_mob FROM characters').all();
   const picked = [];
-  const taken = new Set(excludeIds);
-  for (const slot of slots) {
-    const slotTags = parseAttributeTags(slot.attribute_tags);
+  for (const row of eligibleRandomRows) {
+    if (row.random_fill_mode === 'probability' && Math.random() > row.random_probability) continue;
+    const slotTags = parseAttributeTags(row.slot_attribute_tags);
     if (slotTags.length === 0) continue;
     const pool = allCharacters
-      .filter((c) => !taken.has(c.id) && tagsOverlap(parseAttributeTags(c.attribute_tags), slotTags))
+      .filter((c) => (!taken.has(c.id) || c.is_mob) && tagsOverlap(parseAttributeTags(c.attribute_tags), slotTags))
       .map((c) => c.id);
     if (pool.length === 0) continue;
     const chosenId = pickWeighted(pool);
     picked.push(chosenId);
-    taken.add(chosenId);
+    const chosen = allCharacters.find((c) => c.id === chosenId);
+    if (!chosen.is_mob) taken.add(chosenId);
   }
   return picked;
 }
 
 // Used by roomSessionsRepo.createRoomSession at session-start time. Combines
-// explicit per-slot assignments (filtered to the current time slot, empty
-// time_slot_indices = always present) with attribute-tag auto-matched
-// characters, deduplicated.
+// explicit fixed-character assignments (filtered to the current time slot,
+// empty time_slot_indices = always present), attribute-tag auto-matched
+// characters (everyone, no gating), and per-row random picks (0/1 each,
+// mob duplicates allowed). The returned array is NOT globally deduplicated
+// -- a mob character_id may legitimately appear more than once; the caller
+// (createRoomSession) just inserts one room_session_characters row per
+// element, which is safe now that character_id is no longer part of that
+// table's primary key.
 export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemplateId, currentTimeSlotIndex) {
-  const assignedRows = db
+  const rows = db
     .prepare(
-      `SELECT wrsa.character_id, wrsa.time_slot_indices
+      `SELECT wrsa.character_id, wrsa.time_slot_indices, wrsa.random_fill_mode, wrsa.random_probability,
+              s.attribute_tags AS slot_attribute_tags
        FROM room_template_participant_slots s
        JOIN world_room_slot_assignments wrsa ON wrsa.slot_id = s.id AND wrsa.world_id = ?
        WHERE s.room_template_id = ?`,
     )
     .all(worldId, roomTemplateId);
 
-  const assignedIds = assignedRows
-    .filter((r) => {
-      const indices = JSON.parse(r.time_slot_indices);
-      return indices.length === 0 || indices.includes(currentTimeSlotIndex);
-    })
-    .map((r) => r.character_id);
+  const eligibleRows = rows.filter((r) => {
+    const indices = JSON.parse(r.time_slot_indices);
+    return indices.length === 0 || indices.includes(currentTimeSlotIndex);
+  });
+
+  const fixedIds = eligibleRows.filter((r) => r.character_id != null).map((r) => r.character_id);
+  const randomRows = eligibleRows.filter((r) => r.character_id == null);
 
   const tagMatchedIds = tagMatchedCharacterIds(worldId, roomTemplateId);
-  const randomPickedIds = randomTagMatchCharacterIds(worldId, roomTemplateId, new Set([...assignedIds, ...tagMatchedIds]));
+  const baseIds = [...new Set([...fixedIds, ...tagMatchedIds])];
 
-  return [...new Set([...assignedIds, ...tagMatchedIds, ...randomPickedIds])];
+  const randomPickedIds = resolveRandomRows(randomRows, new Set(baseIds));
+
+  return [...baseIds, ...randomPickedIds];
 }

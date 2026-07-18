@@ -301,7 +301,7 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
             <select style={{ width: '100%' }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
               <option value="">{command.transfers_to_target ? '対象を選択してください' : '指定なし'}</option>
               {participants.map((p) => (
-                <option key={p.character_id} value={p.character_id}>
+                <option key={p.id} value={p.character_id}>
                   {p.name}
                 </option>
               ))}
@@ -471,7 +471,7 @@ export default function ChatPage() {
         {session.participants.length === 0
           ? 'なし'
           : session.participants.map((p) => (
-              <span key={p.character_id} style={{ marginRight: 8 }}>
+              <span key={p.id} style={{ marginRight: 8 }}>
                 {p.name}
                 <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
                 {session.room_is_place && (
@@ -502,7 +502,7 @@ export default function ChatPage() {
           <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>ステータスパネル</summary>
           <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {session.participants.map((p) => (
-              <div key={p.character_id} style={{ fontSize: 11 }}>
+              <div key={p.id} style={{ fontSize: 11 }}>
                 <strong>{p.name}</strong>
                 <StatusInline status={p.status} visibility={session.status_display_visibility.panel} />
               </div>
@@ -642,7 +642,7 @@ export default function ChatPage() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>
           {session.participants.map((p) => (
             <button
-              key={p.character_id}
+              key={p.id}
               type="button"
               style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb' }}
               onClick={() => insertMention(p.name)}

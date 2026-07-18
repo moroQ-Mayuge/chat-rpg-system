@@ -560,28 +560,25 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 |---|---|---|
 | id | PK | |
 | room_template_id | FK | |
-| attribute_tags | text | この枠の属性タグ。管理UIでの候補キャラ強調表示に加え、2026-07-18からはランダム属性マッチ（下記`world_room_slot_random_tag_match`）の照合対象としても使用 |
+| attribute_tags | text | この枠の属性タグ。管理UIでの候補キャラ強調表示に加え、2026-07-18からは行単位ランダム割り当て（下記）の照合対象としても使用 |
 | note | text | 枠の説明（例：「生徒B」） |
 | sort_order | int | |
 
-### world_room_slot_assignments（Worldごとの具体キャラ割り当て、2026-07-17拡張）
+### world_room_slot_assignments（Worldごとの具体キャラ割り当て、2026-07-18拡張）
 | カラム | 型 | 備考 |
 |---|---|---|
 | id | PK | 2026-07-17に複合PK(world_id, slot_id)から変更——1枠に複数キャラを割り当てられるようにするため |
 | world_id | FK | |
 | slot_id | FK | `room_template_participant_slots.id` |
-| character_id | FK | |
+| character_id | FK, nullable | **NULL＝ランダム行**（2026-07-18、下記参照）。非NULLは従来通りの固定キャラ割り当て |
 | time_slot_indices | json | `worlds.time_slot_labels`へのindex配列。空＝常に在室、非空＝その時間帯のみ在室（1枠に時間帯違いの複数行を持たせることで「朝はキャラX、夜はキャラY」を表現できる） |
+| random_fill_mode | text | `always`（候補がいれば必ず1人選出）／`probability`（`random_probability`の確率で抽選、外れれば0人）。ランダム行（`character_id IS NULL`）にのみ意味を持つ |
+| random_probability | real | `random_fill_mode='probability'`時の出現確率（0.0〜1.0） |
 
-**部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は、上記の明示的な枠割り当て（現在の時間帯でフィルタ）に加えて、**属性キー一致による自動出現**も合算する：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ全キャラ（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。
-
-### world_room_slot_random_tag_match（枠単位のランダム属性マッチ、2026-07-18追加）
-| カラム | 型 | 備考 |
-|---|---|---|
-| world_id | FK | |
-| slot_id | FK | `room_template_participant_slots.id` |
-
-複合PK`(world_id, slot_id)`。行の存在＝有効（`world_character_statuses`等と同じ中間テーブル慣習）。有効な枠では、部屋セッション開始時に**その枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**1人だけ**選出し、デフォルト参加者に加える（`worldRoomSlotAssignmentsRepo.js`の`randomTagMatchCharacterIds`、`characterJoin.js`の`tag_match`と同じ抽選ロジックを流用）。上記の「属性キー一致による自動出現」（該当者全員を無条件で含める）とは別軸の仕組みで、既に確定した参加者（明示割り当て・全員自動出現）とは重複しないよう除外される。候補が0人の枠は何も追加しない。
+**部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は3つの仕組みを合算する：
+1. **固定割り当て**（`character_id`が非NULLの行、現在の時間帯でフィルタ）
+2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`＋Worldの`attribute_tags`と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）
+3. **行単位ランダム割り当て**（`character_id IS NULL`の行、2026-07-18追加、前回実装した枠単位トグル`world_room_slot_random_tag_match`を完全に置き換え）：行ごとに、**その行が属する枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**最大1人**選出。`random_fill_mode='probability'`なら抽選が外れた行は0人のまま。1枠に複数のランダム行を作ることで「0〜行数」の範囲で人数が変動する状況を作れる。既に確定した参加者（固定割り当て・属性一致全員）とは重複しないよう除外されるが、**`characters.is_mob`のキャラのみ例外的に重複選出を許可**——同じモブが複数のランダム行から選ばれると、`room_session_characters`に同一`character_id`の複数行が作られ（2026-07-18に複合PKからsurrogate `id` PKへ変更、重複を許可）、`participantNaming.js`の`withDisambiguatedNames`が英字接尾辞（`モブ・中学生`／`モブ・中学生A`／`モブ・中学生B`...）で区別する。**既知の制約**：モブ重複インスタンス間の関係性・ステータス・呼び方は`(character_id, room_session_id)`単位でしか管理できないため内部状態は共有される（見た目上は別人だが、関係値やステータスは連動する）。
 
 ### props（設備・機材マスター）
 | カラム | 型 | 備考 |
@@ -632,12 +629,14 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ### room_session_characters
 | カラム | 型 | 備考 |
 |---|---|---|
+| id | PK | 2026-07-18に複合PK(room_session_id, character_id)から変更——モブキャラ（`characters.is_mob`）が同一セッションに複数インスタンスとして重複参加できるようにするため（一意制約なし、非モブの重複防止はアプリ側ロジックで担保） |
 | room_session_id | FK | |
 | character_id | FK | |
 | joined_at | datetime | |
 | left_at | datetime, nullable | |
 | current_outfit_id | FK, nullable | 未指定時はデフォルト衣装 |
 | is_active | bool | 現在同席中か |
+| is_accompanying | bool | 部屋移動時に同行するか |
 
 ### characters
 | カラム | 型 | 備考 |

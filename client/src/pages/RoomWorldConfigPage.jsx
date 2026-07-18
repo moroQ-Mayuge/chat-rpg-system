@@ -38,7 +38,6 @@ export default function RoomWorldConfigPage() {
   const { data: worldRooms } = useRoomTemplates(worldIdNum);
 
   const [assignments, setAssignments] = useState(null);
-  const [randomTagMatch, setRandomTagMatch] = useState(null);
   const [propIds, setPropIds] = useState(null);
   const [freeProps, setFreeProps] = useState(null);
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
@@ -54,11 +53,14 @@ export default function RoomWorldConfigPage() {
     Object.fromEntries(
       config.slot_assignments.map((slot) => [
         slot.slot_id,
-        slot.assignments.map((a) => ({ character_id: a.character_id, time_slot_indices: a.time_slot_indices })),
+        slot.assignments.map((a) => ({
+          character_id: a.character_id,
+          time_slot_indices: a.time_slot_indices,
+          random_fill_mode: a.random_fill_mode ?? 'always',
+          random_probability: a.random_probability ?? 1,
+        })),
       ]),
     );
-  const currentRandomTagMatch =
-    randomTagMatch ?? Object.fromEntries(config.slot_assignments.map((slot) => [slot.slot_id, slot.random_tag_match]));
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
 
@@ -70,7 +72,10 @@ export default function RoomWorldConfigPage() {
     if (firstCharacterId == null) return;
     setAssignments({
       ...currentAssignments,
-      [slotId]: [...(currentAssignments[slotId] ?? []), { character_id: firstCharacterId, time_slot_indices: [] }],
+      [slotId]: [
+        ...(currentAssignments[slotId] ?? []),
+        { character_id: firstCharacterId, time_slot_indices: [], random_fill_mode: 'always', random_probability: 1 },
+      ],
     });
   }
 
@@ -87,10 +92,6 @@ export default function RoomWorldConfigPage() {
     setAssignments({ ...currentAssignments, [slotId]: rows.filter((_, i) => i !== index) });
   }
 
-  function toggleRandomTagMatch(slotId) {
-    setRandomTagMatch({ ...currentRandomTagMatch, [slotId]: !currentRandomTagMatch[slotId] });
-  }
-
   function toggleProp(propId) {
     setPropIds(currentPropIds.includes(propId) ? currentPropIds.filter((i) => i !== propId) : [...currentPropIds, propId]);
   }
@@ -100,16 +101,16 @@ export default function RoomWorldConfigPage() {
       slot_assignments: config.slot_assignments.map((slot) => ({
         slot_id: slot.slot_id,
         assignments: (currentAssignments[slot.slot_id] ?? []).map((a) => ({
-          character_id: Number(a.character_id),
+          character_id: a.character_id === null ? null : Number(a.character_id),
           time_slot_indices: a.time_slot_indices,
+          random_fill_mode: a.random_fill_mode ?? 'always',
+          random_probability: a.random_probability ?? 1,
         })),
-        random_tag_match: Boolean(currentRandomTagMatch[slot.slot_id]),
       })),
       prop_ids: currentPropIds,
       free_props: currentFreeProps,
     });
     setAssignments(null);
-    setRandomTagMatch(null);
     setPropIds(null);
     setFreeProps(null);
   }
@@ -161,9 +162,16 @@ export default function RoomWorldConfigPage() {
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                             <select
                               style={{ flex: 1 }}
-                              value={row.character_id}
-                              onChange={(e) => updateAssignmentRow(slot.slot_id, index, { character_id: Number(e.target.value) })}
+                              value={row.character_id ?? 'random'}
+                              onChange={(e) =>
+                                updateAssignmentRow(slot.slot_id, index, {
+                                  character_id: e.target.value === 'random' ? null : Number(e.target.value),
+                                })
+                              }
                             >
+                              <option value="random" disabled={slotTags.size === 0}>
+                                ★ ランダム（属性該当キャラ）
+                              </option>
                               {characters.map((c) => (
                                 <option key={c.id} value={c.id}>
                                   {tagMatchedIds.has(c.id) ? `★ ${c.name}` : c.name}
@@ -172,6 +180,46 @@ export default function RoomWorldConfigPage() {
                             </select>
                             <button onClick={() => removeAssignmentRow(slot.slot_id, index)}>削除</button>
                           </div>
+                          {row.character_id === null && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 11 }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <input
+                                  type="radio"
+                                  name={`fill-mode-${slot.slot_id}-${index}`}
+                                  checked={row.random_fill_mode !== 'probability'}
+                                  onChange={() => updateAssignmentRow(slot.slot_id, index, { random_fill_mode: 'always' })}
+                                />
+                                ランダム枠は必ず埋める
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <input
+                                  type="radio"
+                                  name={`fill-mode-${slot.slot_id}-${index}`}
+                                  checked={row.random_fill_mode === 'probability'}
+                                  onChange={() => updateAssignmentRow(slot.slot_id, index, { random_fill_mode: 'probability' })}
+                                />
+                                ランダム枠は指定の確率で出現
+                              </label>
+                              {row.random_fill_mode === 'probability' && (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    style={{ width: 50 }}
+                                    value={Math.round((row.random_probability ?? 1) * 100)}
+                                    onChange={(e) =>
+                                      updateAssignmentRow(slot.slot_id, index, {
+                                        random_probability: Math.max(0, Math.min(100, Number(e.target.value))) / 100,
+                                      })
+                                    }
+                                  />
+                                  %
+                                </span>
+                              )}
+                              {slotTags.size === 0 && <span style={{ color: '#888' }}>このスロットに属性キー未設定のため対象キャラがいません</span>}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {(world?.time_slot_labels ?? []).map((label, tsIndex) => (
                               <label key={tsIndex} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11 }}>
@@ -197,20 +245,6 @@ export default function RoomWorldConfigPage() {
                       ))}
                       {rows.length === 0 && <p style={{ fontSize: 11, color: '#888' }}>未割当</p>}
                       <button onClick={() => addAssignmentRow(slot.slot_id)}>+ キャラを追加</button>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(currentRandomTagMatch[slot.slot_id])}
-                          disabled={slotTags.size === 0}
-                          onChange={() => toggleRandomTagMatch(slot.slot_id)}
-                        />
-                        入室時にランダムに属性キーに該当するキャラを割り当て
-                      </label>
-                      {slotTags.size === 0 && (
-                        <span style={{ fontSize: 10, color: '#888' }}>
-                          このスロットに属性キー未設定のため対象キャラがいません（部屋マスタ編集画面で設定できます）
-                        </span>
-                      )}
                     </div>
                   </div>
                 );
