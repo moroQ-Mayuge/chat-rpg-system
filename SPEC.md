@@ -316,6 +316,13 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - `comparison`: `">="` `"<="` `"=="`
 - `value`: int
 
+**has_money** - 所持金判定（2026-07-20追加）
+```json
+{ "comparison": ">=", "value": 5000 }
+```
+- `playthroughs.money`と比較する。`comparison`は`relationship_threshold`と同じ演算子集合（`">="` `"<="` `"=="` `">"` `"<"`）
+- `value`: int
+
 #### 3.6.4 アクション（Action）パラメータ仕様
 
 **character_join** - キャラ参加
@@ -387,6 +394,12 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```
 - `slots`: 進める時間帯の数（int、デフォルト1）。3.2の「時間帯を1つ進める」処理をこの回数分繰り返す（日またぎ・天候再抽選・季節進行もその都度評価される）
 - 対象は、このイベントが発火した部屋（RoomSession）が所属するPlaythrough
+
+**spend_money** - 所持金消費（2026-07-20追加）
+```json
+{ "amount": 5000 }
+```
+- `playthroughs.money`から`amount`を減算する（`has_money`条件でのガードを前提としており、それ自体は残高不足チェックを行わない）
 
 ### 3.7 画像生成
 
@@ -562,6 +575,8 @@ KoboldCpp起動設定（exe引数）とは別に、生成のたびに`/v1/chat/c
 | worldview | text, nullable | 部屋固有の世界観（worldview_mode=customの場合のみ使用） |
 | background_image_path | text, nullable | 固定背景画像（シーン転換前のデフォルト表示用） |
 | turns_per_time_slot | int, nullable | この部屋滞在中、何ターンで自動的にルートの時間帯を1つ進めるか（null=このトリガー無効） |
+| is_shop | bool | 買い物できる部屋か（詳細は下記「貨幣機能 + 買い物部屋」） |
+| suppress_auto_population | bool | 2026-07-20追加（migration 0050）。trueの部屋は入室時、タグ一致自動出現・行単位ランダムを含む通常のデフォルト参加者決定を一切スキップする（同行キャラの引き継ぎのみそのまま機能）。「ホテルの部屋」のような、乱入なく同行キャラとだけ会話したいプライベート部屋向け |
 | created_at | datetime | |
 
 ### room_template_characters
@@ -775,6 +790,24 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 - **所持金表示**：チャット画面の日付表示行（`ChatPage.jsx`、`{playthrough.current_day}日目 ...`の行）に、`currency_enabled`なWorldでは「／ 所持金 {money}{単位}」を追記する。`money_changed`は`message_complete`と同時にブロードキャストされるため、既存の`message_complete`受信時のクエリ無効化（`['playthroughs']`）に相乗りする形で表示が更新される。
 - **現代学園ファンタジー（World4）の実コンテンツ**：`currency_enabled=1`／`単位=円`／初期所持金3000円。新規の買い物部屋3つ——購買部・売店（昇降口・正門前に接続、食べ物・飲み物＋文房具・日用品）、食堂（昇降口・正門前に接続、食べ物・飲み物）、雑貨屋・コンビニ（商店街・駅前通りに接続、食べ物・飲み物＋文房具・日用品）——と、価格設定済みアイテム10点（メロンパン等5点＋文房具・日用品5点）を登録済み。
 
+### プライベート部屋（`suppress_auto_population`）+ 有料イベント + 商店街拡張（2026-07-20）
+`room_templates.suppress_auto_population`（migration 0050）を立てた部屋は、`roomSessionsRepo.js`の`createRoomSession`がタグ一致自動出現・固定割り当て・行単位ランダムを一切呼び出さず、常に0人からスタートする。部屋移動時の同行キャラ引き継ぎ（`is_accompanying`）だけは無条件のまま機能するため、「同行中のキャラとだけ、他の誰にも邪魔されず話せる部屋」を実現できる（`RoomTemplateEditPage.jsx`のチェックボックスで設定）。
+
+有料の「イチャコラ」イベントは、既存の`行動:イチャコラ誘う`/`行動:キスする`（World4、global scope）と同じ構造を、新規条件`has_money`と新規アクション`spend_money`を組み込んで`scope='room_template'`で複製したもの：
+- **has_money**（条件）：`{ "comparison": ">=", "value": 5000 }`。`playthroughs.money`と比較（`comparison`は`relationship_threshold`と同じ演算子集合）
+- **spend_money**（アクション）：`{ "amount": 5000 }`。`playthrough.money`から減算（マイナス残高にはならない——`has_money`がトリガー条件として先にガードしている前提）
+- 誘いの`keyword`条件と`has_money`条件を両方トリガーに置き、成功時アクションの先頭で`spend_money`を実行、失敗時は課金なし（既存の「関係値未達で静かに発火しない」慣習と同様、資金不足時も専用のナレーションは出さずイベント自体が発火しない）
+
+現代学園ファンタジー（World4）の商店街・駅前通りに追加したコンテンツ：
+- **専属スタッフ4名**（モブではない）：食堂のお姉さん（食堂、昼・放課後に確定出現）、コンビニ店員1（大学生想定、雑貨屋・コンビニ、朝・昼）、コンビニ店員2（生徒想定、同、放課後・夜）、購買部のお姉さん（購買部・売店、朝〜放課後）。各部屋に新規slot＋`random_fill_mode='always'`の時間帯限定assignmentを追加し、既存の一般ランダム店員枠とは独立して確定出現させている
+- **メイド喫茶**：部屋自体の`attribute_tags='メイド'`により、`メイド`タグを持つキャラ（メイド3名、10代）が時間帯を問わず自動在住
+- **裏路地**：部屋自体の`attribute_tags`を`裏路地専用`という他の誰も持たないタグにして、World（`生徒,教師,小学生,中学生,家族`）の広いタグへのフォールバックを遮断——不良3名・ギャル3名だけが、放課後・夜限定の行単位ランダム枠（75%/50%/50%、最大3名）から抽選される。有料イベント「誘惑する」（5000円）→「口づけする」の専用action_commandsを追加
+- **怪しいお店**（裏路地からのみ到達）：部屋自体の`attribute_tags='怪しい'`で、怪しいお姉さん3名（personality/notesに淫乱さを記述——`relationship_axes`の淫乱度軸自体はルート実データのためキャラ初期値の底上げはできず、テキスト表現のみ）が常時在住。有料イベント「口説く」（10000円）→「唇を重ねる」
+- **ホテル**：部屋自体の`attribute_tags='ホテル受付'`で、受付のお姉さん2名が常時在住
+- **ホテルの部屋**（ホテルからのみ到達）：`suppress_auto_population=1`のプライベート部屋。スロットなし、同行キャラのみが存在する
+
+なお、`attribute_tags`が空の部屋はWorldの`attribute_tags`にフォールバックするため（上記「部屋入室時のデフォルト参加者決定」参照）、World側のタグが広い場合は新規の無人格部屋でも既存キャラが大量に自動出現しうる——裏路地で採用した「他の誰も持たないダミータグ」は、行単位ランダムのみで人口を制御したい部屋向けの一般的な回避策として使える。
+
 ### expression_types（表情マスター）
 | カラム | 型 | 備考 |
 |---|---|---|
@@ -840,7 +873,7 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 |---|---|---|
 | id | PK | |
 | event_definition_id | FK | |
-| condition_type | text | probability / turn_count / keyword / relationship_threshold / flag_state / participant_count |
+| condition_type | text | probability / turn_count / keyword / relationship_threshold / flag_state / participant_count / has_item / llm_judge / has_status / has_outfit / has_money |
 | params | json | 種別ごとのパラメータ |
 
 ### event_actions
@@ -848,7 +881,7 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 |---|---|---|
 | id | PK | |
 | event_definition_id | FK | |
-| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time |
+| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time / grant_item / remove_item / change_status / set_address / spend_money |
 | params | json | 種別ごとのパラメータ |
 
 ### session_flags（イベント連鎖用フラグ、ルート単位・グローバル共有）
