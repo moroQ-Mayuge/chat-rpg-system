@@ -31,6 +31,23 @@ export function useCharacterMutations() {
   };
 }
 
+export function useCharacterWorlds(characterId) {
+  return useQuery({
+    queryKey: ['characters', characterId, 'worlds'],
+    queryFn: () => charactersApi.listWorlds(characterId),
+    enabled: characterId != null && characterId !== 'new',
+  });
+}
+
+export function useCharacterWorldMutations(characterId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['characters', characterId, 'worlds'] });
+  return {
+    attach: useMutation({ mutationFn: (worldId) => charactersApi.attachWorld(characterId, worldId), onSuccess: invalidate }),
+    detach: useMutation({ mutationFn: (worldId) => charactersApi.detachWorld(characterId, worldId), onSuccess: invalidate }),
+  };
+}
+
 export function useOutfitMutations(characterId) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['characters', characterId] });

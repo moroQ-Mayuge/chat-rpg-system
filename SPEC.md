@@ -642,6 +642,11 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 
 **退席キャラの扱い**（2026-07-19）：`roomSessionsRepo.js`の`attachParticipants`は`participants`（現在アクティブのみ、既存UI各所が使用）と`all_participants`（退席済み含む全員）の両方をセッションに含める。`ChatPage.jsx`/`SessionLogPage.jsx`の過去メッセージ名前・表情画像解決は`all_participants`を参照するため、退席後も過去ログの表示が「???」にならない。また`promptBuilder.js`の`buildHistoryMessages`は退席イベントをメッセージ履歴と時系列マージし、実際に退席が起きた位置に`[NARRATION]: （ここで◯◯は退席した...）`という合成行を挿入してLLMへ送る——退席後もそのキャラが発言し続けてしまう問題への対策（`buildSystemPrompt`にも退席済みキャラを名指しで禁止する行を追加）。
 
+**モブ重複インスタンスの状態分離**（2026-07-19、migration 0045）：`relationship_states`・`character_address_states`・`character_status_states`に`room_session_character_id`（nullable、`room_session_characters.id`参照）を追加——同一モブキャラが同一セッションに複数インスタンス（`room_session_characters`の別行）として重複参加している場合、各インスタンスが独立した関係値・呼び方・ステータスを持てるようになった（従来は`(character_id, room_session_id)`単位でしか管理できず共有されていた既知の制約——[[room_slot_row_level_random_and_mob_duplication]]参照）。非モブキャラは常に`room_session_character_id: NULL`（各リポジトリのモブ判定ゲートで強制、意図せずインスタンス分断されないよう保護）。
+- `roomSessions.js`の`resolveMentions`は`withDisambiguatedNames`の`display_name`（`モブ・中学生`/`モブ・中学生A`等）でマッチするよう変更——同名重複インスタンスも`@mention`で個別に指定できる。
+- `generateReply`は`lastSpokenInstanceByCharacter`（そのターンで最後に発言したインスタンスのMap）を追跡し、明示的`@mention`が無い場合のフォールバックとして`instanceHintByCharacterId`経由でイベントアクション（`change_relationship`/`set_address`/`change_status`）に渡す。
+- `character_status_states`の`persistence_scope: 'accompanying'`キャリーオーバー（部屋移動時）は、インスタンス単位の引き継ぎは行わない（移動先セッションで同一インスタンスの存在が保証されないため）——キャリーオーバー後は`room_session_character_id: NULL`にフォールバックする、既知の制約。
+
 ### characters
 | カラム | 型 | 備考 |
 |---|---|---|
@@ -682,7 +687,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | attribute_tags | text | 属性キー（カンマ区切り）。World・部屋の属性キーと一致すると自動登場/同席の対象になる |
 | is_mob | bool | モブキャラフラグ（2026-07-17追加、migration 0041）。関係値・呼び方・自己ステータスが`playthrough_id`でなく`room_session_id`スコープになり、部屋セッションごとにリセットされる |
 
-**「所属World」の算出**（`CharactersPage.jsx`表示用、実体を持つ列ではない）：`charactersRepo.js`の`listCharacters()`が`world_ids`を合成して各キャラに付与する。2つの経路を合算する——(1) `world_room_slot_assignments`の固定`character_id`割り当て（`listWorldIdsForCharacter`）、(2) 属性キー一致で出現しうる経路（`listTagDerivedWorldIdsByCharacter`、2026-07-19追加）：Worldごとに「そのWorldの全部屋の文脈タグ（部屋自身のタグ、無ければWorldへフォールバック）＋全部屋の行単位ランダム枠のタグ」を1回だけ集計してタグ集合を作り、キャラテーブルを1回だけ走査して一致判定する（キャラ単位でWorldごとに再計算するより低コスト）。時間帯・確率は考慮しない（「出現しうるか」だけを見る）。`getCharacter()`単体取得には付与されない。
+**「所属World」の算出**（`CharactersPage.jsx`表示用、実体を持つ列ではない）：`charactersRepo.js`の`listCharacters()`が`world_ids`を合成して各キャラに付与する。3つの経路を合算する——(1) `world_room_slot_assignments`の固定`character_id`割り当て（`listWorldIdsForCharacter`）、(2) 属性キー一致で出現しうる経路（`listTagDerivedWorldIdsByCharacter`、2026-07-19追加）：Worldごとに「そのWorldの全部屋の文脈タグ（部屋自身のタグ、無ければWorldへフォールバック）＋全部屋の行単位ランダム枠のタグ」を1回だけ集計してタグ集合を作り、キャラテーブルを1回だけ走査して一致判定する（キャラ単位でWorldごとに再計算するより低コスト）。時間帯・確率は考慮しない（「出現しうるか」だけを見る）、(3) `world_characters`への明示的アタッチ（2026-07-19追加、`worldCharactersRepo.js`、`world_room_templates`/`world_character_statuses`と同じ単純な中間テーブル。`CharactersPage.jsx`の「所属World（明示的アタッチ）」セクションからアタッチ/デタッチできる）。(1)(2)を置き換えるものではなく追加のみ——自動バックフィルはしていないため、既存キャラは誰も明示アタッチされていない状態からスタートする。`getCharacter()`単体取得には付与されない。差分上書き・環境非依存の汎用IDは別課題として未着手（[[character_world_membership_and_list_ui_backlog]]参照）。
 
 ### outfits
 | カラム | 型 | 備考 |
@@ -774,11 +779,14 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 | id | PK | surrogate key（0041で複合PKから移行） |
 | playthrough_id | FK, nullable | 通常キャラはこちらでルート単位に永続 |
 | room_session_id | FK, nullable | モブキャラ（`characters.is_mob`）はこちらで部屋セッション単位にスコープ（永続しない） |
+| room_session_character_id | FK, nullable | 2026-07-19追加（migration 0045）。同一モブが同一セッションに複数インスタンス（`room_session_characters`の別行）として重複参加している場合、インスタンスごとに関係値を分離する。非モブは常にNULL |
 | character_id | FK | |
 | relationship_axis_id | FK | |
 | current_value | int | |
 
 **モブキャラ（`characters.is_mob`、migration 0041）**：同じ`character_id`が複数の部屋セッションで同時に「別人」として使われうる（例：複数の部屋に別々の「モブ・小学生」が同時出現）ため、`relationship_states`・`character_address_states`（呼び方）はどちらも`room_session_id`スコープで書き込まれ、そのセッションが終われば値は参照されなくなる（`playthrough_id`は常にNULL）。判定は`relationshipStatesRepo.js`/`characterAddressStatesRepo.js`内の`scopeColumns()`が`charactersRepo.js`の`isMobCharacter()`を見て自動的に切り替える——呼び出し元は常に`playthroughId`と`roomSessionId`の両方を渡すだけでよい。`character_status_states`（関係ステージ等）は既存の`persistence_scope`（`session`/`accompanying`）をそのステータス定義側で選べば同様にセッションごとリセットされる（モブ用に別途コード変更は不要）。自己ステータスの時間経過による自然回復（`playthroughsRepo.js`の`applySelfStatRegen`）はモブキャラには適用されない（`playthrough_id`スコープの行のみを対象にしているため、意図的な仕様簡略化）。
+
+**同一モブの重複インスタンス分離（2026-07-19、migration 0045）**：`room_session_character_id`（3テーブルとも追加）により、同じモブが同一セッションに複数インスタンスとして参加している場合でも各インスタンスが独立した関係値・呼び方・ステータスを持てる（従来は共有されていた——[[room_slot_row_level_random_and_mob_duplication]]の既知の制約を解消）。`ensureRelationshipStatesSeeded`（`roomSessionsRepo.js`）はインスタンス単位でシード判定するよう修正済み。イベントアクション（`change_relationship`/`set_address`/`change_status`）は対象解決時に`{character_id, instance_id}`ペアを扱う：`all_present`は各インスタンスへ個別適用、`mentioned`/固定指定は`execCtx.instanceHintByCharacterId`（明示的@mention優先、無ければそのターンで最後に発言したインスタンスにフォールバック）から解決する。
 
 ### event_definitions
 | カラム | 型 | 備考 |

@@ -25,21 +25,36 @@ function computeStatusDisplayVisibility(worldSettings, playerPrefs) {
 // Mob characters (characters.is_mob) are seeded per room_session instead of
 // per playthrough, so a fresh session always starts them at their defaults
 // again -- see 0041_mob_characters.sql / relationshipStatesRepo.js.
-export function ensureRelationshipStatesSeeded(playthroughId, characterId, roomSessionId) {
+//
+// roomSessionCharacterId (2026-07-19, migration 0045): when a mob has
+// multiple simultaneous duplicate instances in one session, each instance
+// needs its OWN seeding check -- otherwise the first instance seeded would
+// make every later duplicate look "already seeded" and it would silently
+// get no relationship_states row at all. Non-mob characters ignore this
+// param entirely (they're never duplicated, scope stays playthrough-wide).
+export function ensureRelationshipStatesSeeded(playthroughId, characterId, roomSessionId, roomSessionCharacterId) {
   const isMob = isMobCharacter(characterId);
-  const scopeColumn = isMob ? 'room_session_id' : 'playthrough_id';
-  const scopeValue = isMob ? roomSessionId : playthroughId;
-  const alreadySeeded = db
-    .prepare(`SELECT 1 FROM relationship_states WHERE ${scopeColumn} = ? AND character_id = ? LIMIT 1`)
-    .get(scopeValue, characterId);
+  const alreadySeeded = isMob
+    ? db
+        .prepare('SELECT 1 FROM relationship_states WHERE room_session_id = ? AND character_id = ? AND room_session_character_id IS ? LIMIT 1')
+        .get(roomSessionId, characterId, roomSessionCharacterId ?? null)
+    : db.prepare('SELECT 1 FROM relationship_states WHERE playthrough_id = ? AND character_id = ? LIMIT 1').get(playthroughId, characterId);
   if (alreadySeeded) return;
   const defaults = db
     .prepare('SELECT relationship_axis_id, initial_value FROM character_relationship_defaults WHERE character_id = ?')
     .all(characterId);
   for (const d of defaults) {
     db.prepare(
-      'INSERT INTO relationship_states (playthrough_id, room_session_id, character_id, relationship_axis_id, current_value) VALUES (?, ?, ?, ?, ?)',
-    ).run(isMob ? null : playthroughId, isMob ? roomSessionId : null, characterId, d.relationship_axis_id, d.initial_value);
+      `INSERT INTO relationship_states (playthrough_id, room_session_id, room_session_character_id, character_id, relationship_axis_id, current_value)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      isMob ? null : playthroughId,
+      isMob ? roomSessionId : null,
+      isMob ? roomSessionCharacterId ?? null : null,
+      characterId,
+      d.relationship_axis_id,
+      d.initial_value,
+    );
   }
 }
 
@@ -73,7 +88,10 @@ function attachParticipants(session) {
           )
           .all(participant.current_outfit_id)
       : [];
-    participant.status = buildStatusSnapshot(session.playthrough_id, participant.character_id, { roomSessionId: session.id });
+    participant.status = buildStatusSnapshot(session.playthrough_id, participant.character_id, {
+      roomSessionId: session.id,
+      roomSessionCharacterId: participant.id,
+    });
   }
 
   const participants = allParticipants.filter((p) => p.is_active);
@@ -176,10 +194,10 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     const defaultOutfit = db
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(characterId);
-    db.prepare(
-      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)',
-    ).run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
-    ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId);
+    const rscResult = db
+      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)')
+      .run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
+    ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     if (carryOver && options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(characterId, options.fromRoomSessionId, sessionId);
     }
@@ -189,10 +207,10 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // Remaining carry-over participants aren't part of the new room's own cast
   // — they're only present because they're accompanying the player.
   for (const carryOver of carryOverByCharacterId.values()) {
-    db.prepare(
-      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)',
-    ).run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
-    ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId);
+    const rscResult = db
+      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)')
+      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
+    ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(carryOver.character_id, options.fromRoomSessionId, sessionId);
     }
@@ -252,19 +270,21 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
   const resolvedOutfitId = outfitId ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
   const existing = db
-    .prepare('SELECT 1 FROM room_session_characters WHERE room_session_id = ? AND character_id = ?')
+    .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);
+  let roomSessionCharacterId = existing?.id;
   if (existing) {
     db.prepare(
       `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, joined_at = datetime('now'), left_at = NULL
-       WHERE room_session_id = ? AND character_id = ?`,
-    ).run(resolvedOutfitId, sessionId, characterId);
+       WHERE id = ?`,
+    ).run(resolvedOutfitId, existing.id);
   } else {
-    db.prepare(
-      'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)',
-    ).run(sessionId, characterId, resolvedOutfitId);
+    const rscResult = db
+      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)')
+      .run(sessionId, characterId, resolvedOutfitId);
+    roomSessionCharacterId = rscResult.lastInsertRowid;
   }
-  ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId);
+  ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);
   return getRoomSession(sessionId);
 }
 

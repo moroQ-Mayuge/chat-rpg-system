@@ -85,7 +85,12 @@ function buildSystemPrompt(session, participants) {
   const characterCards = disambiguated
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
-      const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id);
+      // p.id is the room_session_characters row id -- passing it lets
+      // duplicate mob instances (see room_slot_row_level_random_and_mob_duplication)
+      // show their own nickname instead of one shared across every instance
+      // of that character (relationshipStatesRepo.js/characterAddressStatesRepo.js
+      // ignore it entirely for non-mob characters, so this is a no-op there).
+      const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id, p.id);
       const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
       const undressStateLines = getUndressStateLines(session.playthrough_id, session.id, character.id);
       return serializeCharacter(effectiveCharacter, outfit, undressStateLines);

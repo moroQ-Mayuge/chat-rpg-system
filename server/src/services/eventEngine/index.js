@@ -55,7 +55,15 @@ function resolveExclusiveGroups(eligibleDefs) {
 // Runs every active event definition for the room template this session belongs
 // to, fires the ones whose conditions + control gates (cooldown/max_fires/
 // exclusive_group) pass, and applies their actions in priority order.
-export async function runEventEngine({ sessionId, playthroughId, roomTemplateId, userMessage, aiResponseText, mentionedCharacterIds = null }) {
+export async function runEventEngine({
+  sessionId,
+  playthroughId,
+  roomTemplateId,
+  userMessage,
+  aiResponseText,
+  mentionedCharacterIds = null,
+  instanceHintByCharacterId = new Map(),
+}) {
   const session = getRoomSession(sessionId);
   const turnNumber = countUserTurnsForPlaythrough(playthroughId);
   const flags = getAllFlags(playthroughId);
@@ -125,7 +133,15 @@ export async function runEventEngine({ sessionId, playthroughId, roomTemplateId,
       // Actions run sequentially and re-fetch session state as needed, so a
       // character_join earlier in this same event is visible to a later
       // change_relationship/generate_image action in the same firing.
-      const execCtx = { sessionId, playthroughId, roomTemplateId, session: getRoomSession(sessionId), turnNumber, mentionedCharacterIds };
+      const execCtx = {
+        sessionId,
+        playthroughId,
+        roomTemplateId,
+        session: getRoomSession(sessionId),
+        turnNumber,
+        mentionedCharacterIds,
+        instanceHintByCharacterId,
+      };
       const result = await executeAction(action, execCtx);
       actionResults.push({ actionType: action.action_type, result });
     }

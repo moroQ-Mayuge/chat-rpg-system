@@ -50,22 +50,40 @@ roomSessionsRouter.get('/:id/messages', (req, res) => {
 // drives ${target1}/${target2}/... resolution (mentionResolution.js), so the
 // result must reflect the left-to-right order @names actually appear in the
 // message, not participants' fixed list order.
+//
+// Matches against display_name (withDisambiguatedNames), not the bare
+// character name, so duplicate mob instances in the same session (e.g.
+// "モブ・中学生" / "モブ・中学生A") resolve to distinct room_session_characters
+// rows instead of both collapsing onto the same character_id (bugreports
+// 2026-07-19 follow-up). Sorting by idx then len-desc means a longer,
+// more-specific match ("モブ・中学生A") wins over a shorter one that happens
+// to be its prefix ("モブ・中学生") when both start at the same position.
+//
+// Returns { ids, instanceByCharacterId }: `ids` is the existing flat
+// character_id array every other consumer (DB storage, ${target1}
+// resolution, non-mob event targeting) already expects unchanged; instances
+// mentioned by their disambiguated name land in `instanceByCharacterId`
+// (Map<character_id, room_session_character_id>) for mob-instance-aware
+// actions to consult when a mention specifically named one instance.
 function resolveMentions(content, participants) {
+  const disambiguated = withDisambiguatedNames(participants);
   const matches = [];
-  for (const p of participants) {
-    const idx = content.indexOf(`@${p.name}`);
-    if (idx !== -1) matches.push({ idx, len: p.name.length, character_id: p.character_id });
+  for (const p of disambiguated) {
+    const idx = content.indexOf(`@${p.display_name}`);
+    if (idx !== -1) matches.push({ idx, len: p.display_name.length, character_id: p.character_id, instance_id: p.id });
   }
   matches.sort((a, b) => a.idx - b.idx || b.len - a.len);
   const ids = [];
+  const instanceByCharacterId = new Map();
   const seen = new Set();
   for (const m of matches) {
     if (!seen.has(m.character_id)) {
       seen.add(m.character_id);
       ids.push(m.character_id);
+      instanceByCharacterId.set(m.character_id, m.instance_id);
     }
   }
-  return ids.length > 0 ? ids : null;
+  return { ids: ids.length > 0 ? ids : null, instanceByCharacterId };
 }
 
 // Empty content is not rejected — it's an explicit "continue from here"
@@ -79,8 +97,11 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
 
   let message = null;
   let mentionedCharacterIds = null;
+  let mentionedInstanceByCharacterId = new Map();
   if (!isContinuation) {
-    mentionedCharacterIds = resolveMentions(content, session.participants);
+    const resolved = resolveMentions(content, session.participants);
+    mentionedCharacterIds = resolved.ids;
+    mentionedInstanceByCharacterId = resolved.instanceByCharacterId;
     message = createMessage(req.params.id, {
       sender_type: 'user',
       content,
@@ -89,7 +110,7 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
   }
   res.status(201).json(message ?? { continuation: true });
 
-  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation).catch((err) => {
+  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId).catch((err) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
@@ -166,7 +187,13 @@ function fallbackEmotionKey() {
   return row?.llm_tag_key ?? 'normal';
 }
 
-async function generateReply(sessionId, userMessageContent, mentionedCharacterIds = null, isContinuation = false) {
+async function generateReply(
+  sessionId,
+  userMessageContent,
+  mentionedCharacterIds = null,
+  isContinuation = false,
+  mentionedInstanceByCharacterId = new Map(),
+) {
   const session = getRoomSession(sessionId);
   // Verified empirically against this project's model: a messages array
   // ending on role 'assistant' (i.e. no new user turn at all) reliably
@@ -215,6 +242,13 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   const forbiddenNames = new Set(
     protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : [],
   );
+
+  // Which room_session_characters instance most recently spoke, per
+  // character_id, over the course of THIS turn's generation -- the fallback
+  // signal for mob-instance-aware relationship/address/status actions when
+  // the triggering line has no explicit @mention to disambiguate which
+  // duplicate instance it should apply to (bugreports 2026-07-19 follow-up).
+  const lastSpokenInstanceByCharacter = new Map();
 
   // Persists + broadcasts one parsed line as soon as it's recognized, so chat
   // bubbles reveal one at a time as the response streams in, instead of all
@@ -283,11 +317,14 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
     // only" bubble. Nothing useful to show, so drop the line entirely.
     if (!content.trim()) return;
 
+    lastSpokenInstanceByCharacter.set(participant.character_id, participant.id);
+
     const message = createMessage(sessionId, {
       sender_type: 'character',
       character_id: participant.character_id,
       content,
       emotion_tag: emotionTag,
+      room_session_character_id: participant.id,
     });
     broadcast(sessionId, { type: 'message_complete', message });
   }
@@ -311,6 +348,14 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
   handleParsedLine(parseScriptLine(lineBuffer));
 
   try {
+    // Explicit @mention wins when present (the user pointed at a specific
+    // instance); otherwise fall back to whichever instance of that
+    // character most recently spoke this turn. Characters that neither
+    // spoke nor were mentioned this turn simply have no entry, which
+    // downstream mob-instance-aware actions treat as "apply without
+    // instance scoping" (today's shared-state behavior, unchanged).
+    const instanceHintByCharacterId = new Map([...lastSpokenInstanceByCharacter, ...mentionedInstanceByCharacterId]);
+
     const fired = await runEventEngine({
       sessionId,
       playthroughId: session.playthrough_id,
@@ -318,6 +363,7 @@ async function generateReply(sessionId, userMessageContent, mentionedCharacterId
       userMessage: userMessageContent,
       aiResponseText: fullText,
       mentionedCharacterIds,
+      instanceHintByCharacterId,
     });
     for (const event of fired) {
       broadcast(sessionId, { type: 'event_fired', eventDefinitionId: event.eventDefinitionId, name: event.name });

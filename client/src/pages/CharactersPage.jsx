@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCharacters, useCharacter, useCharacterMutations, useOutfitMutations } from '../hooks/useCharacters.js';
+import {
+  useCharacters,
+  useCharacter,
+  useCharacterMutations,
+  useOutfitMutations,
+  useCharacterWorlds,
+  useCharacterWorldMutations,
+} from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
@@ -576,6 +583,8 @@ export default function CharactersPage() {
                     モブキャラ（関係値・呼び方・自己ステータスを部屋セッションごとにリセット）
                   </label>
                 </div>
+
+                {!isNew && <CharacterWorldsSection characterId={selectedId} worlds={worlds} />}
               </div>
             )}
 
@@ -821,6 +830,59 @@ export default function CharactersPage() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Explicit所属World（world_characters junction, additive to the two derived
+// world_ids sources in charactersRepo.js's listCharacters -- see
+// character_world_membership_and_list_ui_backlog item 1). Same pattern as
+// CharacterStatusesPage.jsx's StatusWorldsSection.
+function CharacterWorldsSection({ characterId, worlds }) {
+  const { data: attachedWorlds } = useCharacterWorlds(characterId);
+  const { attach, detach } = useCharacterWorldMutations(characterId);
+  const [attachWorldId, setAttachWorldId] = useState('');
+
+  const attachedIds = new Set((attachedWorlds ?? []).map((w) => w.id));
+  const attachCandidates = (worlds ?? []).filter((w) => !attachedIds.has(w.id));
+
+  async function handleAttach() {
+    if (!attachWorldId) return;
+    await attach.mutateAsync(Number(attachWorldId));
+    setAttachWorldId('');
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 16 }}>
+      <p style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>所属World（明示的アタッチ）</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        ここでのアタッチとは別に、固定枠割り当てや属性キー一致でも自動的に所属Worldとして表示されます。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {(attachedWorlds ?? []).map((w) => (
+          <div
+            key={w.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, border: '1px solid #eee', borderRadius: 6, padding: '4px 8px' }}
+          >
+            <span style={{ flex: 1 }}>{w.name}</span>
+            <button onClick={() => detach.mutateAsync(w.id)}>切り離す</button>
+          </div>
+        ))}
+        {(attachedWorlds ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>明示的なアタッチはありません</p>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <select style={{ flex: 1 }} value={attachWorldId} onChange={(e) => setAttachWorldId(e.target.value)}>
+          <option value="">アタッチするWorldを選択</option>
+          {attachCandidates.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+        <button onClick={handleAttach} disabled={!attachWorldId}>
+          + アタッチ
+        </button>
       </div>
     </div>
   );

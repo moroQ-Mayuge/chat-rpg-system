@@ -30,17 +30,31 @@ export function listMessagesForSession(sessionId) {
 // moment they spoke — チャット欄の顔アイコン付近のログ表示はこれを使う（現在値
 // ではなく発言時点の値なので、後でステータスが変わっても過去メッセージの
 // 表示は変わらない）。narration/user/system messages never carry one.
-function buildMessageStatusSnapshot(sessionId, sender_type, character_id) {
+// room_session_character_id is transient (not a messages column) -- only
+// used to build the right instance's snapshot when a duplicate mob instance
+// spoke (see room_slot_row_level_random_and_mob_duplication); non-mob
+// characters ignore it entirely (buildStatusSnapshot -> relationshipStatesRepo.js
+// etc. no-op it), so passing undefined is always safe.
+function buildMessageStatusSnapshot(sessionId, sender_type, character_id, roomSessionCharacterId) {
   if (sender_type !== 'character' || character_id == null) return null;
   const { playthrough_id } = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
-  return JSON.stringify(buildStatusSnapshot(playthrough_id, character_id, { roomSessionId: sessionId }));
+  return JSON.stringify(buildStatusSnapshot(playthrough_id, character_id, { roomSessionId: sessionId, roomSessionCharacterId }));
 }
 
 export function createMessage(
   sessionId,
-  { sender_type, character_id = null, content_type = 'text', content = null, image_id = null, emotion_tag = null, mentioned_character_ids = null },
+  {
+    sender_type,
+    character_id = null,
+    content_type = 'text',
+    content = null,
+    image_id = null,
+    emotion_tag = null,
+    mentioned_character_ids = null,
+    room_session_character_id = null,
+  },
 ) {
-  const status_snapshot = buildMessageStatusSnapshot(sessionId, sender_type, character_id);
+  const status_snapshot = buildMessageStatusSnapshot(sessionId, sender_type, character_id, room_session_character_id);
   const result = db
     .prepare(
       `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot)

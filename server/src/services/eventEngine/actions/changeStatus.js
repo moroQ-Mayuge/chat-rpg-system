@@ -8,15 +8,20 @@ import { resolveMentionedList } from '../mentionResolution.js';
 // instead of a passive stat recovery doing so silently.
 export async function executeChangeStatus(params, execCtx) {
   const { character_id, status_id, operation, locked, mentioned_limit } = params;
-  const targetIds =
+  // See changeRelationship.js's identical comment -- {character_id, instance_id}
+  // pairs so duplicate mob instances each get their own status set.
+  const targets =
     character_id === 'all_present'
-      ? execCtx.session.participants.map((p) => p.character_id)
+      ? execCtx.session.participants.map((p) => ({ character_id: p.character_id, instance_id: p.id }))
       : character_id === 'mentioned'
-        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-        : [character_id];
-  const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId };
+        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit).map((id) => ({
+            character_id: id,
+            instance_id: execCtx.instanceHintByCharacterId?.get(id),
+          }))
+        : [{ character_id, instance_id: execCtx.instanceHintByCharacterId?.get(character_id) }];
 
-  const changes = targetIds.map((id) => {
+  const changes = targets.map(({ character_id: id, instance_id }) => {
+    const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId, roomSessionCharacterId: instance_id };
     if (operation === 'grant') return { character_id: id, ...grantStatus(id, status_id, statusCtx, locked ?? false) };
     if (operation === 'remove') return { character_id: id, ...removeStatus(id, status_id, statusCtx) };
     if (operation === 'lock') return { character_id: id, ...setStatusLocked(id, status_id, statusCtx, true) };

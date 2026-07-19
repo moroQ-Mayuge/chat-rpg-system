@@ -13,16 +13,20 @@ import { listActiveStatuses } from './characterStatusStatesRepo.js';
 // slot. All display-visibility gating still uses the one "relationship_stage"
 // category toggle (status_display_settings) regardless of which
 // exclusive_group family a given stage belongs to.
-export function buildStatusSnapshot(playthroughId, characterId, { roomSessionId }) {
+// roomSessionCharacterId (2026-07-19, migration 0045): scopes self-stats/
+// statuses to one specific duplicate mob instance, when known -- see
+// relationshipStatesRepo.js/characterStatusStatesRepo.js, which both ignore
+// it for non-mob characters, so passing it is always safe.
+export function buildStatusSnapshot(playthroughId, characterId, { roomSessionId, roomSessionCharacterId }) {
   const selfStats = listSelfStatAxes().map((axis) => ({
     axis_id: axis.id,
     name: axis.name,
-    value: getValue(playthroughId, characterId, axis.id, roomSessionId),
+    value: getValue(playthroughId, characterId, axis.id, roomSessionId, roomSessionCharacterId),
     min: axis.min_value,
     max: axis.max_value,
   }));
 
-  const activeStatuses = listActiveStatuses(characterId, { playthroughId, roomSessionId });
+  const activeStatuses = listActiveStatuses(characterId, { playthroughId, roomSessionId, roomSessionCharacterId });
   const statuses = activeStatuses.filter((s) => !s.exclusive_group).map((s) => ({ id: s.status_id, name: s.name }));
   const stages = activeStatuses
     .filter((s) => s.exclusive_group)

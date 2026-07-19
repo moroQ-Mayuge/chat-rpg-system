@@ -10,4 +10,7 @@ export const charactersApi = {
   parse: (text) => api.post('/characters/parse', { text }),
   generateField: (field, instruction, currentFields) =>
     api.post('/characters/generate-field', { field, instruction, currentFields }),
+  listWorlds: (id) => api.get(`/characters/${id}/worlds`),
+  attachWorld: (id, worldId) => api.post(`/characters/${id}/worlds`, { world_id: worldId }),
+  detachWorld: (id, worldId) => api.del(`/characters/${id}/worlds/${worldId}`),
 };

@@ -1,6 +1,7 @@
 import { db } from '../connection.js';
 import { getStatus } from './characterStatusesRepo.js';
 import { setCurrentAddress } from './characterAddressStatesRepo.js';
+import { isMobCharacter } from './charactersRepo.js';
 
 // Resolves which scoping key actually applies from the status's own
 // persistence_scope — 'playthrough' persists across every room in the
@@ -9,14 +10,28 @@ import { setCurrentAddress } from './characterAddressStatesRepo.js';
 // statuses get carried over to the new room_session_id on room-move by
 // roomSessionsRepo.js's createRoomSession, mirroring how is_accompanying
 // participants are carried over — this repo only knows about "this session".
-function scopeColumns(status, playthroughId, roomSessionId) {
+//
+// ctx.roomSessionCharacterId (2026-07-19, migration 0045): further scopes a
+// session/accompanying-scoped status to one specific duplicate mob instance
+// within that session, when provided. Only meaningful alongside
+// room_session_id scoping for a mob character -- playthrough-scoped statuses
+// ignore it (they aren't tied to any one session, let alone one instance
+// within it), and non-mob characters always get NULL regardless of what's
+// passed (they're never duplicated, so an instance id would just fragment
+// their status rows against other code paths -- e.g. axisStatusTriggersRepo.js's
+// automatic grants -- that don't know about instances and always pass none).
+function scopeColumns(characterId, status, playthroughId, roomSessionId, roomSessionCharacterId) {
   if (status.persistence_scope === 'playthrough') {
-    return { playthrough_id: playthroughId, room_session_id: null };
+    return { playthrough_id: playthroughId, room_session_id: null, room_session_character_id: null };
   }
-  return { playthrough_id: null, room_session_id: roomSessionId };
+  if (!isMobCharacter(characterId)) {
+    return { playthrough_id: null, room_session_id: roomSessionId, room_session_character_id: null };
+  }
+  return { playthrough_id: null, room_session_id: roomSessionId, room_session_character_id: roomSessionCharacterId ?? null };
 }
 
-export function listActiveStatuses(characterId, { playthroughId, roomSessionId }) {
+export function listActiveStatuses(characterId, { playthroughId, roomSessionId, roomSessionCharacterId }) {
+  const effectiveInstanceId = isMobCharacter(characterId) ? roomSessionCharacterId ?? null : null;
   return db
     .prepare(
       `SELECT css.*, cs.name, cs.persistence_scope, cs.removes_from_session, cs.exclusive_group, cs.suppresses_outfit_fields
@@ -24,20 +39,27 @@ export function listActiveStatuses(characterId, { playthroughId, roomSessionId }
        JOIN character_statuses cs ON cs.id = css.status_id
        WHERE css.character_id = ?
          AND ((cs.persistence_scope = 'playthrough' AND css.playthrough_id = ?)
-           OR (cs.persistence_scope != 'playthrough' AND css.room_session_id = ?))`,
+           OR (cs.persistence_scope != 'playthrough' AND css.room_session_id = ? AND css.room_session_character_id IS ?))`,
     )
-    .all(characterId, playthroughId, roomSessionId);
+    .all(characterId, playthroughId, roomSessionId, effectiveInstanceId);
 }
 
 export function hasStatus(characterId, statusId, ctx) {
   const status = getStatus(statusId);
   if (!status) return false;
-  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
+    characterId,
+    status,
+    ctx.playthroughId,
+    ctx.roomSessionId,
+    ctx.roomSessionCharacterId,
+  );
   const row = db
     .prepare(
-      'SELECT 1 FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+      `SELECT 1 FROM character_status_states
+       WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
     )
-    .get(characterId, statusId, playthrough_id, room_session_id);
+    .get(characterId, statusId, playthrough_id, room_session_id, room_session_character_id);
   return Boolean(row);
 }
 
@@ -46,6 +68,7 @@ export function hasStatus(characterId, statusId, ctx) {
 // scope-matching WHERE clause (each sibling row already stores which of
 // playthrough_id/room_session_id applies, based on its own persistence_scope).
 function findActiveExclusiveGroupSiblings(characterId, exclusiveGroup, excludeStatusId, ctx) {
+  const effectiveInstanceId = isMobCharacter(characterId) ? ctx.roomSessionCharacterId ?? null : null;
   return db
     .prepare(
       `SELECT css.status_id, css.locked
@@ -53,9 +76,9 @@ function findActiveExclusiveGroupSiblings(characterId, exclusiveGroup, excludeSt
        JOIN character_statuses cs ON cs.id = css.status_id
        WHERE css.character_id = ? AND cs.exclusive_group = ? AND css.status_id != ?
          AND ((cs.persistence_scope = 'playthrough' AND css.playthrough_id = ?)
-           OR (cs.persistence_scope != 'playthrough' AND css.room_session_id = ?))`,
+           OR (cs.persistence_scope != 'playthrough' AND css.room_session_id = ? AND css.room_session_character_id IS ?))`,
     )
-    .all(characterId, exclusiveGroup, excludeStatusId, ctx.playthroughId, ctx.roomSessionId);
+    .all(characterId, exclusiveGroup, excludeStatusId, ctx.playthroughId, ctx.roomSessionId, effectiveInstanceId);
 }
 
 // Re-granting an already-active status just updates its lock flag rather
@@ -82,12 +105,19 @@ export function grantStatus(characterId, statusId, ctx, locked = false, options 
     }
   }
 
-  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
+    characterId,
+    status,
+    ctx.playthroughId,
+    ctx.roomSessionId,
+    ctx.roomSessionCharacterId,
+  );
   const existing = db
     .prepare(
-      'SELECT id FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+      `SELECT id FROM character_status_states
+       WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
     )
-    .get(characterId, statusId, playthrough_id, room_session_id);
+    .get(characterId, statusId, playthrough_id, room_session_id, room_session_character_id);
   let result;
   if (existing) {
     db.prepare('UPDATE character_status_states SET locked = ? WHERE id = ?').run(locked ? 1 : 0, existing.id);
@@ -95,9 +125,10 @@ export function grantStatus(characterId, statusId, ctx, locked = false, options 
   } else {
     const inserted = db
       .prepare(
-        'INSERT INTO character_status_states (status_id, character_id, playthrough_id, room_session_id, locked) VALUES (?, ?, ?, ?, ?)',
+        `INSERT INTO character_status_states (status_id, character_id, playthrough_id, room_session_id, room_session_character_id, locked)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(statusId, characterId, playthrough_id, room_session_id, locked ? 1 : 0);
+      .run(statusId, characterId, playthrough_id, room_session_id, room_session_character_id, locked ? 1 : 0);
     result = { id: inserted.lastInsertRowid, granted: true };
   }
 
@@ -105,14 +136,20 @@ export function grantStatus(characterId, statusId, ctx, locked = false, options 
   // importing that here would cycle back through playthroughsRepo.js ->
   // relationshipStatesRepo.js -> axisStatusTriggersRepo.js -> this file.
   if (status.removes_from_session && ctx.roomSessionId != null) {
-    db.prepare(
-      `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
-       WHERE room_session_id = ? AND character_id = ?`,
-    ).run(ctx.roomSessionId, characterId);
+    if (ctx.roomSessionCharacterId != null) {
+      db.prepare(`UPDATE room_session_characters SET is_active = 0, left_at = datetime('now') WHERE id = ?`).run(
+        ctx.roomSessionCharacterId,
+      );
+    } else {
+      db.prepare(
+        `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+         WHERE room_session_id = ? AND character_id = ?`,
+      ).run(ctx.roomSessionId, characterId);
+    }
   }
 
   if (status.default_address_on_grant && ctx.playthroughId != null) {
-    setCurrentAddress(ctx.playthroughId, characterId, status.default_address_on_grant, ctx.roomSessionId);
+    setCurrentAddress(ctx.playthroughId, characterId, status.default_address_on_grant, ctx.roomSessionId, ctx.roomSessionCharacterId);
   }
 
   return result;
@@ -122,6 +159,13 @@ export function grantStatus(characterId, statusId, ctx, locked = false, options 
 // one room_session to another — called by roomSessionsRepo.js's
 // createRoomSession when a character carries over via is_accompanying on a
 // room移動, mirroring how the participant row itself is carried over.
+//
+// Deliberately does NOT carry room_session_character_id across: a duplicate
+// mob instance's identity is only meaningful within the session it was
+// picked in (the destination session's own random-slot resolution may not
+// even include an equivalent instance), so carried-over 'accompanying'
+// statuses fall back to instance-independent (room_session_character_id
+// NULL) in the new session — an accepted limitation, not a full solve.
 export function carryOverAccompanyingStatuses(characterId, fromRoomSessionId, toRoomSessionId) {
   const rows = db
     .prepare(
@@ -143,32 +187,53 @@ export function carryOverAccompanyingStatuses(characterId, fromRoomSessionId, to
 // a later unit), not a deliberate change_status(operation:'remove') call.
 export function removeStatus(characterId, statusId, ctx) {
   const status = getStatus(statusId);
-  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
+    characterId,
+    status,
+    ctx.playthroughId,
+    ctx.roomSessionId,
+    ctx.roomSessionCharacterId,
+  );
   const result = db
     .prepare(
-      'DELETE FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+      `DELETE FROM character_status_states
+       WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
     )
-    .run(characterId, statusId, playthrough_id, room_session_id);
+    .run(characterId, statusId, playthrough_id, room_session_id, room_session_character_id);
   return { removed: result.changes > 0 };
 }
 
 export function isLocked(characterId, statusId, ctx) {
   const status = getStatus(statusId);
   if (!status) return false;
-  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
+    characterId,
+    status,
+    ctx.playthroughId,
+    ctx.roomSessionId,
+    ctx.roomSessionCharacterId,
+  );
   const row = db
     .prepare(
-      'SELECT locked FROM character_status_states WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
+      `SELECT locked FROM character_status_states
+       WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
     )
-    .get(characterId, statusId, playthrough_id, room_session_id);
+    .get(characterId, statusId, playthrough_id, room_session_id, room_session_character_id);
   return row ? Boolean(row.locked) : false;
 }
 
 export function setStatusLocked(characterId, statusId, ctx, locked) {
   const status = getStatus(statusId);
-  const { playthrough_id, room_session_id } = scopeColumns(status, ctx.playthroughId, ctx.roomSessionId);
+  const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
+    characterId,
+    status,
+    ctx.playthroughId,
+    ctx.roomSessionId,
+    ctx.roomSessionCharacterId,
+  );
   db.prepare(
-    'UPDATE character_status_states SET locked = ? WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ?',
-  ).run(locked ? 1 : 0, characterId, statusId, playthrough_id, room_session_id);
+    `UPDATE character_status_states SET locked = ?
+     WHERE character_id = ? AND status_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
+  ).run(locked ? 1 : 0, characterId, statusId, playthrough_id, room_session_id, room_session_character_id);
   return { locked };
 }

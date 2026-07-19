@@ -8,6 +8,7 @@ import {
 } from '../db/repositories/charactersRepo.js';
 import { generateCharacterSheet, parseAndSuggestTags, regenerateField } from '../services/characterAssist.js';
 import { exportCharacterBundle } from '../services/contentBundle/index.js';
+import { listWorldsForCharacter, attachCharacterToWorld, detachCharacterFromWorld } from '../db/repositories/worldCharactersRepo.js';
 
 export const charactersRouter = Router();
 
@@ -63,6 +64,18 @@ charactersRouter.put('/:id', (req, res) => {
 
 charactersRouter.delete('/:id', (req, res) => {
   res.json(deleteCharacter(req.params.id));
+});
+
+charactersRouter.get('/:id/worlds', (req, res) => {
+  res.json(listWorldsForCharacter(req.params.id));
+});
+
+charactersRouter.post('/:id/worlds', (req, res) => {
+  res.json(attachCharacterToWorld(req.body.world_id, req.params.id));
+});
+
+charactersRouter.delete('/:id/worlds/:worldId', (req, res) => {
+  res.json(detachCharacterFromWorld(req.params.worldId, req.params.id));
 });
 
 charactersRouter.get('/:id/export-bundle', async (req, res) => {
