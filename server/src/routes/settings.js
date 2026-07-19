@@ -16,8 +16,10 @@ import { listImageFormats, setImageFormat } from '../db/repositories/imageFormat
 import { listImageGenerationSettings, updateImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { launchKoboldcpp } from '../services/koboldcppLauncher.js';
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
+import { listModelFiles } from '../services/koboldcppModelFiles.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
 import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
+import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 
 export const settingsRouter = Router();
 
@@ -109,7 +111,22 @@ settingsRouter.get('/koboldcpp-launch-settings', (req, res) => {
 
 settingsRouter.put('/koboldcpp-launch-settings', (req, res) => {
   if (![0, 1, 2].includes(req.body.sd_quant)) return res.status(400).json({ error: 'invalid_sd_quant' });
+  if (req.body.sd_architecture && !['sd', 'anima'].includes(req.body.sd_architecture)) {
+    return res.status(400).json({ error: 'invalid_sd_architecture' });
+  }
   res.json(updateLaunchSettings(req.body));
+});
+
+settingsRouter.get('/koboldcpp-model-files', (req, res) => {
+  res.json(listModelFiles());
+});
+
+settingsRouter.get('/llm-generation-settings', (req, res) => {
+  res.json(getGenerationSettings());
+});
+
+settingsRouter.put('/llm-generation-settings', (req, res) => {
+  res.json(updateGenerationSettings(req.body));
 });
 
 settingsRouter.get('/status-display-preferences', (req, res) => {

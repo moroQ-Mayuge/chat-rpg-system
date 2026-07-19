@@ -47,11 +47,27 @@ export function useKoboldcppLaunchSettings() {
   return useQuery({ queryKey: ['koboldcppLaunchSettings'], queryFn: settingsApi.getKoboldcppLaunchSettings });
 }
 
+export function useKoboldcppModelFiles() {
+  return useQuery({ queryKey: ['koboldcppModelFiles'], queryFn: settingsApi.getKoboldcppModelFiles });
+}
+
 export function useKoboldcppLaunchSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['koboldcppLaunchSettings'] });
   return {
     update: useMutation({ mutationFn: settingsApi.updateKoboldcppLaunchSettings, onSuccess: invalidate }),
+  };
+}
+
+export function useLlmGenerationSettings() {
+  return useQuery({ queryKey: ['llmGenerationSettings'], queryFn: settingsApi.getLlmGenerationSettings });
+}
+
+export function useLlmGenerationSettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['llmGenerationSettings'] });
+  return {
+    update: useMutation({ mutationFn: settingsApi.updateLlmGenerationSettings, onSuccess: invalidate }),
   };
 }
 

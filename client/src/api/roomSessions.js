@@ -7,4 +7,5 @@ export const roomSessionsApi = {
   move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),
   setAccompanying: (id, characterId, isAccompanying) =>
     api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, { is_accompanying: isAccompanying }),
+  sellItem: (id, itemId) => api.post(`/room-sessions/${id}/sell-item`, { item_id: itemId }),
 };

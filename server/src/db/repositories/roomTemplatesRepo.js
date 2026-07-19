@@ -1,6 +1,10 @@
 import { db } from '../connection.js';
 import { listSlotsForRoom, replaceSlotsForRoom } from './roomParticipantSlotsRepo.js';
 import { listCandidateCategoriesForRoom, replaceCandidateCategoriesForRoom } from './roomPropCategoriesRepo.js';
+import {
+  listCandidateCategoriesForRoom as listCandidateItemCategoriesForRoom,
+  replaceCandidateCategoriesForRoom as replaceCandidateItemCategoriesForRoom,
+} from './roomItemCategoriesRepo.js';
 import { listWorldsForRoomTemplate } from './worldRoomTemplatesRepo.js';
 import { listAssignmentsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPropsRepo.js';
@@ -13,7 +17,13 @@ import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPro
 function attachAssociations(row) {
   if (!row) return row;
   const worldIds = listWorldsForRoomTemplate(row.id).map((w) => w.id);
-  return { ...row, slots: listSlotsForRoom(row.id), candidate_prop_categories: listCandidateCategoriesForRoom(row.id), world_ids: worldIds };
+  return {
+    ...row,
+    slots: listSlotsForRoom(row.id),
+    candidate_prop_categories: listCandidateCategoriesForRoom(row.id),
+    candidate_item_categories: listCandidateItemCategoriesForRoom(row.id),
+    world_ids: worldIds,
+  };
 }
 
 export function listRoomTemplates() {
@@ -54,9 +64,9 @@ export function createRoomTemplate(data) {
     .prepare(
       `INSERT INTO room_templates
         (worldview_mode, name, initial_situation, location_text, location_tags,
-         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place)
+         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place, is_shop)
        VALUES (@worldview_mode, @name, @initial_situation, @location_text, @location_tags,
-         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place)`,
+         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place, @is_shop)`,
     )
     .run({
       worldview_mode: data.worldview_mode ?? 'inherit',
@@ -71,10 +81,12 @@ export function createRoomTemplate(data) {
       turns_per_time_slot: data.turns_per_time_slot ?? null,
       attribute_tags: data.attribute_tags ?? '',
       is_place: data.is_place ? 1 : 0,
+      is_shop: data.is_shop ? 1 : 0,
     });
   const id = result.lastInsertRowid;
   replaceSlotsForRoom(id, data.slots);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
+  replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);
   return getRoomTemplate(id);
 }
 
@@ -84,7 +96,7 @@ export function updateRoomTemplate(id, data) {
        worldview_mode = @worldview_mode, name = @name,
        initial_situation = @initial_situation, location_text = @location_text, location_tags = @location_tags,
        atmosphere_text = @atmosphere_text, atmosphere_tags = @atmosphere_tags, worldview = @worldview,
-       turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags, is_place = @is_place
+       turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags, is_place = @is_place, is_shop = @is_shop
      WHERE id = @id`,
   ).run({
     id,
@@ -99,9 +111,11 @@ export function updateRoomTemplate(id, data) {
     turns_per_time_slot: data.turns_per_time_slot ?? null,
     attribute_tags: data.attribute_tags ?? '',
     is_place: data.is_place ? 1 : 0,
+    is_shop: data.is_shop ? 1 : 0,
   });
   replaceSlotsForRoom(id, data.slots);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
+  replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);
   return getRoomTemplate(id);
 }
 

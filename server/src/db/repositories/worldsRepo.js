@@ -5,6 +5,7 @@ function parseWorld(row) {
   return {
     ...row,
     is_unassigned_bucket: Boolean(row.is_unassigned_bucket),
+    currency_enabled: Boolean(row.currency_enabled),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
@@ -72,14 +73,18 @@ export function createWorld({
   max_response_tokens = null,
   notify_relationship_changes = false,
   status_display_settings = DEFAULT_STATUS_DISPLAY_SETTINGS,
+  currency_enabled = false,
+  currency_unit = '円',
+  initial_money = 0,
 }) {
   const result = db
     .prepare(
       `INSERT INTO worlds
         (name, worldview, is_unassigned_bucket, time_slot_labels, weather_options, season_labels, days_per_season, day_of_week_labels, holiday_weekday_indices, image_style_preset_id, image_tags,
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
-         movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
+         currency_enabled, currency_unit, initial_money)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -104,6 +109,9 @@ export function createWorld({
       max_response_tokens ?? null,
       notify_relationship_changes ? 1 : 0,
       JSON.stringify(status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS),
+      currency_enabled ? 1 : 0,
+      currency_unit ?? '円',
+      initial_money ?? 0,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -133,13 +141,17 @@ export function updateWorld(
     max_response_tokens,
     notify_relationship_changes,
     status_display_settings,
+    currency_enabled,
+    currency_unit,
+    initial_money,
   },
 ) {
   db.prepare(
     `UPDATE worlds
      SET name = ?, worldview = ?, time_slot_labels = ?, weather_options = ?, season_labels = ?, days_per_season = ?, day_of_week_labels = ?, holiday_weekday_indices = ?, image_style_preset_id = ?, image_tags = ?,
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
-         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?
+         attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?,
+         currency_enabled = ?, currency_unit = ?, initial_money = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -164,6 +176,9 @@ export function updateWorld(
     max_response_tokens ?? null,
     notify_relationship_changes ? 1 : 0,
     JSON.stringify(status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS),
+    currency_enabled ? 1 : 0,
+    currency_unit ?? '円',
+    initial_money ?? 0,
     id,
   );
   return getWorld(id);

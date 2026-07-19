@@ -10,6 +10,9 @@ import {
   useSamplers,
   useKoboldcppLaunchSettings,
   useKoboldcppLaunchSettingsMutations,
+  useKoboldcppModelFiles,
+  useLlmGenerationSettings,
+  useLlmGenerationSettingsMutations,
   useStatusDisplayPreferences,
   useStatusDisplayPreferencesMutations,
 } from '../hooks/useSettings.js';
@@ -568,8 +571,31 @@ function TestGenerateSection() {
   );
 }
 
+// Builds <option> entries for a model-file <select> from a plain filename
+// list, resolving the selected filename back to the full disk path the
+// launcher/repo expect (koboldcpp/models/<subdir>/<filename>).
+function modelFileOptions(files, currentPath, placeholder) {
+  const currentFilename = currentPath ? currentPath.split(/[\\/]/).pop() : '';
+  const options = [...files];
+  // Keep a path that no longer matches any file on disk selectable, so the
+  // user can see and clear stale/broken paths instead of it silently
+  // vanishing from the dropdown.
+  if (currentFilename && !options.includes(currentFilename)) options.push(currentFilename);
+  return (
+    <>
+      <option value="">{placeholder}</option>
+      {options.map((f) => (
+        <option key={f} value={f}>
+          {f}
+        </option>
+      ))}
+    </>
+  );
+}
+
 function KoboldcppLaunchSettingsSection() {
   const { data: launchSettings } = useKoboldcppLaunchSettings();
+  const { data: modelFiles } = useKoboldcppModelFiles();
   const { update } = useKoboldcppLaunchSettingsMutations();
   const [form, setForm] = useState(null);
 
@@ -580,6 +606,13 @@ function KoboldcppLaunchSettingsSection() {
   if (!form) return null;
 
   const dirty = JSON.stringify(form) !== JSON.stringify(launchSettings);
+  const architecture = form.sd_architecture || 'sd';
+  const sdModelSubdir = architecture === 'anima' ? 'anima' : 'sd';
+  const sdModelChoices = modelFiles?.[sdModelSubdir] ?? [];
+
+  function setModelPath(field, subdir, filename) {
+    setForm({ ...form, [field]: filename ? `koboldcpp/models/${subdir}/${filename}` : '' });
+  }
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -596,24 +629,68 @@ function KoboldcppLaunchSettingsSection() {
       </label>
 
       <label style={{ display: 'block', marginTop: 8 }}>
-        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>テキストモデルのパス（任意）</span>
-        <input
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>テキストモデル（任意・koboldcpp/models/llm/ 内から選択）</span>
+        <select
           style={{ width: '100%' }}
-          placeholder="空欄ならmodels/llm内の最初のファイルを自動使用"
-          value={form.llm_model_path ?? ''}
-          onChange={(e) => setForm({ ...form, llm_model_path: e.target.value })}
-        />
+          value={form.llm_model_path ? form.llm_model_path.split(/[\\/]/).pop() : ''}
+          onChange={(e) => setModelPath('llm_model_path', 'llm', e.target.value)}
+        >
+          {modelFileOptions(modelFiles?.llm ?? [], form.llm_model_path, '自動選択（推奨: Gemma4）')}
+        </select>
       </label>
 
       <label style={{ display: 'block', marginTop: 8 }}>
-        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルのパス（任意）</span>
-        <input
-          style={{ width: '100%' }}
-          placeholder="空欄ならmodels/sd内の最初のファイルを自動使用"
-          value={form.sd_model_path ?? ''}
-          onChange={(e) => setForm({ ...form, sd_model_path: e.target.value })}
-        />
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成アーキテクチャ</span>
+        <select
+          value={architecture}
+          onChange={(e) => setForm({ ...form, sd_architecture: e.target.value, sd_model_path: '' })}
+        >
+          <option value="sd">標準（Stable Diffusion系）</option>
+          <option value="anima">Anima</option>
+        </select>
       </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>
+          画像生成モデル（任意・koboldcpp/models/{sdModelSubdir}/ 内から選択）
+        </span>
+        <select
+          style={{ width: '100%' }}
+          value={form.sd_model_path ? form.sd_model_path.split(/[\\/]/).pop() : ''}
+          onChange={(e) => setModelPath('sd_model_path', sdModelSubdir, e.target.value)}
+        >
+          {modelFileOptions(sdModelChoices, form.sd_model_path, `自動選択（models/${sdModelSubdir}内の最初のファイル）`)}
+        </select>
+      </label>
+
+      {architecture === 'anima' && (
+        <>
+          <label style={{ display: 'block', marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>Anima VAE（koboldcpp/models/anima/ 内から選択）</span>
+            <select
+              style={{ width: '100%' }}
+              value={form.sd_vae_path ? form.sd_vae_path.split(/[\\/]/).pop() : ''}
+              onChange={(e) => setModelPath('sd_vae_path', 'anima', e.target.value)}
+            >
+              {modelFileOptions(modelFiles?.anima ?? [], form.sd_vae_path, '未選択')}
+            </select>
+          </label>
+
+          <label style={{ display: 'block', marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>Anima CLIP（koboldcpp/models/anima/ 内から選択）</span>
+            <select
+              style={{ width: '100%' }}
+              value={form.sd_clip1_path ? form.sd_clip1_path.split(/[\\/]/).pop() : ''}
+              onChange={(e) => setModelPath('sd_clip1_path', 'anima', e.target.value)}
+            >
+              {modelFileOptions(modelFiles?.anima ?? [], form.sd_clip1_path, '未選択')}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            ファイル名から判別してください（例：VAEは"vae"を含む名前、CLIPはテキストエンコーダのgguf）。
+          </p>
+        </>
+      )}
 
       <label style={{ display: 'block', marginTop: 8 }}>
         <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成用LoRAのパス（任意）</span>
@@ -652,6 +729,60 @@ function KoboldcppLaunchSettingsSection() {
         </button>
       </div>
       <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>次回「KoboldCppを起動」時から反映されます。</p>
+    </div>
+  );
+}
+
+function LlmGenerationSettingsSection() {
+  const { data: settings } = useLlmGenerationSettings();
+  const { update } = useLlmGenerationSettingsMutations();
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+
+  if (!form) return null;
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  function numberField(key, label, help, { step = 0.01, min = 0, max } = {}) {
+    return (
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>{label}</span>
+        <input
+          type="number"
+          step={step}
+          min={min}
+          max={max}
+          style={{ width: 120 }}
+          value={form[key]}
+          onChange={(e) => setForm({ ...form, [key]: Number(e.target.value) })}
+        />
+        {help && <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>{help}</p>}
+      </label>
+    );
+  }
+
+  return (
+    <div>
+      {numberField('temperature', 'temperature', 'ランダム性の強さ。高いほど多様だが不安定になりやすい。', { step: 0.05, min: 0, max: 2 })}
+      {numberField(
+        'rep_pen',
+        'rep_pen（繰り返しペナルティ）',
+        '1.0で無効。高いほど同じ語句・文の繰り返しを強く抑制する。プレイヤーが同じ行動を繰り返すと応答が同一化する場合はここを上げる（目安：1.1〜1.2）。',
+        { step: 0.01, min: 1, max: 2 },
+      )}
+      {numberField('rep_pen_range', 'rep_pen_range', 'rep_penを遡って適用するトークン範囲。', { step: 64, min: 0 })}
+      {numberField('top_p', 'top_p', '', { step: 0.01, min: 0, max: 1 })}
+      {numberField('top_k', 'top_k', '0で無効。', { step: 1, min: 0 })}
+      {numberField('min_p', 'min_p', '', { step: 0.01, min: 0, max: 1 })}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
+          {update.isPending ? '保存中...' : '保存'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -731,6 +862,14 @@ export default function SettingsPage() {
             {!status.textModel.connected && (
               <StartKoboldcppButton onStarted={() => setTimeout(refetch, 3000)} />
             )}
+          </div>
+
+          <div style={cardStyle}>
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>LLM応答生成の詳細設定</p>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 8px' }}>
+              チャット応答の多様性・繰り返し抑制を調整します。プレイヤーが同じ行動を繰り返すと応答が同じ内容の繰り返しになる場合、rep_pen（繰り返しペナルティ）を上げると改善します。
+            </p>
+            <LlmGenerationSettingsSection />
           </div>
 
           <div style={cardStyle}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllPropCategories } from '../hooks/usePropCategories.js';
+import { useAllItemCategories } from '../hooks/useItemCategories.js';
 import {
   useRoomTemplate,
   useRoomTemplateMutations,
@@ -32,10 +33,12 @@ const emptyForm = {
   worldview: '',
   slots: [],
   prop_category_ids: [],
+  item_category_ids: [],
   turns_per_time_slot_enabled: false,
   turns_per_time_slot: 15,
   attribute_tags: [],
   is_place: false,
+  is_shop: false,
 };
 
 // Room master data now: what a room IS, shared across every World that
@@ -48,6 +51,7 @@ export default function RoomTemplateEditPage() {
   const navigate = useNavigate();
   const { data: worlds } = useWorlds();
   const { data: propCategories } = useAllPropCategories();
+  const { data: itemCategories } = useAllItemCategories();
   const { data: existing } = useRoomTemplate(isNew ? null : id);
   const { create, update, uploadBackgroundImage, generateBackgroundImage } = useRoomTemplateMutations();
   const { data: attachedWorlds } = useRoomWorlds(isNew ? null : id);
@@ -72,11 +76,13 @@ export default function RoomTemplateEditPage() {
       worldview: existing.worldview || '',
       slots: existing.slots.map((s) => ({ id: s.id, attribute_tags: tagsToArray(s.attribute_tags), note: s.note })),
       prop_category_ids: existing.candidate_prop_categories.map((c) => c.id),
+      item_category_ids: existing.candidate_item_categories.map((c) => c.id),
       turns_per_time_slot_enabled: existing.turns_per_time_slot != null,
       turns_per_time_slot: existing.turns_per_time_slot ?? 15,
       background_image_path: existing.background_image_path,
       attribute_tags: tagsToArray(existing.attribute_tags),
       is_place: Boolean(existing.is_place),
+      is_shop: Boolean(existing.is_shop),
     });
   }, [existing]);
 
@@ -105,6 +111,15 @@ export default function RoomTemplateEditPage() {
     }));
   }
 
+  function toggleItemCategory(categoryId) {
+    setForm((f) => ({
+      ...f,
+      item_category_ids: f.item_category_ids.includes(categoryId)
+        ? f.item_category_ids.filter((id2) => id2 !== categoryId)
+        : [...f.item_category_ids, categoryId],
+    }));
+  }
+
   async function save() {
     const payload = {
       name: form.name,
@@ -117,9 +132,11 @@ export default function RoomTemplateEditPage() {
       worldview: form.worldview_mode === 'custom' ? form.worldview : null,
       slots: form.slots.map((s, i) => ({ attribute_tags: tagsToText(s.attribute_tags), note: s.note, sort_order: i })),
       prop_category_ids: form.prop_category_ids,
+      item_category_ids: form.item_category_ids,
       turns_per_time_slot: form.turns_per_time_slot_enabled ? form.turns_per_time_slot : null,
       attribute_tags: tagsToText(form.attribute_tags),
       is_place: form.is_place,
+      is_shop: form.is_shop,
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -360,6 +377,39 @@ export default function RoomTemplateEditPage() {
           </div>
 
           <div>
+            <p style={{ marginBottom: 4 }}>周辺確認で入手可能なアイテムカテゴリ</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              チャットで「@周辺」を含めて発言すると、LLMはここで選んだカテゴリの範囲内でのみアイテムを生成できます（未選択の場合はWorldの全カテゴリが対象のまま）。具体的なアイテムはLLMがその場で自由に命名します。この部屋を「買い物できる部屋」にした場合は、ここで選んだカテゴリが商品カテゴリとしても使われます（購入額が設定済みのアイテムのみ販売対象）。
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {itemCategories?.map((cat) => (
+                <label
+                  key={cat.id}
+                  style={{
+                    fontSize: 12,
+                    padding: '3px 8px',
+                    borderRadius: 999,
+                    border: '1px solid #ccc',
+                    background: form.item_category_ids.includes(cat.id) ? '#dbeafe' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    style={{ marginRight: 4 }}
+                    checked={form.item_category_ids.includes(cat.id)}
+                    onChange={() => toggleItemCategory(cat.id)}
+                  />
+                  {cat.name}
+                </label>
+              ))}
+              {(!itemCategories || itemCategories.length === 0) && (
+                <p style={{ fontSize: 12, color: '#888' }}>カテゴリが登録されていません</p>
+              )}
+            </div>
+          </div>
+
+          <div>
             <p style={{ marginBottom: 4 }}>参加キャラ枠</p>
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
               属性キーで抽象的に枠だけ定義します。どのキャラを実際に充てるかはWorldごとの設定画面で選びます。
@@ -421,6 +471,14 @@ export default function RoomTemplateEditPage() {
                 onChange={(e) => setForm({ ...form, is_place: e.target.checked })}
               />
               他の部屋とつながりのある「場所」として扱う（移動先はWorldごとの設定画面で設定できます）
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.is_shop}
+                onChange={(e) => setForm({ ...form, is_shop: e.target.checked })}
+              />
+              買い物できる部屋にする（貨幣を使用するWorldでは、この部屋でのアイテム入手に所持金が必要になります）
             </label>
           </div>
 

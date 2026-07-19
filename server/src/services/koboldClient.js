@@ -1,11 +1,41 @@
 import { config } from '../config.js';
+import { getGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 
 // Sole contact point with KoboldCpp. Uses the OpenAI-compatible /v1/chat/completions
 // endpoint rather than the raw /api/v1/generate endpoint: the raw endpoint applies no
 // chat template and produced incoherent completions when verified against the actual
 // running instance, whereas /v1/chat/completions correctly applies the model's detected
 // chat template for both streaming and non-streaming calls.
-export async function generateChatCompletion({ messages, maxTokens = 512, temperature = 0.8, stop, stream = false, onToken }) {
+//
+// temperature/repPen/repPenRange/topP/topK/minP default to the user-configurable
+// llm_generation_settings row (Settings screen) rather than a hardcoded value,
+// so every call site benefits from the same anti-repetition tuning without
+// having to pass these explicitly. Callers can still override any of them.
+// rep_pen/rep_pen_range/top_p/top_k/min_p are KoboldCpp-specific extensions
+// to the OpenAI-compatible schema, sent as extra JSON fields.
+export async function generateChatCompletion({
+  messages,
+  maxTokens = 512,
+  temperature,
+  repPen,
+  repPenRange,
+  topP,
+  topK,
+  minP,
+  stop,
+  stream = false,
+  onToken,
+}) {
+  const defaults =
+    temperature === undefined ||
+    repPen === undefined ||
+    repPenRange === undefined ||
+    topP === undefined ||
+    topK === undefined ||
+    minP === undefined
+      ? getGenerationSettings()
+      : null;
+
   const res = await fetch(`${config.koboldBaseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -13,7 +43,12 @@ export async function generateChatCompletion({ messages, maxTokens = 512, temper
       model: 'kobold',
       messages,
       max_tokens: maxTokens,
-      temperature,
+      temperature: temperature ?? defaults.temperature,
+      rep_pen: repPen ?? defaults.rep_pen,
+      rep_pen_range: repPenRange ?? defaults.rep_pen_range,
+      top_p: topP ?? defaults.top_p,
+      top_k: topK ?? defaults.top_k,
+      min_p: minP ?? defaults.min_p,
       stop,
       stream,
     }),

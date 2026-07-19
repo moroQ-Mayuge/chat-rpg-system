@@ -1,10 +1,14 @@
 import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
-import { resolveProtagonist } from '../db/repositories/playthroughsRepo.js';
+import { resolveProtagonist, getMoney } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
+import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
+import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
+import { getWorld } from '../db/repositories/worldsRepo.js';
+import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -56,10 +60,23 @@ function buildProtagonistBlock(protagonist) {
   return lines.join('\n');
 }
 
-function buildSystemPrompt(session, participants) {
+function buildSystemPrompt(session, participants, options = {}) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
-  const itemCategoryNames = listCategoriesForWorld(worldId).map((c) => c.name);
+  const world = getWorld(worldId);
+
+  // Shopping mode: is_shop room + World currency_enabled. Reuses the same
+  // room_template_item_categories candidate list as surroundings-check mode
+  // (room_template_item_categories was originally built for that feature,
+  // but "which categories can this room's contents come from" is exactly
+  // what "what does this shop stock" also needs) -- either mode restricts
+  // ITEM_GRANT to the room's own categories instead of the World's full list.
+  const isShopMode = Boolean(session.room_is_shop) && world.currency_enabled;
+  const roomCandidateItemCategories =
+    options.isSurroundingsCheck || isShopMode ? listCandidateCategoriesForRoom(session.room_template_id) : [];
+  const itemCategoryNames = (
+    roomCandidateItemCategories.length > 0 ? roomCandidateItemCategories : listCategoriesForWorld(worldId)
+  ).map((c) => c.name);
 
   // Disambiguates same-named participants (e.g. two "みお"s cast in the same
   // scene) with a "(2)" suffix, since the LLM has no other way to tell them
@@ -117,6 +134,46 @@ function buildSystemPrompt(session, participants) {
       ? `主人公（${forbiddenNames.join('／')}）自身のセリフ・行動・心情は絶対に生成しないでください。[${forbiddenNames.join(']や[')}]という形式の行を出力してはいけません。主人公の発言・行動は必ずユーザー自身の入力に任せてください。`
       : 'ユーザー（主人公）自身のセリフや行動を先取りして生成しないでください。';
 
+  // "@周辺" mode: surfaces this room's placed props/facilities to the LLM's
+  // text generation for the first time -- normally props are image-generation
+  // only (see imagePromptBuilder.js) and never appear in this system prompt
+  // at all, so without this the model has no way to know they exist.
+  let surroundingsBlock = null;
+  if (options.isSurroundingsCheck) {
+    const props = listPropsForWorldRoom(worldId, session.room_template_id).map((p) => p.name);
+    const freeProps = listFreePropsForWorldRoom(worldId, session.room_template_id).map((p) => p.description);
+    const discoverable = [...props, ...freeProps];
+    surroundingsBlock =
+      discoverable.length > 0
+        ? `[周辺確認モード]\nプレイヤーは周辺を調べています。以下は、この場に実際に存在する設備・物です。物語上自然な場合、これらのいずれかをNARRATIONやキャラのセリフで発見・言及してよい：${discoverable.join('、')}`
+        : '[周辺確認モード]\nプレイヤーは周辺を調べています。特に目立った設備・物は見当たらない、という展開にしても構いません。';
+  }
+
+  // Shopping mode: lists actual priced products (never LLM-invented ones —
+  // buy_price is only ever set by an admin) so ITEM_GRANT here means a real
+  // sale, not the free "the character happens to hand you something"
+  // narrative device the normal ITEM_GRANT instruction describes.
+  let shopBlock = null;
+  if (isShopMode) {
+    const shopProducts = listItemsForWorld(worldId).filter(
+      (i) =>
+        i.buy_price != null &&
+        (roomCandidateItemCategories.length === 0 || roomCandidateItemCategories.some((c) => c.id === i.category_id)),
+    );
+    const money = getMoney(session.playthrough_id);
+    const productLines =
+      shopProducts.length > 0
+        ? shopProducts.map((i) => `${i.name}（${i.buy_price}${world.currency_unit}）`).join('、')
+        : null;
+    shopBlock = [
+      '[買い物モード]',
+      `ここは買い物ができる場所です。プレイヤーの所持金：${money}${world.currency_unit}`,
+      productLines
+        ? `商品リスト（この中のアイテムのみ[ITEM_GRANT]で実際に販売できます。価格に言及して構いません）：${productLines}`
+        : '現在、店頭に並んでいる商品はないようです。',
+    ].join('\n');
+  }
+
   return [
     `場所：${session.current_location_text}`,
     `雰囲気：${session.current_atmosphere_text}`,
@@ -138,6 +195,8 @@ function buildSystemPrompt(session, participants) {
       : null,
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
     noSelfSpeechRule,
+    surroundingsBlock,
+    shopBlock,
     '',
     '出力例（場所が変わった場合）：',
     '[SCENE_CHANGE]: 夕暮れの校門前',
@@ -228,7 +287,7 @@ function buildHistoryMessages(sessionId) {
 export function buildMultiCharacterMessages(session, options = {}) {
   if (!session.participants.length) return null;
 
-  const systemPrompt = buildSystemPrompt(session, session.participants);
+  const systemPrompt = buildSystemPrompt(session, session.participants, { isSurroundingsCheck: options.isSurroundingsCheck });
   const history = buildHistoryMessages(session.id);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];
 

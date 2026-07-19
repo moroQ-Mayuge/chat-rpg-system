@@ -6,7 +6,7 @@ import GroupedList from '../components/ui/GroupedList.jsx';
 import { groupByKeys } from '../utils/grouping.js';
 import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 
-const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '', category_id: '' };
+const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '', category_id: '', buy_price: '', sell_price: '' };
 const emptyCategoryForm = { world_id: '', name: '', is_consumable: false };
 
 function worldLabel(worldId, worlds) {
@@ -115,6 +115,8 @@ function ItemsSection({ worlds }) {
         description: found.description ?? '',
         image_tags: found.image_tags ?? '',
         category_id: found.category_id ?? '',
+        buy_price: found.buy_price ?? '',
+        sell_price: found.sell_price ?? '',
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,6 +138,8 @@ function ItemsSection({ worlds }) {
       ...form,
       world_id: form.world_id ? Number(form.world_id) : null,
       category_id: form.category_id ? Number(form.category_id) : null,
+      buy_price: form.buy_price === '' ? null : Number(form.buy_price),
+      sell_price: form.sell_price === '' ? null : Number(form.sell_price),
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -248,6 +252,28 @@ function ItemsSection({ worlds }) {
                 <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成用danbooruタグ（任意）</span>
                 <input style={{ width: '100%' }} value={form.image_tags} onChange={(e) => setForm({ ...form, image_tags: e.target.value })} />
               </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <label>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block' }}>購入額（空欄=買い物部屋で販売不可）</span>
+                  <input
+                    type="number"
+                    min="0"
+                    style={{ width: '100%' }}
+                    value={form.buy_price}
+                    onChange={(e) => setForm({ ...form, buy_price: e.target.value })}
+                  />
+                </label>
+                <label>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block' }}>売却額（空欄=売却不可）</span>
+                  <input
+                    type="number"
+                    min="0"
+                    style={{ width: '100%' }}
+                    value={form.sell_price}
+                    onChange={(e) => setForm({ ...form, sell_price: e.target.value })}
+                  />
+                </label>
+              </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={handleSave} disabled={!form.name}>
                   {isNew ? '追加' : '保存'}

@@ -9,11 +9,11 @@ import {
   createRoomSession,
   setAccompanying,
 } from '../db/repositories/roomSessionsRepo.js';
-import { resolveProtagonist, applyMovementCost, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
+import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
-import { findOrCreateWorldItem } from '../db/repositories/itemsRepo.js';
+import { findOrCreateWorldItem, getItem } from '../db/repositories/itemsRepo.js';
 import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
-import { addItemToInventory } from '../db/repositories/inventoryRepo.js';
+import { addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
@@ -116,6 +116,43 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
   });
 });
 
+// Sells one of the player's held items for money, only inside an is_shop
+// room of a currency-enabled World, and only for items an admin has
+// explicitly priced (sell_price non-null) -- mirrors the purchase flow's
+// gating in generateReply's ITEM_GRANT handling above.
+roomSessionsRouter.post('/:id/sell-item', (req, res) => {
+  const itemId = req.body.item_id;
+  if (!itemId) return res.status(400).json({ error: 'item_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  const world = getWorld(worldId);
+  if (!session.room_is_shop || !world.currency_enabled) {
+    return res.status(400).json({ error: 'not_a_shop' });
+  }
+
+  const item = getItem(itemId);
+  if (!item || item.sell_price == null) {
+    return res.status(400).json({ error: 'not_sellable' });
+  }
+
+  const removal = removeItemFromInventory(session.playthrough_id, itemId, 1);
+  if (!removal.removed) {
+    return res.status(400).json({ error: 'not_held' });
+  }
+
+  const money = adjustMoney(session.playthrough_id, item.sell_price);
+  const message = createMessage(req.params.id, {
+    sender_type: 'narration',
+    content: `『${item.name}』を${item.sell_price}${world.currency_unit}で売却した。（所持金 ${money}${world.currency_unit}）`,
+  });
+  broadcast(req.params.id, { type: 'message_complete', message });
+  broadcast(req.params.id, { type: 'money_changed', money });
+  res.json({ money, message });
+});
+
 roomSessionsRouter.post('/:id/exit', (req, res) => {
   res.json(exitRoomSession(req.params.id));
 });
@@ -201,7 +238,11 @@ async function generateReply(
   // produces a well-formed continuation instead, without reading as an
   // actual player action/line — this is the minimal content that still
   // triggers generation.
-  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null });
+  // "@周辺" triggers surroundings-check mode for this turn only (see
+  // buildSystemPrompt): narrows ITEM_GRANT to the room's configured
+  // categories and surfaces its props/facilities as discoverable.
+  const isSurroundingsCheck = typeof userMessageContent === 'string' && userMessageContent.includes('@周辺');
+  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null, isSurroundingsCheck });
   if (!built) return;
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
@@ -278,6 +319,43 @@ async function generateReply(
       // without a category (and thus without a consumable/not determination).
       const category = resolveCategoryOrFallback(worldId, parsed.categoryName);
       const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id);
+
+      // Shopping (is_shop room + World currency_enabled): a hand-over
+      // requires payment instead of being free. buy_price is NULL for
+      // anything not registered as a shop product (including any item the
+      // LLM just invented on the fly), which is treated as "not for sale"
+      // rather than silently falling back to free — otherwise a shop's
+      // whole point (nothing leaves without paying) would be trivially
+      // bypassable by the model inventing an unpriced item name.
+      if (session.room_is_shop && world.currency_enabled) {
+        if (item.buy_price == null) {
+          const message = createMessage(sessionId, {
+            sender_type: 'narration',
+            content: `『${item.name}』は売り物ではないようだ。`,
+          });
+          broadcast(sessionId, { type: 'message_complete', message });
+          return;
+        }
+        const currentMoney = getPlaythrough(session.playthrough_id).money;
+        if (item.buy_price > currentMoney) {
+          const message = createMessage(sessionId, {
+            sender_type: 'narration',
+            content: `『${item.name}』（${item.buy_price}${world.currency_unit}）を買うには所持金が足りなかった。`,
+          });
+          broadcast(sessionId, { type: 'message_complete', message });
+          return;
+        }
+        const money = adjustMoney(session.playthrough_id, -item.buy_price);
+        addItemToInventory(session.playthrough_id, item.id);
+        const message = createMessage(sessionId, {
+          sender_type: 'narration',
+          content: `『${item.name}』を${item.buy_price}${world.currency_unit}で購入した。（所持金 ${money}${world.currency_unit}）`,
+        });
+        broadcast(sessionId, { type: 'message_complete', message });
+        broadcast(sessionId, { type: 'money_changed', money });
+        return;
+      }
+
       addItemToInventory(session.playthrough_id, item.id);
       const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を手に入れた。` });
       broadcast(sessionId, { type: 'message_complete', message });

@@ -38,6 +38,9 @@ const emptyForm = {
   max_response_tokens: '',
   notify_relationship_changes: false,
   status_display_settings: DEFAULT_STATUS_DISPLAY_SETTINGS,
+  currency_enabled: false,
+  currency_unit: '円',
+  initial_money: 0,
 };
 
 export default function WorldsPage() {
@@ -84,6 +87,9 @@ export default function WorldsPage() {
         max_response_tokens: world.max_response_tokens ?? '',
         notify_relationship_changes: Boolean(world.notify_relationship_changes),
         status_display_settings: world.status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS,
+        currency_enabled: Boolean(world.currency_enabled),
+        currency_unit: world.currency_unit ?? '円',
+        initial_money: world.initial_money ?? 0,
       });
     }
   }, [editingId, worlds]);
@@ -478,6 +484,40 @@ export default function WorldsPage() {
               />
               関係性の変化をチャット画面に通知する
             </label>
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>貨幣設定</p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.currency_enabled}
+                onChange={(e) => setForm({ ...form, currency_enabled: e.target.checked })}
+              />
+              貨幣を使用する（買い物部屋でのアイテム入手に所持金が必要になります）
+            </label>
+            {form.currency_enabled && (
+              <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
+                <label>
+                  <span style={{ display: 'block', fontSize: 11, color: '#888' }}>単位</span>
+                  <input
+                    style={{ width: 80 }}
+                    value={form.currency_unit}
+                    onChange={(e) => setForm({ ...form, currency_unit: e.target.value })}
+                  />
+                </label>
+                <label>
+                  <span style={{ display: 'block', fontSize: 11, color: '#888' }}>初期所持金</span>
+                  <input
+                    type="number"
+                    min="0"
+                    style={{ width: 120 }}
+                    value={form.initial_money}
+                    onChange={(e) => setForm({ ...form, initial_money: Number(e.target.value) })}
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

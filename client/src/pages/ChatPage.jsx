@@ -179,7 +179,7 @@ function ActionCommandBar({ worldId, participants, onKeywordSend, onOpenPanel })
   );
 }
 
-function ItemCheckPanel({ playthroughId, onClose }) {
+function ItemCheckPanel({ playthroughId, onClose, isShop, currencyUnit, onSell }) {
   const { data: inventory, isLoading } = useInventory(playthroughId);
   return (
     <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
@@ -192,10 +192,17 @@ function ItemCheckPanel({ playthroughId, onClose }) {
       {isLoading && <p style={{ fontSize: 12, color: '#888' }}>読み込み中...</p>}
       {inventory?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>何も持っていません</p>}
       {inventory?.map((entry) => (
-        <p key={entry.id} style={{ fontSize: 12, margin: '2px 0' }}>
-          {entry.name} ×{entry.quantity}
-          {entry.description && <span style={{ color: '#888' }}> — {entry.description}</span>}
-        </p>
+        <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 0' }}>
+          <p style={{ fontSize: 12, margin: 0 }}>
+            {entry.name} ×{entry.quantity}
+            {entry.description && <span style={{ color: '#888' }}> — {entry.description}</span>}
+          </p>
+          {isShop && entry.sell_price != null && (
+            <button type="button" style={{ fontSize: 11 }} onClick={() => onSell(entry.item_id)}>
+              売る（{entry.sell_price}{currencyUnit}）
+            </button>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -369,7 +376,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: session, isLoading } = useRoomSession(id);
-  const { sendMessage, exit, move, setAccompanying } = useRoomSessionMutations(id);
+  const { sendMessage, exit, move, setAccompanying, sellItem } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -385,6 +392,9 @@ export default function ChatPage() {
 
   const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice } = useChatStream(id, () => {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
+    // A message_complete event can be a purchase/sale narration (money_changed
+    // fires alongside it), so keep the 所持金 display fresh too.
+    queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
   });
 
   // all_participants includes departed characters (unlike session.participants,
@@ -451,6 +461,13 @@ export default function ChatPage() {
         <p style={{ fontSize: 12, color: '#888', margin: 0 }}>
           {playthrough.name} ／ {playthrough.current_day}日目 {playthrough.current_time_slot_label} ／{' '}
           {playthrough.current_weather} ／ {session.current_location_text}
+          {playthrough.currency_enabled && (
+            <>
+              {' '}
+              ／ 所持金 {playthrough.money}
+              {playthrough.currency_unit}
+            </>
+          )}
         </p>
         {!session.room_is_place && <button onClick={handleExit}>部屋を退出する</button>}
       </div>
@@ -620,7 +637,13 @@ export default function ChatPage() {
       </div>
 
       {itemPanel?.command_type === 'item_check' && (
-        <ItemCheckPanel playthroughId={session.playthrough_id} onClose={() => setItemPanel(null)} />
+        <ItemCheckPanel
+          playthroughId={session.playthrough_id}
+          onClose={() => setItemPanel(null)}
+          isShop={Boolean(session.room_is_shop) && Boolean(playthrough?.currency_enabled)}
+          currencyUnit={playthrough?.currency_unit}
+          onSell={(itemId) => sellItem.mutate(itemId)}
+        />
       )}
       {itemPanel?.command_type === 'item_pickup' && (
         <ItemPickupPanel
@@ -642,20 +665,26 @@ export default function ChatPage() {
       )}
       {itemPanel?.command_type === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
 
-      {session.participants.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>
-          {session.participants.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb' }}
-              onClick={() => insertMention(p.name)}
-            >
-              @{p.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>
+        <button
+          type="button"
+          style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#15803d' }}
+          title="周辺を調査・確認する（アドベンチャー的な行動用）"
+          onClick={() => insertMention('周辺')}
+        >
+          @周辺
+        </button>
+        {session.participants.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb' }}
+            onClick={() => insertMention(p.name)}
+          >
+            @{p.name}
+          </button>
+        ))}
+      </div>
 
       <ActionCommandBar
         worldId={playthrough.world_id}

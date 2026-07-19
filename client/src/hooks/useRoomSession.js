@@ -25,5 +25,6 @@ export function useRoomSessionMutations(id) {
       mutationFn: ({ characterId, isAccompanying }) => roomSessionsApi.setAccompanying(id, characterId, isAccompanying),
       onSuccess: invalidate,
     }),
+    sellItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.sellItem(id, itemId), onSuccess: invalidate }),
   };
 }

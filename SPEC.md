@@ -451,6 +451,18 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 
 種別ごとの詳細設定画面には、これとは別に「この設定でテスト生成」機能を用意する。編集中（未保存でも可）の生成方式・プロンプトテンプレート・パラメータをそのまま使い、その種別が参照するデータ（衣装・部屋セッション・部屋テンプレート・Worldなど）のうち最も若いIDのレコードをサンプルとして変数に当てはめ、実際に生成する。生成結果はどのエンティティにも保存しない使い捨てのプレビューで、`anchor_i2i`を指定していてもサンプルに参照画像がない場合は自動的に`prompt_only`にフォールバックする（その場合はUI上に実際の生成方式を明示する）。
 
+**KoboldCpp起動設定**
+
+設定画面の「KoboldCppを起動」ボタン（`koboldcppLauncher.js`）が参照する`koboldcpp_launch_settings`（単一行、id=1）を、設定画面上で編集できる。テキストモデル（`koboldcpp/models/llm/`）・画像生成モデル（`koboldcpp/models/sd/`または`koboldcpp/models/anima/`）は、各フォルダの実ファイル一覧（`GET /settings/koboldcpp-model-files`）からドロップダウンで選択する方式で、自由入力のパス欄ではない。未選択（空欄）の場合は該当フォルダ内の最初のファイルを自動選択する——本プロジェクトはGemma4を推奨モデルとしており、`models/llm/`には現状Gemma4のみを配置しているため、この自動選択で実質Gemma4が既定になる。
+
+画像生成のアーキテクチャは`sd_architecture`（`sd`／`anima`）で切り替える。標準の`sd`は`--sdmodel`のみで起動するのに対し、Animaアーキテクチャは本体モデルに加えVAE・CLIPテキストエンコーダの個別ファイル指定が必須（`--sdvae`/`--sdclip1`）で、どちらも`models/anima/`内のファイルから選ぶ（VAE/CLIPの自動判別手段はないため、ファイル名から目視で選択する）。LoRA（`sd_lora_path`）は従来通り自由入力のまま。
+
+**LLM応答生成の詳細設定**
+
+KoboldCpp起動設定（exe引数）とは別に、生成のたびに`/v1/chat/completions`へ送るサンプリングパラメータを`llm_generation_settings`（単一行）で設定画面から調整できる：`temperature`・`rep_pen`（繰り返しペナルティ）・`rep_pen_range`・`top_p`・`top_k`・`min_p`。`koboldClient.js`の`generateChatCompletion`は呼び出し元がこれらを明示指定しなかった場合にこの設定値をデフォルトとして使う（`max_tokens`/`stop`等、呼び出し元が明示指定する値はそのまま優先）ため、チャット応答・キャラクター生成補助・イベントのLLM系アクションなど全呼び出し元に自動適用される。
+
+プレイヤーが同じ行動を繰り返すとチャット応答が同一内容を繰り返す現象は、既定の`rep_pen`が弱い（もしくは未指定）ことに起因するため、この設定を上げることで緩和できる。
+
 ### 3.8 LLM応答生成
 
 - 部屋に複数キャラが同席する場合、**1回の呼び出しで複数キャラ分の台詞を一括生成**（スクリプト形式）
@@ -741,6 +753,27 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - 現状の運用タクソノミー：トップレベル`category`は「はなす」「する」（いずれも他と独立、機能分類ではなくチャット主体の性質を優先）、それ以外は機能別に「しらべる」「もちもの」「脱衣」（World4限定、`subcategory`に「上半身」/「下半身」）。3段階を最初から用意してあるのは、将来「その他」枠（性的要素・戦闘行動などプロジェクト外で追加予定の要素）へ再分類する際にマイグレーション無しで対応するため
 - **表示条件（`visible_when_status_ids`）**：カンマ区切りの`character_statuses.id`一覧。現在のセッション参加者の誰か1人でもそのいずれかのステータスを保持していれば表示する（any_present、未設定なら常に表示）。脱衣コマンドのうち下着系4つ（下着をずらす／脱がす×上半身/下半身）に、対応するクロージングトラックの「半脱ぎ」「服なし」ステータスidを設定し、服が半脱ぎ段階に達するまで下着コマンドが出現しないようにしている
 - `ActionCommandsPage.jsx`にカテゴリ入力・表示条件の複数選択チェックボックス・編集機能（従来は新規登録＋削除のみだった）を追加
+
+### 「周辺」@メンション + 周辺確認モード
+アドベンチャー的な「周辺を調べる」用途のため、チャット画面のメンションボタン列に、参加キャラとは無関係な固定の`@周辺`ボタンを追加している（`ChatPage.jsx`）。キャラの`@メンション`と同様、単に入力欄へ`@周辺`という文字列を挿入するだけで、キャラ解決の仕組み（`resolveMentions`）には一切乗らない。
+
+サーバー側（`roomSessions.js`の`generateReply`）はプレイヤーのメッセージ本文に`@周辺`が含まれるかどうかだけを見て、そのターン限りの「周辺確認モード」フラグを`buildMultiCharacterMessages`/`buildSystemPrompt`（`promptBuilder.js`）に渡す。このモードのとき、システムプロンプトに以下の2点が追加される：
+
+- **ITEM_GRANTのカテゴリ制限**：通常はそのWorldの全アイテムカテゴリ名をLLMに提示するが、周辺確認モード中は部屋テンプレートの`room_template_item_categories`（`roomItemCategoriesRepo.js`、`room_template_prop_categories`と同型の候補カテゴリテーブル）に設定されたカテゴリのみに絞る（部屋に何も設定されていなければ従来通り全カテゴリにフォールバック）。具体的なアイテム名は引き続きLLMがその場で自由に命名する（`findOrCreateWorldItem`）——固定アイテムリストからの選択ではない。
+- **設備・物の発見指示**：この部屋にWorldが実際に配置しているProps（`world_room_props`/`world_room_free_props`、`worldRoomPropsRepo.js`）の一覧を、`[周辺確認モード]`ブロックとして提示し、NARRATIONやセリフでの発見・言及を促す。Propsは元々**画像生成タグ専用**で、通常のテキスト生成システムプロンプトには一切渡っていなかった（`promptBuilder.js`はpropsを参照していなかった）——この機能が、Propsをテキスト生成にも認識させる最初の経路になる。
+
+部屋テンプレート編集画面（`RoomTemplateEditPage.jsx`）に「周辺確認で入手可能なアイテムカテゴリ」チェックボックス群を追加し、既存の「出現候補の設備・機材カテゴリ」と同じUIパターンで設定する。通常（`@周辺`を含まないメッセージ）のITEM_GRANT挙動は変更していない。
+
+### 貨幣機能 + 買い物部屋
+World単位で貨幣システムの有無・単位を設定できる（`worlds.currency_enabled`／`currency_unit`／`initial_money`、`WorldsPage.jsx`「貨幣設定」節）。`currency_enabled`のWorldでは、プレイスルー作成時（`createPlaythrough`）に`playthroughs.money`が`initial_money`で初期化される。
+
+- **アイテムの価格**：`items.buy_price`／`sell_price`（どちらも省略可能なINTEGER）。`buy_price`が未設定のアイテムは買い物部屋でも販売不可、`sell_price`が未設定のアイテムは売却不可（`ItemsPage.jsx`で編集）。
+- **買い物できる部屋（`room_templates.is_shop`）**：`is_place`と同型の部屋マスタ属性。`RoomTemplateEditPage.jsx`のチェックボックスで設定。「周辺確認で入手可能なアイテムカテゴリ」（`room_template_item_categories`）を、買い物部屋では商品カテゴリとしても再利用する（`買い物モード`のプロンプト＝周辺確認モードと同じ絞り込みロジックを共有、`promptBuilder.js`）。
+- **購入フロー**：`is_shop`な部屋のセッションかつ`currency_enabled`なWorldでは、ITEM_GRANTの扱いが変わる（`roomSessions.js`の`handleParsedLine`）——`buy_price`が未設定のアイテム、または所持金が足りない場合は入手をブロックし、その旨のナレーションに置き換える（マイナス残高にはならない）。購入できた場合は`adjustMoney`で減算し、「購入した」ナレーション＋残高を表示、`money_changed`をブロードキャストする。
+- **買い物モードのプロンプト**：`buildSystemPrompt`が`is_shop`＋`currency_enabled`のとき`[買い物モード]`ブロックを追加し、その部屋の候補カテゴリに属する価格設定済みアイテムを「商品リスト：名前（価格）」として提示、所持金も伝える。ITEM_GRANTのカテゴリ候補もその商品カテゴリに絞られる。
+- **売却フロー**：`POST /room-sessions/:id/sell-item`（`item_id`指定）。`is_shop`＋`currency_enabled`＋対象アイテムに`sell_price`が設定されている場合のみ成立し、インベントリから減算・`adjustMoney`で加算・ナレーション作成・`money_changed`をブロードキャストする。チャット画面の「もちもの」パネル（`ItemCheckPanel`）は、買い物部屋にいる間のみ`sell_price`設定済みアイテムに「売る」ボタンを表示する。
+- **所持金表示**：チャット画面の日付表示行（`ChatPage.jsx`、`{playthrough.current_day}日目 ...`の行）に、`currency_enabled`なWorldでは「／ 所持金 {money}{単位}」を追記する。`money_changed`は`message_complete`と同時にブロードキャストされるため、既存の`message_complete`受信時のクエリ無効化（`['playthroughs']`）に相乗りする形で表示が更新される。
+- **現代学園ファンタジー（World4）の実コンテンツ**：`currency_enabled=1`／`単位=円`／初期所持金3000円。新規の買い物部屋3つ——購買部・売店（昇降口・正門前に接続、食べ物・飲み物＋文房具・日用品）、食堂（昇降口・正門前に接続、食べ物・飲み物）、雑貨屋・コンビニ（商店街・駅前通りに接続、食べ物・飲み物＋文房具・日用品）——と、価格設定済みアイテム10点（メロンパン等5点＋文房具・日用品5点）を登録済み。
 
 ### expression_types（表情マスター）
 | カラム | 型 | 備考 |

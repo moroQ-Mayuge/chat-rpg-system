@@ -18,10 +18,12 @@ export function getItem(id) {
   return db.prepare('SELECT * FROM items WHERE id = ?').get(id);
 }
 
-export function createItem({ world_id, name, description, image_tags, category_id }) {
+export function createItem({ world_id, name, description, image_tags, category_id, buy_price, sell_price }) {
   const result = db
-    .prepare('INSERT INTO items (world_id, name, description, image_tags, category_id) VALUES (?, ?, ?, ?, ?)')
-    .run(world_id ?? null, name, description ?? '', image_tags ?? '', category_id ?? null);
+    .prepare(
+      'INSERT INTO items (world_id, name, description, image_tags, category_id, buy_price, sell_price) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    .run(world_id ?? null, name, description ?? '', image_tags ?? '', category_id ?? null, buy_price ?? null, sell_price ?? null);
   return getItem(result.lastInsertRowid);
 }
 
@@ -39,15 +41,10 @@ export function findOrCreateWorldItem(worldId, name, description, categoryId) {
   return createItem({ world_id: worldId, name, description, category_id: categoryId });
 }
 
-export function updateItem(id, { world_id, name, description, image_tags, category_id }) {
-  db.prepare('UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ?, category_id = ? WHERE id = ?').run(
-    world_id ?? null,
-    name,
-    description ?? '',
-    image_tags ?? '',
-    category_id ?? null,
-    id,
-  );
+export function updateItem(id, { world_id, name, description, image_tags, category_id, buy_price, sell_price }) {
+  db.prepare(
+    'UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ?, category_id = ?, buy_price = ?, sell_price = ? WHERE id = ?',
+  ).run(world_id ?? null, name, description ?? '', image_tags ?? '', category_id ?? null, buy_price ?? null, sell_price ?? null, id);
   return getItem(id);
 }
 

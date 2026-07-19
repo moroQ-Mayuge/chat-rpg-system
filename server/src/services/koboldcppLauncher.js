@@ -31,7 +31,17 @@ export function launchKoboldcpp() {
     throw new Error('koboldcpp.exeが見つかりません。koboldcpp/koboldcpp.exe に配置してください。');
   }
 
-  const { llm_model_path, sd_model_path, sd_quant, sd_lora_path, sd_lora_multiplier } = getLaunchSettings();
+  const {
+    llm_model_path,
+    sd_model_path,
+    sd_quant,
+    sd_lora_path,
+    sd_lora_multiplier,
+    sd_architecture,
+    sd_vae_path,
+    sd_clip1_path,
+  } = getLaunchSettings();
+  const isAnima = sd_architecture === 'anima';
 
   const llmModel = llm_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'llm'), '.gguf');
   if (!llmModel) {
@@ -41,12 +51,26 @@ export function launchKoboldcpp() {
     throw new Error(`指定されたテキストモデルのパスが見つかりません: ${llm_model_path}`);
   }
 
-  const sdModel = sd_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'sd'), '.safetensors');
+  // Anima's model files live under models/anima/ (a separate architecture,
+  // not interchangeable with plain SD checkpoints under models/sd/).
+  const sdModelDir = isAnima ? 'anima' : 'sd';
+  const sdModel = sd_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', sdModelDir), '.safetensors');
   if (sd_model_path && !fs.existsSync(sd_model_path)) {
     throw new Error(`指定された画像生成モデルのパスが見つかりません: ${sd_model_path}`);
   }
   if (sd_lora_path && !fs.existsSync(sd_lora_path)) {
     throw new Error(`指定されたLoRAのパスが見つかりません: ${sd_lora_path}`);
+  }
+  if (isAnima) {
+    if (!sd_vae_path || !sd_clip1_path) {
+      throw new Error('Animaアーキテクチャを使用するにはVAEとCLIPのモデルファイルを設定画面で指定してください。');
+    }
+    if (!fs.existsSync(sd_vae_path)) {
+      throw new Error(`指定されたVAEのパスが見つかりません: ${sd_vae_path}`);
+    }
+    if (!fs.existsSync(sd_clip1_path)) {
+      throw new Error(`指定されたCLIPのパスが見つかりません: ${sd_clip1_path}`);
+    }
   }
   // KoboldCpp rejects this combination outright at startup (confirmed via its
   // actual argparse error: "argument --sdlora: not allowed with argument
@@ -61,6 +85,9 @@ export function launchKoboldcpp() {
   const args = ['--model', llmModel, '--port', port, '--contextsize', '8192', '--gpulayers', '999'];
   if (sdModel) {
     args.push('--sdmodel', sdModel);
+    if (isAnima) {
+      args.push('--sdvae', sd_vae_path, '--sdclip1', sd_clip1_path);
+    }
     // KoboldCpp has no fp8 loading mode — --sdquant is the closest equivalent
     // it actually supports (0=off, 1=q8, 2=q4).
     if (sd_quant > 0) args.push('--sdquant', String(sd_quant));

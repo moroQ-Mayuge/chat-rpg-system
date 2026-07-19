@@ -29,6 +29,8 @@ function attachLabels(playthrough) {
     current_season_label: world.season_labels[playthrough.current_season_index] ?? null,
     current_day_of_week_label: world.day_of_week_labels[dayOfWeekIndex] ?? null,
     current_is_holiday: isHoliday,
+    currency_enabled: world.currency_enabled,
+    currency_unit: world.currency_unit,
   };
 }
 
@@ -48,10 +50,10 @@ export function createPlaythrough(worldId, name) {
   const initialWeather = world.weather_options[0] ?? '';
   const result = db
     .prepare(
-      `INSERT INTO playthroughs (world_id, name, current_day, current_time_slot_index, current_weather, current_season_index, status)
-       VALUES (?, ?, 1, 0, ?, 0, 'active')`,
+      `INSERT INTO playthroughs (world_id, name, current_day, current_time_slot_index, current_weather, current_season_index, status, money)
+       VALUES (?, ?, 1, 0, ?, 0, 'active', ?)`,
     )
-    .run(worldId, name, initialWeather);
+    .run(worldId, name, initialWeather, world.initial_money ?? 0);
   // Lets flag_state("season"/"time_slot"/"weather"/"day_of_week"/"is_holiday", ...)
   // event conditions work from turn 1, not just after the first change (see
   // advanceTime's matching update).
@@ -137,6 +139,19 @@ export function advanceTime(playthroughId, slots = 1) {
   applySelfStatRegen(playthroughId, slots);
 
   return getPlaythrough(playthroughId);
+}
+
+export function getMoney(playthroughId) {
+  return db.prepare('SELECT money FROM playthroughs WHERE id = ?').get(playthroughId)?.money ?? 0;
+}
+
+// delta may be negative (purchase) or positive (sale). No floor at 0 is
+// enforced here — callers (roomSessions.js's purchase flow) are responsible
+// for checking sufficient funds before calling this with a negative delta,
+// per the shopping feature's "block, don't go negative" design.
+export function adjustMoney(playthroughId, delta) {
+  db.prepare(`UPDATE playthroughs SET money = money + ?, updated_at = datetime('now') WHERE id = ?`).run(delta, playthroughId);
+  return getMoney(playthroughId);
 }
 
 export function touchPlaythrough(id) {
