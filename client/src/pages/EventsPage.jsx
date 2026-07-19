@@ -69,6 +69,7 @@ const CONDITION_TYPES = [
   { value: 'has_item', label: '所持アイテム' },
   { value: 'has_status', label: 'ステータス所持' },
   { value: 'has_outfit', label: '着用中の衣装' },
+  { value: 'has_money', label: '所持金' },
   { value: 'llm_judge', label: 'LLM判定' },
 ];
 
@@ -85,6 +86,7 @@ const ACTION_TYPES = [
   { value: 'remove_item', label: 'アイテム削除' },
   { value: 'change_status', label: 'ステータス変更' },
   { value: 'set_address', label: '呼び方変更' },
+  { value: 'spend_money', label: '所持金消費' },
 ];
 
 function conditionDefaults(type) {
@@ -107,6 +109,8 @@ function conditionDefaults(type) {
       return { character_id: null, status_id: null, negate: false };
     case 'has_outfit':
       return { character_id: null, outfit_name: '', negate: false };
+    case 'has_money':
+      return { comparison: '>=', value: 1000 };
     case 'llm_judge':
       return { question: '' };
     default:
@@ -147,6 +151,8 @@ function actionDefaults(type) {
       return { character_id: null, status_id: null, operation: 'grant', locked: false };
     case 'set_address':
       return { character_id: null, address: '' };
+    case 'spend_money':
+      return { amount: 1000 };
     default:
       return {};
   }
@@ -451,6 +457,25 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
           </label>
           <label style={{ flex: 1 }}>
             <span style={label11}>人数</span>
+            <input type="number" value={p.value ?? 0} onChange={(e) => setParams({ value: Number(e.target.value) })} />
+          </label>
+        </div>
+      )}
+
+      {condition.condition_type === 'has_money' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>比較</span>
+            <select value={p.comparison} onChange={(e) => setParams({ comparison: e.target.value })}>
+              <option value=">=">{'>='}</option>
+              <option value="<=">{'<='}</option>
+              <option value="==">{'=='}</option>
+              <option value=">">{'>'}</option>
+              <option value="<">{'<'}</option>
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>所持金</span>
             <input type="number" value={p.value ?? 0} onChange={(e) => setParams({ value: Number(e.target.value) })} />
           </label>
         </div>
@@ -949,6 +974,13 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
         <label>
           <span style={label11}>進める時間帯の数</span>
           <input type="number" min="1" value={p.slots ?? 1} onChange={(e) => setParams({ slots: Number(e.target.value) })} />
+        </label>
+      )}
+
+      {action.action_type === 'spend_money' && (
+        <label>
+          <span style={label11}>消費する所持金</span>
+          <input type="number" min="1" value={p.amount ?? 1} onChange={(e) => setParams({ amount: Number(e.target.value) })} />
         </label>
       )}
 

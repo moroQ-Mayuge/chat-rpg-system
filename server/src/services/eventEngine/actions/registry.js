@@ -10,6 +10,7 @@ import { executeGrantItem } from './grantItem.js';
 import { executeRemoveItem } from './removeItem.js';
 import { executeChangeStatus } from './changeStatus.js';
 import { executeSetAddress } from './setAddress.js';
+import { executeSpendMoney } from './spendMoney.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -24,6 +25,7 @@ export const actionRegistry = {
   remove_item: executeRemoveItem,
   change_status: executeChangeStatus,
   set_address: executeSetAddress,
+  spend_money: executeSpendMoney,
 };
 
 export async function executeAction(action, execCtx) {

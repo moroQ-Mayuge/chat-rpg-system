@@ -39,6 +39,7 @@ const emptyForm = {
   attribute_tags: [],
   is_place: false,
   is_shop: false,
+  suppress_auto_population: false,
 };
 
 // Room master data now: what a room IS, shared across every World that
@@ -83,6 +84,7 @@ export default function RoomTemplateEditPage() {
       attribute_tags: tagsToArray(existing.attribute_tags),
       is_place: Boolean(existing.is_place),
       is_shop: Boolean(existing.is_shop),
+      suppress_auto_population: Boolean(existing.suppress_auto_population),
     });
   }, [existing]);
 
@@ -137,6 +139,7 @@ export default function RoomTemplateEditPage() {
       attribute_tags: tagsToText(form.attribute_tags),
       is_place: form.is_place,
       is_shop: form.is_shop,
+      suppress_auto_population: form.suppress_auto_population,
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -479,6 +482,14 @@ export default function RoomTemplateEditPage() {
                 onChange={(e) => setForm({ ...form, is_shop: e.target.checked })}
               />
               買い物できる部屋にする（貨幣を使用するWorldでは、この部屋でのアイテム入手に所持金が必要になります）
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.suppress_auto_population}
+                onChange={(e) => setForm({ ...form, suppress_auto_population: e.target.checked })}
+              />
+              自動でキャラが現れない部屋にする（同行中のキャラのみ表示・タグ一致やランダム出現は無効）
             </label>
           </div>
 

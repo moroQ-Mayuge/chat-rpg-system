@@ -184,11 +184,12 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // declares abstract slots (room_template_participant_slots), and which
   // concrete character fills each slot is a per-World decision
   // (world_room_slot_assignments) — see 0030_room_world_decoupling.sql.
-  const defaultParticipantIds = listDefaultParticipantCharacterIdsForWorldRoom(
-    playthrough.world_id,
-    roomTemplateId,
-    playthrough.current_time_slot_index,
-  );
+  // suppress_auto_population rooms (e.g. ホテルの部屋) skip this entirely —
+  // only characters explicitly accompanying the player (handled below) may
+  // ever be present, no tag-matched/random NPC can interrupt.
+  const defaultParticipantIds = template.suppress_auto_population
+    ? []
+    : listDefaultParticipantCharacterIdsForWorldRoom(playthrough.world_id, roomTemplateId, playthrough.current_time_slot_index);
   for (const characterId of defaultParticipantIds) {
     const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db
