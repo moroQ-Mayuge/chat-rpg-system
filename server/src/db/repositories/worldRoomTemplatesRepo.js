@@ -31,6 +31,26 @@ export function isRoomInWorld(worldId, roomTemplateId) {
   );
 }
 
+// Cap on the attribute-tag auto-match population mechanism for this
+// (World, room) pair -- see 0054_tag_match_max_count.sql. NULL/absent = no
+// cap. Returns null (not 0) when the room isn't attached to the World at
+// all, same "no row = no restriction" default as everything else here.
+export function getTagMatchMaxCount(worldId, roomTemplateId) {
+  const row = db
+    .prepare('SELECT tag_match_max_count FROM world_room_templates WHERE world_id = ? AND room_template_id = ?')
+    .get(worldId, roomTemplateId);
+  return row?.tag_match_max_count ?? null;
+}
+
+export function setTagMatchMaxCount(worldId, roomTemplateId, maxCount) {
+  db.prepare('UPDATE world_room_templates SET tag_match_max_count = ? WHERE world_id = ? AND room_template_id = ?').run(
+    maxCount,
+    worldId,
+    roomTemplateId,
+  );
+  return { updated: true };
+}
+
 // Seeds the room's attribute_tags from the World's on first attach (only
 // when the room doesn't already have its own -- never overwrites an
 // existing value, since a shared room master may already be attached to

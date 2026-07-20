@@ -1,5 +1,6 @@
 import { db } from '../connection.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../services/attributeTagMatching.js';
+import { getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
 
 // World level: which concrete character(s) fill a given room-master slot,
 // for this World's instance of that room. A slot with no rows here is
@@ -167,24 +168,6 @@ function getContextTags(worldId, roomTemplateId) {
   return parseAttributeTags(world?.attribute_tags);
 }
 
-// Characters whose own attribute_tags overlap this room+World's context tags
-// (chat enhancement backlog item 23's auto-matching, extended to room-entry
-// default presence per [[bugreports_2026-07-16]] item 8's follow-up
-// request): everyone matching is included as a default participant,
-// supplementing (not replacing) explicit slot assignments. Unlike the
-// per-row random assignment below (which picks at most one candidate per
-// row), this represents "everyone who'd naturally be here" and isn't
-// time-of-day gated.
-function tagMatchedCharacterIds(worldId, roomTemplateId) {
-  const contextTags = getContextTags(worldId, roomTemplateId);
-  if (contextTags.length === 0) return [];
-  return db
-    .prepare('SELECT id, attribute_tags FROM characters')
-    .all()
-    .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
-    .map((c) => c.id);
-}
-
 // Same weighted-random pick as characterJoin.js's tag_match selection mode,
 // duplicated here rather than imported -- this module resolves worldId
 // directly rather than via a playthrough_id, same reasoning as
@@ -200,6 +183,47 @@ function pickWeighted(candidateIds) {
     if (roll <= 0) return candidateIds[i];
   }
   return candidateIds[candidateIds.length - 1];
+}
+
+// Repeatedly applies pickWeighted, removing each pick from the remaining
+// pool, until `count` distinct ids are chosen (or the pool runs out). Used
+// to sample down to tag_match_max_count without replacement.
+function pickWeightedWithoutReplacement(candidateIds, count) {
+  const remaining = [...candidateIds];
+  const picked = [];
+  while (picked.length < count && remaining.length > 0) {
+    const chosen = pickWeighted(remaining);
+    picked.push(chosen);
+    remaining.splice(remaining.indexOf(chosen), 1);
+  }
+  return picked;
+}
+
+// Characters whose own attribute_tags overlap this room+World's context tags
+// (chat enhancement backlog item 23's auto-matching, extended to room-entry
+// default presence per [[bugreports_2026-07-16]] item 8's follow-up
+// request): everyone matching is included as a default participant,
+// supplementing (not replacing) explicit slot assignments. Unlike the
+// per-row random assignment below (which picks at most one candidate per
+// row), this represents "everyone who'd naturally be here" and isn't
+// time-of-day gated. If this (World,room) pair has a
+// world_room_templates.tag_match_max_count set and the matching pool
+// exceeds it, a weighted-random subset (event_participation_weight, same
+// weighting as the row-level random mechanism) is chosen instead of
+// everyone (2026-07-20) -- below/at the cap, or with no cap set, everyone
+// still matches as before.
+function tagMatchedCharacterIds(worldId, roomTemplateId) {
+  const contextTags = getContextTags(worldId, roomTemplateId);
+  if (contextTags.length === 0) return [];
+  const matched = db
+    .prepare('SELECT id, attribute_tags FROM characters')
+    .all()
+    .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
+    .map((c) => c.id);
+
+  const maxCount = getTagMatchMaxCount(worldId, roomTemplateId);
+  if (maxCount == null || matched.length <= maxCount) return matched;
+  return pickWeightedWithoutReplacement(matched, maxCount);
 }
 
 // Resolves every "random" row (character_id IS NULL) eligible for the

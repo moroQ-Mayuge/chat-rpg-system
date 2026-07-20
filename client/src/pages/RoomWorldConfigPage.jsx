@@ -40,6 +40,7 @@ export default function RoomWorldConfigPage() {
   const [assignments, setAssignments] = useState(null);
   const [propIds, setPropIds] = useState(null);
   const [freeProps, setFreeProps] = useState(null);
+  const [tagMatchMaxCount, setTagMatchMaxCount] = useState(undefined); // undefined = follow config
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
   const [newConnectionLabel, setNewConnectionLabel] = useState('');
   const [newConnectionCost, setNewConnectionCost] = useState(1);
@@ -69,6 +70,7 @@ export default function RoomWorldConfigPage() {
   const currentAssignments = Object.fromEntries(config.slot_assignments.map((slot) => [slot.slot_id, rowsForSlot(slot)]));
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
+  const currentTagMatchMaxCount = tagMatchMaxCount !== undefined ? tagMatchMaxCount : config.tag_match_max_count;
 
   const candidateCategoryIds = new Set(config.candidate_prop_categories.map((c) => c.id));
   const candidateProps = allProps.filter((p) => candidateCategoryIds.has(p.category_id));
@@ -115,10 +117,12 @@ export default function RoomWorldConfigPage() {
       })),
       prop_ids: currentPropIds,
       free_props: currentFreeProps,
+      tag_match_max_count: currentTagMatchMaxCount,
     });
     setAssignments(null);
     setPropIds(null);
     setFreeProps(null);
+    setTagMatchMaxCount(undefined);
   }
 
   async function handleAddConnection() {
@@ -148,6 +152,19 @@ export default function RoomWorldConfigPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
             <p style={{ marginBottom: 4 }}>参加キャラ枠の割り当て</p>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+              属性キー一致での最大人数（空欄=無制限）
+              <input
+                type="number"
+                min={0}
+                style={{ width: 80, marginLeft: 6 }}
+                value={currentTagMatchMaxCount ?? ''}
+                onChange={(e) => setTagMatchMaxCount(e.target.value === '' ? null : Number(e.target.value))}
+              />
+              <span style={{ color: '#888', marginLeft: 6 }}>
+                超過時は重み付きランダムで抽選（部屋の属性キーに一致する全キャラが自動同席する仕組みの人数上限）
+              </span>
+            </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {config.slot_assignments.map((slot) => {
                 const slotTags = new Set(tagsToArray(slot.attribute_tags));
@@ -329,6 +346,7 @@ export default function RoomWorldConfigPage() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <button onClick={() => navigate(`/worlds?edit=${worldIdNum}`)}>世界観の設定に戻る</button>
         <button onClick={() => navigate(`/rooms/${id}/edit`)}>部屋マスタ編集に戻る</button>
         <button onClick={handleSave}>保存</button>
       </div>

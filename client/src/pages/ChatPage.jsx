@@ -89,14 +89,27 @@ function activeStatusIdSet(participants) {
   return ids;
 }
 
-function commandVisible(cmd, activeIds) {
-  const required = (cmd.visible_when_status_ids ?? '')
+// visible_when_room_template_ids (2026-07-20): same comma-list/any_present
+// shape as visible_when_status_ids, checked against the current room
+// instead of participant statuses. The two condition types combine with
+// AND (a command hidden by either one stays hidden); within one condition
+// type it's OR (any listed value matching is enough).
+function commandVisible(cmd, activeIds, currentRoomTemplateId) {
+  const requiredStatusIds = (cmd.visible_when_status_ids ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
     .map(Number);
-  if (required.length === 0) return true;
-  return required.some((id) => activeIds.has(id));
+  if (requiredStatusIds.length > 0 && !requiredStatusIds.some((id) => activeIds.has(id))) return false;
+
+  const requiredRoomIds = (cmd.visible_when_room_template_ids ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number);
+  if (requiredRoomIds.length > 0 && !requiredRoomIds.includes(currentRoomTemplateId)) return false;
+
+  return true;
 }
 
 // Icon-based quick actions above the chat input (chat enhancement backlog
@@ -108,14 +121,14 @@ function commandVisible(cmd, activeIds) {
 // one) -- a PC98風コマンド選択メニュー layout agreed in the 2026-07-16
 // categorization plan. Commands with no category (legacy / not yet tagged)
 // render as a flat row, unchanged from before.
-function ActionCommandBar({ worldId, participants, onKeywordSend, onOpenPanel }) {
+function ActionCommandBar({ worldId, participants, roomTemplateId, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
   const [openCategory, setOpenCategory] = useState(null);
   const [openSubcategory, setOpenSubcategory] = useState(null);
   if (!commands || commands.length === 0) return null;
 
   const activeIds = activeStatusIdSet(participants);
-  const visibleCommands = commands.filter((cmd) => commandVisible(cmd, activeIds));
+  const visibleCommands = commands.filter((cmd) => commandVisible(cmd, activeIds, roomTemplateId));
 
   const uncategorized = visibleCommands.filter((cmd) => !cmd.category);
   const categorized = visibleCommands.filter((cmd) => cmd.category);
@@ -733,6 +746,7 @@ export default function ChatPage() {
       <ActionCommandBar
         worldId={playthrough.world_id}
         participants={session.participants}
+        roomTemplateId={session.room_template_id}
         onKeywordSend={sendKeywordCommand}
         onOpenPanel={setItemPanel}
       />

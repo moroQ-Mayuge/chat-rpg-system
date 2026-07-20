@@ -28,13 +28,14 @@ export function createActionCommand({
   subcategory,
   sub_subcategory,
   visible_when_status_ids,
+  visible_when_room_template_ids,
 }) {
   const result = db
     .prepare(
       `INSERT INTO action_commands
         (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target,
-         category, subcategory, sub_subcategory, visible_when_status_ids)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         category, subcategory, sub_subcategory, visible_when_status_ids, visible_when_room_template_ids)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       world_id ?? null,
@@ -49,6 +50,7 @@ export function createActionCommand({
       subcategory ?? '',
       sub_subcategory ?? '',
       visible_when_status_ids ?? '',
+      visible_when_room_template_ids ?? '',
     );
   return getActionCommand(result.lastInsertRowid);
 }
@@ -68,12 +70,13 @@ export function updateActionCommand(
     subcategory,
     sub_subcategory,
     visible_when_status_ids,
+    visible_when_room_template_ids,
   },
 ) {
   db.prepare(
     `UPDATE action_commands
      SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?,
-         category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?
+         category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?, visible_when_room_template_ids = ?
      WHERE id = ?`,
   ).run(
     world_id ?? null,
@@ -88,6 +91,7 @@ export function updateActionCommand(
     subcategory ?? '',
     sub_subcategory ?? '',
     visible_when_status_ids ?? '',
+    visible_when_room_template_ids ?? '',
     id,
   );
   return getActionCommand(id);

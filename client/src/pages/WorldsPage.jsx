@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorlds, useWorldMutations, useCalendarHolidays, useCalendarHolidayMutations } from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
@@ -51,7 +51,17 @@ export default function WorldsPage() {
   const [exportIncludeCharacters, setExportIncludeCharacters] = useState(false);
   const { data: stylePresets } = useStylePresets();
   const { create, update, remove, uploadThumbnailImage, generateThumbnailImage } = useWorldMutations();
-  const [editingId, setEditingId] = useState(null);
+  const [searchParams] = useSearchParams();
+  // Lets a link like RoomWorldConfigPage.jsx's "世界観の設定に戻る" button
+  // (navigate(`/worlds?edit=${worldId}`)) reopen the World editor panel it
+  // came from -- editingId is otherwise pure local state with no URL
+  // representation, so without this a "back to World" link could only ever
+  // land on the bare list. Read once on mount; user-driven selection
+  // afterward is unaffected.
+  const [editingId, setEditingId] = useState(() => {
+    const editParam = searchParams.get('edit');
+    return editParam ? Number(editParam) : null;
+  });
   const worldRoomsWorldId = editingId != null && editingId !== 'new' ? editingId : null;
   const { data: worldRooms } = useRoomTemplates(worldRoomsWorldId);
   const [form, setForm] = useState(emptyForm);

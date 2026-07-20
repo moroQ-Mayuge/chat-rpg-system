@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllActionCommands, useActionCommandMutations } from '../hooks/useActionCommands.js';
 import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
+import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 
 const emptyForm = {
   world_id: '',
@@ -16,6 +17,7 @@ const emptyForm = {
   subcategory: '',
   sub_subcategory: '',
   visible_when_status_ids: [],
+  visible_when_room_template_ids: [],
 };
 
 const COMMAND_TYPE_LABELS = {
@@ -43,6 +45,7 @@ function formToPayload(form) {
     world_id: form.world_id ? Number(form.world_id) : null,
     sort_order: Number(form.sort_order),
     visible_when_status_ids: form.visible_when_status_ids.join(','),
+    visible_when_room_template_ids: form.visible_when_room_template_ids.join(','),
   };
 }
 
@@ -64,6 +67,11 @@ function commandToForm(cmd) {
       .map((s) => s.trim())
       .filter(Boolean)
       .map(Number),
+    visible_when_room_template_ids: (cmd.visible_when_room_template_ids ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number),
   };
 }
 
@@ -75,6 +83,7 @@ export default function ActionCommandsPage() {
   const { data: worlds, isLoading: worldsLoading } = useWorlds();
   const { data: commands, isLoading: commandsLoading } = useAllActionCommands();
   const { data: statuses, isLoading: statusesLoading } = useAllCharacterStatuses();
+  const { data: roomTemplates } = useRoomTemplates();
   const { create, update, remove } = useActionCommandMutations();
   const [selectedId, setSelectedId] = useState(null);
   const isNew = selectedId === 'new';
@@ -116,6 +125,15 @@ export default function ActionCommandsPage() {
     }));
   }
 
+  function toggleVisibleRoom(roomTemplateId) {
+    setForm((f) => ({
+      ...f,
+      visible_when_room_template_ids: f.visible_when_room_template_ids.includes(roomTemplateId)
+        ? f.visible_when_room_template_ids.filter((id) => id !== roomTemplateId)
+        : [...f.visible_when_room_template_ids, roomTemplateId],
+    }));
+  }
+
   if (worldsLoading || commandsLoading || statusesLoading) return <p>読み込み中...</p>;
 
   return (
@@ -123,7 +141,7 @@ export default function ActionCommandsPage() {
       <h2>行動コマンド</h2>
       <p style={{ fontSize: 11, color: '#888' }}>
         チャット画面の入力欄上にアイコン一覧として表示されます。「キーワード送信」はタップすると入力したテキストをそのまま発言として送信します（イベントのキーワード条件を簡単に発火させる用途）。
-        カテゴリ（category/subcategory/sub_subcategory）は自由記述の3段階で、コマンドバーの階層メニュー表示に使われます。「表示条件（キャラ状態）」を1つ以上設定すると、現在のセッション参加者の誰かがそのいずれかの状態を持っている時だけコマンドが表示されます（未設定なら常に表示）。
+        カテゴリ（category/subcategory/sub_subcategory）は自由記述の3段階で、コマンドバーの階層メニュー表示に使われます。「表示条件（キャラ状態）」「表示条件（部屋）」はそれぞれ1つ以上設定すると絞り込みが有効になり（未設定の条件は無視）、複数の条件種別を併用した場合はAND（両方満たす時のみ表示）、同じ条件種別内はOR（いずれか1つ満たせば表示）で判定されます。
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {commands.map((cmd) => (
@@ -148,7 +166,7 @@ export default function ActionCommandsPage() {
                 {cmd.command_type === 'keyword' && ` (${cmd.keyword_text})`}
                 {cmd.command_type === 'item_use' &&
                   ` (${cmd.transfers_to_target ? '対象へ譲渡' : cmd.consumes_item ? '消費型' : '非消費'})`}
-                {cmd.visible_when_status_ids && `／表示条件あり`}
+                {(cmd.visible_when_status_ids || cmd.visible_when_room_template_ids) && `／表示条件あり`}
               </span>
             </span>
             <button
@@ -282,6 +300,25 @@ export default function ActionCommandsPage() {
                 </label>
               ))}
               {statuses.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>キャラ状態がまだ登録されていません</span>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+              表示条件（部屋、任意・複数選択可）— 現在の部屋がこのいずれかの時だけ表示（キャラ状態条件と併用時はAND）
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 140, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+              {(roomTemplates ?? []).map((r) => (
+                <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, border: '1px solid #ddd', borderRadius: 4, padding: '2px 6px' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.visible_when_room_template_ids.includes(r.id)}
+                    onChange={() => toggleVisibleRoom(r.id)}
+                  />
+                  {r.name}
+                </label>
+              ))}
+              {(roomTemplates ?? []).length === 0 && <span style={{ fontSize: 11, color: '#999' }}>部屋がまだ登録されていません</span>}
             </div>
           </div>
 

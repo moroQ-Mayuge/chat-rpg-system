@@ -612,7 +612,7 @@ KoboldCpp起動設定（exe引数）とは別に、生成のたびに`/v1/chat/c
 
 **部屋入室時のデフォルト参加者決定**（`worldRoomSlotAssignmentsRepo.js`の`listDefaultParticipantCharacterIdsForWorldRoom`）は3つの仕組みを合算する：
 1. **固定割り当て**（`character_id`が非NULLの行、現在の時間帯でフィルタ）
-2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`（設定されていればそれのみ）、無ければWorldの`attribute_tags`にフォールバック——**合算ではなくフォールバック**（2026-07-19変更、`characterJoin.js`の`getContextTags`も同様）——と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。部屋をWorldにアタッチした際、部屋側の`attribute_tags`が空ならWorldの値を初期値として自動コピーする（`worldRoomTemplatesRepo.js`の`attachRoomToWorld`、以後は独立して編集可能）
+2. **属性キー一致による自動出現**：部屋マスタの`attribute_tags`（設定されていればそれのみ）、無ければWorldの`attribute_tags`にフォールバック——**合算ではなくフォールバック**（2026-07-19変更、`characterJoin.js`の`getContextTags`も同様）——と重なる`attribute_tags`を持つ**全キャラ**（`attributeTagMatching.js`、`characterJoin.js`の`tag_match`と同じロジック）が、枠への割り当て有無に関わらず自動的にデフォルト参加者になる（時間帯フィルタなし）。部屋をWorldにアタッチした際、部屋側の`attribute_tags`が空ならWorldの値を初期値として自動コピーする（`worldRoomTemplatesRepo.js`の`attachRoomToWorld`、以後は独立して編集可能）。この(World,部屋)ペアに`world_room_templates.tag_match_max_count`（2026-07-20追加、nullable）が設定されていて一致候補数がそれを超える場合は、`event_participation_weight`による重み付きランダムでその人数だけ抽選する（未設定または候補数以下なら従来通り全員）——`RoomWorldConfigPage.jsx`の「属性キー一致での最大人数」欄で設定
 3. **行単位ランダム割り当て**（`character_id IS NULL`の行、2026-07-18追加、前回実装した枠単位トグル`world_room_slot_random_tag_match`を完全に置き換え）：行ごとに、**その行が属する枠自身の`attribute_tags`**（部屋/World全体のタグではない）と重なる`attribute_tags`を持つキャラの中から`event_participation_weight`で重み付きランダムに**最大1人**選出。`random_fill_mode='probability'`なら抽選が外れた行は0人のまま。1枠に複数のランダム行を作ることで「0〜行数」の範囲で人数が変動する状況を作れる。既に確定した参加者（固定割り当て・属性一致全員）とは重複しないよう除外されるが、**`characters.is_mob`のキャラのみ例外的に重複選出を許可**——同じモブが複数のランダム行から選ばれると、`room_session_characters`に同一`character_id`の複数行が作られ（2026-07-18に複合PKからsurrogate `id` PKへ変更、重複を許可）、`participantNaming.js`の`withDisambiguatedNames`が英字接尾辞（`モブ・中学生`／`モブ・中学生A`／`モブ・中学生B`...）で区別する。**既知の制約**：モブ重複インスタンス間の関係性・ステータス・呼び方は`(character_id, room_session_id)`単位でしか管理できないため内部状態は共有される（見た目上は別人だが、関係値やステータスは連動する）。
 
 **属性キー`すべて`ワイルドカード**（2026-07-18、`attributeTagMatching.js`の`tagsOverlapOrWildcard`）：部屋マスタ・World・枠のいずれかの`attribute_tags`に特殊トークン`すべて`を含めると、そのタグ集合との照合は無条件でマッチしたことになる——候補キャラ側が`attribute_tags`を1件も持たない（未所属）場合でも対象になる。上記2の属性一致自動出現・3の行単位ランダム割り当て（枠自身のタグが対象）、および`characterJoin.js`の`tag_match`選出・`require_attribute_match`ガードの計4箇所で共通して有効。管理UIのタグ入力は既存のカンマ区切りテキストのままで、`すべて`を1つのタグとして入力するだけでよい。
@@ -776,7 +776,8 @@ KoboldCpp起動設定（exe引数）とは別に、生成のたびに`/v1/chat/c
 
 - 現状の運用タクソノミー：トップレベル`category`は「はなす」「する」（いずれも他と独立、機能分類ではなくチャット主体の性質を優先）、それ以外は機能別に「しらべる」「もちもの」「脱衣」（World4限定、`subcategory`に「上半身」/「下半身」）。3段階を最初から用意してあるのは、将来「その他」枠（性的要素・戦闘行動などプロジェクト外で追加予定の要素）へ再分類する際にマイグレーション無しで対応するため
 - **表示条件（`visible_when_status_ids`）**：カンマ区切りの`character_statuses.id`一覧。現在のセッション参加者の誰か1人でもそのいずれかのステータスを保持していれば表示する（any_present、未設定なら常に表示）。脱衣コマンドのうち下着系4つ（下着をずらす／脱がす×上半身/下半身）に、対応するクロージングトラックの「半脱ぎ」「服なし」ステータスidを設定し、服が半脱ぎ段階に達するまで下着コマンドが出現しないようにしている
-- `ActionCommandsPage.jsx`にカテゴリ入力・表示条件の複数選択チェックボックス・編集機能（従来は新規登録＋削除のみだった）を追加
+- **表示条件（`visible_when_room_template_ids`、2026-07-20追加）**：カンマ区切りの`room_templates.id`一覧。現在の部屋がそのいずれかであれば表示する（any_present、未設定なら常に表示）。`visible_when_status_ids`と併用した場合はAND（両方の条件を満たす必要がある。各条件内部はOR）。`ChatPage.jsx`の`commandVisible`が`session.room_template_id`と照合する（サーバー側の追加取得は不要——既にセッションから取得済みの値を使う）
+- `ActionCommandsPage.jsx`にカテゴリ入力・表示条件（キャラ状態／部屋）の複数選択チェックボックス・編集機能（従来は新規登録＋削除のみだった）を追加
 
 ### 「周辺」@メンション + 周辺確認モード
 アドベンチャー的な「周辺を調べる」用途のため、チャット画面のメンションボタン列に、参加キャラとは無関係な固定の`@周辺`ボタンを追加している（`ChatPage.jsx`）。キャラの`@メンション`と同様、単に入力欄へ`@周辺`という文字列を挿入するだけで、キャラ解決の仕組み（`resolveMentions`）には一切乗らない。

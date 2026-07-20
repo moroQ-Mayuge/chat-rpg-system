@@ -5,7 +5,7 @@ import {
   listCandidateCategoriesForRoom as listCandidateItemCategoriesForRoom,
   replaceCandidateCategoriesForRoom as replaceCandidateItemCategoriesForRoom,
 } from './roomItemCategoriesRepo.js';
-import { listWorldsForRoomTemplate } from './worldRoomTemplatesRepo.js';
+import { listWorldsForRoomTemplate, getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
 import { listAssignmentsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPropsRepo.js';
 
@@ -44,6 +44,7 @@ export function getRoomTemplateForWorld(roomTemplateId, worldId) {
   if (!master) return null;
   return {
     ...master,
+    tag_match_max_count: getTagMatchMaxCount(worldId, roomTemplateId),
     slot_assignments: listAssignmentsForWorldRoom(worldId, roomTemplateId),
     props: listPropsForWorldRoom(worldId, roomTemplateId),
     free_props: listFreePropsForWorldRoom(worldId, roomTemplateId),
