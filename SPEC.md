@@ -900,8 +900,25 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 |---|---|---|
 | id | PK | |
 | event_definition_id | FK | |
-| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time / grant_item / remove_item / change_status / set_address / spend_money / set_scene_situation |
+| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time / grant_item / remove_item / change_status / set_address / spend_money / set_scene_situation / grant_random_item |
 | params | json | 種別ごとのパラメータ |
+
+**grant_random_item** - 重み付きランダムなアイテム付与（2026-07-21追加、migration 0057）
+```json
+{ "pool": [{ "item_id": 26, "weight": 60 }, { "item_id": 27, "weight": 30 }, { "item_id": 28, "weight": 10 }], "quantity": 1 }
+```
+- `pool`：`{item_id, weight}`の配列。重みの合計に対する比率で1件を抽選する（キャラ参加抽選の`pickWeighted`と同じアルゴリズム）
+- `quantity`：付与個数（省略時1）
+- `grant_item`は固定の1アイテムしか付与できないのに対し、こちらは「同じ行動でも結果が毎回変わりうる」アイテム入手（釣り・採掘・宝箱など）を1アクションで表現できる
+
+**アイテム使用契機のアイテム入手パターン（釣りの例）**：`action_commands`の`item_use`タイプは元々プレイヤーが手持ちアイテムを自由に選んで「使う」ボタンを押すと固定の地の文（例：「『釣り竿』を釣りをする」）を送信するだけの汎用UIで、サーバー側はどのコマンドが押されたかを認識しない（`consumes_item`/`transfers_to_target`はクライアント側のみで解釈）。そのため「特定アイテムを使うと確率で別アイテムが手に入る」仕組みは、新規サーバーコードなしに既存のイベントエンジン条件・アクションの組み合わせだけで実現できる：
+- 行動コマンド（`item_use`、`consumes_item=false`＝道具は消費しない、`visible_when_room_template_ids`で対象部屋にのみ表示）
+- イベント：`keyword`（送信文に固定フレーズが含まれるか、trigger）＋`has_item`（対象の道具を所持しているか、trigger）＋`probability`（釣れる確率、outcome）＋`has_outcome_branch=true`
+- 成功時アクション：`grant_random_item`（釣れるアイテムの重み付きプール）＋任意で`insert_dialogue`
+- 失敗時アクション：`insert_dialogue`のみ（何も得られなかった旨のナレーション）
+- 部屋を横断させたい場合（川・海など複数部屋で同じ内容にしたい場合）は、`event_definitions.room_template_id`が単一FKのため部屋ごとにイベントを複製する（2026-07-21時点の判断：複数部屋をまとめるための新規スコープ概念は未実装）
+
+World4の実例（`server/src/db/repositories/`経由で投入済み）：`釣り竿`（運動用品・レジャー用品カテゴリ、雑貨屋・コンビニで購入可）を持って河川敷の土手／海岸で「釣りをする」を実行すると、60%の確率で鮒／30%で鯉／10%で幻の巨大魚（新設`魚介`カテゴリ）のいずれかを入手する。同じ`keyword`＋`has_item`＋`probability`＋`grant_random_item`のパターンは、採掘・金属探知など他の「道具を使って確率でアイテムを得る」コンテンツにもそのまま流用できる。
 
 ### session_flags（イベント連鎖用フラグ、ルート単位・グローバル共有）
 | カラム | 型 | 備考 |

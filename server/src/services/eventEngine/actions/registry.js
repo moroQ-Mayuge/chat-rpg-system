@@ -12,6 +12,7 @@ import { executeChangeStatus } from './changeStatus.js';
 import { executeSetAddress } from './setAddress.js';
 import { executeSpendMoney } from './spendMoney.js';
 import { executeSetSceneSituation } from './setSceneSituation.js';
+import { executeGrantRandomItem } from './grantRandomItem.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -28,6 +29,7 @@ export const actionRegistry = {
   set_address: executeSetAddress,
   spend_money: executeSpendMoney,
   set_scene_situation: executeSetSceneSituation,
+  grant_random_item: executeGrantRandomItem,
 };
 
 export async function executeAction(action, execCtx) {

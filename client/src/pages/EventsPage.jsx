@@ -83,6 +83,7 @@ const ACTION_TYPES = [
   { value: 'change_outfit', label: '衣装変更' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
+  { value: 'grant_random_item', label: 'アイテム付与（重み付き抽選）' },
   { value: 'remove_item', label: 'アイテム削除' },
   { value: 'change_status', label: 'ステータス変更' },
   { value: 'set_address', label: '呼び方変更' },
@@ -148,6 +149,8 @@ function actionDefaults(type) {
     case 'grant_item':
     case 'remove_item':
       return { item_id: null, quantity: 1 };
+    case 'grant_random_item':
+      return { pool: [], quantity: 1 };
     case 'change_status':
       return { character_id: null, status_id: null, operation: 'grant', locked: false };
     case 'set_address':
@@ -1030,6 +1033,51 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             </select>
           </label>
           <label style={{ flex: 1 }}>
+            <span style={label11}>個数</span>
+            <input type="number" min="1" value={p.quantity ?? 1} onChange={(e) => setParams({ quantity: Number(e.target.value) })} />
+          </label>
+        </div>
+      )}
+
+      {action.action_type === 'grant_random_item' && (
+        <div>
+          <span style={label11}>候補アイテムと重み（例：鮫60・鯖30・レア鱚10 → 鮫が60/100の確率）</span>
+          {(p.pool ?? []).map((entry, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+              <select
+                style={{ flex: 2 }}
+                value={entry.item_id ?? ''}
+                onChange={(e) => {
+                  const pool = [...p.pool];
+                  pool[idx] = { ...pool[idx], item_id: Number(e.target.value) || null };
+                  setParams({ pool });
+                }}
+              >
+                <option value="">選択してください</option>
+                {(items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                style={{ flex: 1 }}
+                placeholder="重み"
+                value={entry.weight ?? 1}
+                onChange={(e) => {
+                  const pool = [...p.pool];
+                  pool[idx] = { ...pool[idx], weight: Number(e.target.value) };
+                  setParams({ pool });
+                }}
+              />
+              <button onClick={() => setParams({ pool: p.pool.filter((_, i) => i !== idx) })}>削除</button>
+            </div>
+          ))}
+          <button onClick={() => setParams({ pool: [...(p.pool ?? []), { item_id: null, weight: 1 }] })}>+ 候補を追加</button>
+          <label style={{ display: 'block', marginTop: 8 }}>
             <span style={label11}>個数</span>
             <input type="number" min="1" value={p.quantity ?? 1} onChange={(e) => setParams({ quantity: Number(e.target.value) })} />
           </label>
