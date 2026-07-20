@@ -10,6 +10,19 @@ function findFirstFile(dir, extension) {
   return match ? path.join(dir, match) : null;
 }
 
+// Settings-page-picked paths are stored relative to config.koboldcppDir (e.g.
+// "models/llm/foo.gguf"), not relative to whatever the Node process's cwd
+// happens to be at launch time -- npm workspaces runs this server with cwd
+// set to server/, not the repo root, so resolving a bare relative path with
+// fs.existsSync()/as a spawn() arg directly would silently look in the wrong
+// place (server/models/... instead of koboldcpp/models/...). An
+// already-absolute path (e.g. one typed by hand, like sd_lora_path
+// historically) is left untouched.
+function resolveModelPath(storedPath) {
+  if (!storedPath) return storedPath;
+  return path.isAbsolute(storedPath) ? storedPath : path.join(config.koboldcppDir, storedPath);
+}
+
 function resolveExePath() {
   const direct = path.join(config.koboldcppDir, 'koboldcpp.exe');
   if (fs.existsSync(direct)) return direct;
@@ -31,16 +44,13 @@ export function launchKoboldcpp() {
     throw new Error('koboldcpp.exeが見つかりません。koboldcpp/koboldcpp.exe に配置してください。');
   }
 
-  const {
-    llm_model_path,
-    sd_model_path,
-    sd_quant,
-    sd_lora_path,
-    sd_lora_multiplier,
-    sd_architecture,
-    sd_vae_path,
-    sd_clip1_path,
-  } = getLaunchSettings();
+  const settings = getLaunchSettings();
+  const { sd_quant, sd_lora_multiplier, sd_architecture } = settings;
+  const llm_model_path = resolveModelPath(settings.llm_model_path);
+  const sd_model_path = resolveModelPath(settings.sd_model_path);
+  const sd_lora_path = resolveModelPath(settings.sd_lora_path);
+  const sd_vae_path = resolveModelPath(settings.sd_vae_path);
+  const sd_clip1_path = resolveModelPath(settings.sd_clip1_path);
   const isAnima = sd_architecture === 'anima';
 
   const llmModel = llm_model_path || findFirstFile(path.join(config.koboldcppDir, 'models', 'llm'), '.gguf');

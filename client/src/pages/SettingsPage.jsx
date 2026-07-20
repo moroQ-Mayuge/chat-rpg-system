@@ -574,8 +574,10 @@ function TestGenerateSection() {
 }
 
 // Builds <option> entries for a model-file <select> from a plain filename
-// list, resolving the selected filename back to the full disk path the
-// launcher/repo expect (koboldcpp/models/<subdir>/<filename>).
+// list, resolving the selected filename back to the path stored/expected by
+// the launcher (models/<subdir>/<filename>, relative to koboldcpp/ itself —
+// see koboldcppLauncher.js's resolveModelPath for why it's relative to that
+// and not the repo root).
 function modelFileOptions(files, currentPath, placeholder) {
   const currentFilename = currentPath ? currentPath.split(/[\\/]/).pop() : '';
   const options = [...files];
@@ -612,8 +614,11 @@ function KoboldcppLaunchSettingsSection() {
   const sdModelSubdir = architecture === 'anima' ? 'anima' : 'sd';
   const sdModelChoices = modelFiles?.[sdModelSubdir] ?? [];
 
+  // Stored relative to koboldcpp/ (not the repo root) so the server can
+  // resolve it against config.koboldcppDir regardless of its own process cwd
+  // (see koboldcppLauncher.js's resolveModelPath).
   function setModelPath(field, subdir, filename) {
-    setForm({ ...form, [field]: filename ? `koboldcpp/models/${subdir}/${filename}` : '' });
+    setForm({ ...form, [field]: filename ? `models/${subdir}/${filename}` : '' });
   }
 
   return (
