@@ -4,7 +4,8 @@ import { broadcast } from '../../../ws/rooms.js';
 import { generateChatCompletion } from '../../koboldClient.js';
 import { serializeCharacter } from '../../characterSheetFormat.js';
 import { getUndressStateLines } from '../../undressState.js';
-import { resolveMentionedSingle } from '../mentionResolution.js';
+import { resolveMentionedList, resolveMentionedSingle } from '../mentionResolution.js';
+import { resolveTargetToken, buildParticipantsByName } from '../placeholderResolution.js';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -47,6 +48,25 @@ async function generateNarrationLine(promptHint) {
   return rawText.trim();
 }
 
+// Resolves ${target1}/${target2}/${キャラ名} tokens in a fixed narration/
+// dialogue text to the referenced participant's display name (same token
+// grammar as generate_image's prompt_override, see placeholderResolution.js
+// -- a ".category" suffix has no meaning for a name and is simply dropped).
+// Candidate priority mirrors generateImage.js minus target_character_ids
+// (insert_dialogue has no such param): @mention this turn, else everyone
+// currently present.
+function resolvePlaceholderNames(text, execCtx) {
+  if (!text) return text;
+  const participants = execCtx.session.participants;
+  const participantsByName = buildParticipantsByName(participants);
+  const mentionedIds = resolveMentionedList(execCtx.mentionedCharacterIds, null);
+  const candidateParticipants = mentionedIds.length > 0 ? participants.filter((p) => mentionedIds.includes(p.character_id)) : participants;
+  return text.replace(/\$\{([^}]+)\}/g, (match, token) => {
+    const { participant } = resolveTargetToken(token, candidateParticipants, participantsByName);
+    return participant ? participant.name : '';
+  });
+}
+
 // { mode: "fixed"|"generated", character_id?: number|null|"mentioned", text?, prompt_hint?, emotion_tag? }
 export async function executeInsertDialogue(params, execCtx) {
   const { mode, text, prompt_hint, emotion_tag } = params;
@@ -61,13 +81,13 @@ export async function executeInsertDialogue(params, execCtx) {
   }
 
   if (character_id == null) {
-    const content = mode === 'fixed' ? text : await generateNarrationLine(prompt_hint);
+    const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateNarrationLine(prompt_hint);
     const message = createMessage(execCtx.sessionId, { sender_type: 'narration', content });
     broadcast(execCtx.sessionId, { type: 'message_complete', message });
     return { inserted: 'narration' };
   }
 
-  const content = mode === 'fixed' ? text : await generateCharacterLine(character_id, prompt_hint, execCtx);
+  const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateCharacterLine(character_id, prompt_hint, execCtx);
   const message = createMessage(execCtx.sessionId, {
     sender_type: 'character',
     character_id,

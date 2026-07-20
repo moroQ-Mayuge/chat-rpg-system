@@ -13,6 +13,8 @@ import {
   useKoboldcppModelFiles,
   useLlmGenerationSettings,
   useLlmGenerationSettingsMutations,
+  useChatInputSettings,
+  useChatInputSettingsMutations,
   useStatusDisplayPreferences,
   useStatusDisplayPreferencesMutations,
 } from '../hooks/useSettings.js';
@@ -787,6 +789,41 @@ function LlmGenerationSettingsSection() {
   );
 }
 
+function ChatInputSettingsSection() {
+  const { data: settings } = useChatInputSettings();
+  const { update } = useChatInputSettingsMutations();
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+
+  if (!form) return null;
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  return (
+    <div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(form.clear_mentions_on_send)}
+          onChange={(e) => setForm({ ...form, clear_mentions_on_send: e.target.checked })}
+        />
+        送信後、メンションも含めて入力欄を全クリアする
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        オフ（デフォルト）の場合、送信後は通常の指示文だけが消え、選択中の@メンションは次のメッセージ用に入力欄へ残ります。
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
+          {update.isPending ? '保存中...' : '保存'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StartKoboldcppButton({ onStarted }) {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
@@ -870,6 +907,11 @@ export default function SettingsPage() {
               チャット応答の多様性・繰り返し抑制を調整します。プレイヤーが同じ行動を繰り返すと応答が同じ内容の繰り返しになる場合、rep_pen（繰り返しペナルティ）を上げると改善します。
             </p>
             <LlmGenerationSettingsSection />
+          </div>
+
+          <div style={cardStyle}>
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>チャット入力設定</p>
+            <ChatInputSettingsSection />
           </div>
 
           <div style={cardStyle}>

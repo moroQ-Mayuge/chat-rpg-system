@@ -1,6 +1,6 @@
 import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
-import { resolveProtagonist, getMoney } from '../db/repositories/playthroughsRepo.js';
+import { resolveProtagonist, getMoney, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 import { getUndressStateLines } from './undressState.js';
@@ -62,7 +62,13 @@ function buildProtagonistBlock(protagonist) {
 
 function buildSystemPrompt(session, participants, options = {}) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
-  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  // getPlaythrough() (not a raw world_id lookup) so its attachLabels() gives
+  // us the human-readable time-slot/season/day-of-week labels alongside
+  // current_weather -- previously fetched nowhere in this file, which is why
+  // the LLM had zero signal about time-of-day (e.g. "おはよう" regardless of
+  // the actual time slot).
+  const playthrough = getPlaythrough(session.playthrough_id);
+  const worldId = playthrough.world_id;
   const world = getWorld(worldId);
 
   // Shopping mode: is_shop room + World currency_enabled. Reuses the same
@@ -174,9 +180,26 @@ function buildSystemPrompt(session, participants, options = {}) {
     ].join('\n');
   }
 
+  // Room-session-scoped free text an event can set at runtime via
+  // set_scene_situation (e.g. "${target1}と二人きりでイチャイチャしてる"),
+  // resets automatically on room move (new room_sessions row) since it's
+  // stored on the session itself, not the room template or playthrough.
+  const sceneSituationLine = session.current_scene_situation ? `現在の場面状況：${session.current_scene_situation}` : null;
+
+  // Explicit, instruction-toned line (not just raw data) so the model
+  // actually treats it as a constraint on greetings/behavior rather than
+  // background trivia it can ignore -- e.g. without this, characters said
+  // "おはよう" (good morning) regardless of the actual in-game time slot.
+  const timeWeatherLine = [
+    `現在時刻・天候：${playthrough.current_time_slot_label ?? '不明'}／${playthrough.current_weather || '不明'}／${playthrough.current_season_label ?? '不明'}`,
+    `（${playthrough.current_day_of_week_label ?? '不明'}${playthrough.current_is_holiday ? '・休日' : ''}）。この時刻・天候・曜日と矛盾しない挨拶や言動をしてください（例：夜なのに「おはよう」と言わない）。`,
+  ].join('');
+
   return [
     `場所：${session.current_location_text}`,
     `雰囲気：${session.current_atmosphere_text}`,
+    timeWeatherLine,
+    sceneSituationLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,
     characterCards,

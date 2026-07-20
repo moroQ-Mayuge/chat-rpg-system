@@ -346,9 +346,9 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```json
 { "mode": "generated", "character_id": 3, "prompt_hint": "少し照れながら本音を漏らす一言を発言する", "emotion_tag": "blush" }
 ```
-- `mode`: `"fixed"`（`text`をそのまま挿入） / `"generated"`（`prompt_hint`をLLMへの追加指示として渡し生成させる）
+- `mode`: `"fixed"`（`text`を、`${target1}`等のプレースホルダー解決後に挿入） / `"generated"`（`prompt_hint`をLLMへの追加指示として渡し生成させる）
 - `character_id`: nullable（nullは`[NARRATION]`として扱う）。`"mentioned"`も許容（そのターンに@メンションされた先頭1人。誰もメンションされていなければ`[NARRATION]`にはフォールバックせずアクション自体をスキップする）
-- `text`: mode=fixedの場合の固定文
+- `text`: mode=fixedの場合の固定文。`generate_image`の`prompt_override`と同じ`${target1}`/`${target2}`/`${キャラ名}`プレースホルダー構文（2026-07-20追加）が使え、該当参加者の表示名に置換される——候補の優先順は`@メンション→同席者全員`（`target_character_ids`はこのアクションにはないため対象外）。`.category`サフィックスは名前解決では意味を持たないため無視される
 - `prompt_hint`: mode=generatedの場合の生成ヒント
 - `emotion_tag`: nullable。強制的に使う表情キー
 
@@ -362,6 +362,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
   - プレースホルダーの中身（性的表現を含む具体的なタグ・文章）はユーザー自身がアプリのイベントエディタ上で入力するものであり、本仕様書や実装側で内容を事前定義・生成することはしない
 - `target_character_ids`: nullable（未指定または空配列の場合：そのターンに@メンションされたキャラがいればそちらを優先、いなければ現在同席している全キャラ）。この画像に関係させるキャラの候補を絞り込む。プレースホルダーで参照されなかった候補キャラは、取りこぼし防止のためタグが自動的に末尾追加される（3.6参照）
 - `mentioned_limit`: nullable（int）。`target_character_ids`が空で@メンションへフォールバックする際、メンション順の先頭何人までを対象にするか絞り込む（null=全員）
+- `auto_append_unreferenced`: bool（デフォルト`true`）。`false`にすると上記の「取りこぼし防止」自動追加を無効化する——同席してはいるがそのシーンの描写に関与しないキャラの服装タグを混ぜたくない場合に、イベント単位でオフにできる（2026-07-20追加）
 
 **set_flag** - フラグ操作
 ```json
@@ -400,6 +401,13 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "amount": 5000 }
 ```
 - `playthroughs.money`から`amount`を減算する（`has_money`条件でのガードを前提としており、それ自体は残高不足チェックを行わない）
+
+**set_scene_situation** - 現在の場面状況を設定（2026-07-20追加）
+```json
+{ "text": "${target1}と二人きりでイチャイチャしてる" }
+```
+- `text`: `room_sessions.current_scene_situation`に書き込まれる自由記述文。`insert_dialogue`の固定文と同じ`${target1}`/`${target2}`/`${キャラ名}`プレースホルダー構文が使え、該当参加者の表示名に置換される（候補の優先順：`@メンション→同席者全員`）
+- 部屋セッションが続く限り persists し、`buildSystemPrompt`から`現在の場面状況：〜`として毎ターンLLMに渡る。次にこのアクションが再実行されて上書きされるか、部屋移動（新規セッション作成）で自動的にリセットされる
 
 ### 3.7 画像生成
 
@@ -653,6 +661,7 @@ KoboldCpp起動設定（exe引数）とは別に、生成のたびに`/v1/chat/c
 | current_atmosphere_text | text | |
 | current_atmosphere_tags | text, nullable | |
 | current_scene_image_id | FK, nullable | generated_imagesを参照。再開時・折りたたみパネルに即表示するための直近シーン画像ポインタ |
+| current_scene_situation | text | イベントアクション`set_scene_situation`（2026-07-20追加）が書き込む自由記述の「現在の場面状況」。`buildSystemPrompt`から`現在の場面状況：〜`として地の文生成に渡る。部屋セッション単位のため、部屋移動（＝新規セッション作成）で自動的に空に戻る |
 | status | text | active（滞在中）/ ended（退出済み。ended化のタイミングでルートの時間経過処理を実行） |
 
 ### room_session_characters
@@ -881,7 +890,7 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 |---|---|---|
 | id | PK | |
 | event_definition_id | FK | |
-| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time / grant_item / remove_item / change_status / set_address / spend_money |
+| action_type | text | character_join / character_leave / insert_dialogue / generate_image / set_flag / change_relationship / change_outfit / advance_time / grant_item / remove_item / change_status / set_address / spend_money / set_scene_situation |
 | params | json | 種別ごとのパラメータ |
 
 ### session_flags（イベント連鎖用フラグ、ルート単位・グローバル共有）
@@ -933,6 +942,8 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 | image_id | FK, nullable | content_type=imageの場合、generated_imagesを参照。タイムライン内に画像を割り込み挿入するために使用 |
 | emotion_tag | text, nullable | |
 | created_at | datetime | |
+
+**空メッセージ・@メンションのみ送信＝続き生成**：`POST /room-sessions/:id/messages`は、送信内容が空、または@メンショントークン（`@キャラ名`／`@周辺`）を全て取り除いた残りが空文字（trim後）の場合、実際のユーザーターンとしては扱わない（`messages`行を作成しない）——LLMへは直前の自分の応答の続きを生成させるだけの一時的な空白ターンを渡す（2026-07-20拡張：以前は完全な空文字のみが対象で、`@みお`のようなメンションのみの送信は通常のユーザーターンとして永続化されていた）。含まれていたメンションは（続き生成と判定された場合）一切使われず、`@周辺`のみの送信は周辺確認モードの指示だけが有効な「続き生成」になる。
 
 ### generated_images
 | カラム | 型 | 備考 |

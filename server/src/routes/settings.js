@@ -20,6 +20,7 @@ import { listModelFiles } from '../services/koboldcppModelFiles.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
 import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
 import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
+import { getChatInputSettings, updateChatInputSettings } from '../db/repositories/chatInputSettingsRepo.js';
 
 export const settingsRouter = Router();
 
@@ -135,6 +136,14 @@ settingsRouter.get('/status-display-preferences', (req, res) => {
 
 settingsRouter.put('/status-display-preferences', (req, res) => {
   res.json(updateStatusDisplayPreferences(req.body));
+});
+
+settingsRouter.get('/chat-input-settings', (req, res) => {
+  res.json(getChatInputSettings());
+});
+
+settingsRouter.put('/chat-input-settings', (req, res) => {
+  res.json(updateChatInputSettings(req.body));
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {

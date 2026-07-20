@@ -8,6 +8,25 @@ import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useItemsForWorld } from '../hooks/useItems.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
+import { useChatInputSettings } from '../hooks/useSettings.js';
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// After a send, extracts just the @mention tokens that were present in the
+// draft (in their original order) so they can be restored to the input --
+// used when chat_input_settings.clear_mentions_on_send is off (the default):
+// the typed instruction disappears but selected mention targets don't have
+// to be re-picked for the next message.
+function extractMentionTokens(text, names) {
+  const found = [];
+  for (const name of names) {
+    if (text.includes(`@${name}`)) found.push({ name, index: text.indexOf(`@${name}`) });
+  }
+  found.sort((a, b) => a.index - b.index);
+  return found.map((f) => `@${f.name}`);
+}
 
 // Compact renderer for a status snapshot ({self_stats, statuses, stages} —
 // same shape whether live (participant.status) or frozen at speak-time
@@ -389,6 +408,7 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('');
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
+  const { data: chatInputSettings } = useChatInputSettings();
 
   const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice } = useChatStream(id, () => {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
@@ -410,12 +430,27 @@ export default function ChatPage() {
     return participant?.expression_images.find((img) => img.llm_tag_key === emotionTag)?.image_path ?? null;
   }
 
+  // After a send, either fully clear the draft (clear_mentions_on_send=1) or
+  // -- the default -- clear everything EXCEPT the @mention tokens that were
+  // present, so a run of messages to the same target doesn't require
+  // re-picking the mention each time.
+  function clearDraftAfterSend(sentText) {
+    if (chatInputSettings?.clear_mentions_on_send) {
+      setDraft('');
+      return;
+    }
+    const names = [...(session?.participants ?? []).map((p) => p.name), '周辺'];
+    const tokens = extractMentionTokens(sentText, names);
+    setDraft(tokens.length ? `${tokens.join(' ')} ` : '');
+  }
+
   // Submitting with an empty draft is not a no-op: it's an explicit "continue
   // from here" trigger (no user action/speech), handled server-side by
   // generating the next turn without inserting a user message at all.
   async function handleSend() {
-    await sendMessage.mutateAsync(draft.trim());
-    setDraft('');
+    const sentText = draft.trim();
+    await sendMessage.mutateAsync(sentText);
+    clearDraftAfterSend(sentText);
   }
 
   async function sendText(text) {
@@ -432,11 +467,20 @@ export default function ChatPage() {
   async function sendKeywordCommand(keywordText) {
     const combined = draft.trim() ? `${draft.trim()} ${keywordText}` : keywordText;
     await sendMessage.mutateAsync(combined);
-    setDraft('');
+    clearDraftAfterSend(combined);
   }
 
+  // Toggle: re-clicking a mention that's already in the draft removes it
+  // instead of appending a second copy. The draft is a single opaque string
+  // (no structured token model), so "already present" is a substring search
+  // -- the same approach resolveMentions() uses server-side.
   function insertMention(name) {
-    setDraft((d) => (d ? `${d} @${name} ` : `@${name} `));
+    setDraft((d) => {
+      const token = `@${name}`;
+      const pattern = new RegExp(`${escapeRegExp(token)}\\s*`);
+      if (pattern.test(d)) return d.replace(pattern, '');
+      return d ? `${d} ${token} ` : `${token} `;
+    });
   }
 
   async function handleExit() {

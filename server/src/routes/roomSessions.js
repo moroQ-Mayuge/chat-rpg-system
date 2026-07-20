@@ -86,14 +86,27 @@ function resolveMentions(content, participants) {
   return { ids: ids.length > 0 ? ids : null, instanceByCharacterId };
 }
 
+// Content that's empty, OR contains nothing but @mention tokens (e.g. just
+// "@みお" with no actual instruction), is treated as "continue from here" --
+// the mention(s) are discarded entirely rather than biasing the
+// continuation toward that character (kept simple per design decision).
+function isContentOnlyMentions(content, participants) {
+  let stripped = content;
+  for (const p of withDisambiguatedNames(participants)) {
+    stripped = stripped.split(`@${p.display_name}`).join('');
+  }
+  stripped = stripped.split('@周辺').join('');
+  return stripped.trim().length === 0;
+}
+
 // Empty content is not rejected — it's an explicit "continue from here"
 // request (no user action/speech). No user message row is created for it,
 // so nothing shows up as a player turn; generateReply() below feeds the LLM
 // call a minimal ephemeral turn instead (never persisted, never displayed).
 roomSessionsRouter.post('/:id/messages', (req, res) => {
   const content = (req.body.content ?? '').trim();
-  const isContinuation = content.length === 0;
   const session = getRoomSession(req.params.id);
+  const isContinuation = content.length === 0 || isContentOnlyMentions(content, session.participants);
 
   let message = null;
   let mentionedCharacterIds = null;

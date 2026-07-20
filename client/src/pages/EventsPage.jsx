@@ -87,6 +87,7 @@ const ACTION_TYPES = [
   { value: 'change_status', label: 'ステータス変更' },
   { value: 'set_address', label: '呼び方変更' },
   { value: 'spend_money', label: '所持金消費' },
+  { value: 'set_scene_situation', label: '場面状況を設定' },
 ];
 
 function conditionDefaults(type) {
@@ -135,7 +136,7 @@ function actionDefaults(type) {
     case 'character_leave':
       return { selection_mode: 'specific', character_id: null, exit_narration: '' };
     case 'generate_image':
-      return { image_type: 'event', prompt_override: '', target_character_ids: [] };
+      return { image_type: 'event', prompt_override: '', target_character_ids: [], auto_append_unreferenced: true };
     case 'set_flag':
       return { flag_key: '', operation: 'set', value: '' };
     case 'change_relationship':
@@ -153,6 +154,8 @@ function actionDefaults(type) {
       return { character_id: null, address: '' };
     case 'spend_money':
       return { amount: 1000 };
+    case 'set_scene_situation':
+      return { text: '' };
     default:
       return {};
   }
@@ -668,12 +671,18 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             )}
           </div>
           {p.mode === 'fixed' ? (
-            <input
-              style={{ width: '100%', marginTop: 8 }}
-              placeholder="固定の台詞・ナレーション文"
-              value={p.text ?? ''}
-              onChange={(e) => setParams({ text: e.target.value })}
-            />
+            <>
+              <input
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="固定の台詞・ナレーション文（例：${target1}が顔を赤らめる）"
+                value={p.text ?? ''}
+                onChange={(e) => setParams({ text: e.target.value })}
+              />
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                ${'{キャラ名}'} で固定のキャラ名に、${'{target1}'} ${'{target2}'}
+                …で「@メンション中のキャラ（いなければ同席者全員）」の順番のキャラ名に、それぞれ置換されます。
+              </p>
+            </>
           ) : (
             <input
               style={{ width: '100%', marginTop: 8 }}
@@ -847,6 +856,14 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               </p>
             </div>
           </details>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={p.auto_append_unreferenced ?? true}
+              onChange={(e) => setParams({ auto_append_unreferenced: e.target.checked })}
+            />
+            取りこぼし防止：${'{target}'}で参照されなかった同席キャラの服装タグも自動追加する
+          </label>
         </div>
       )}
 
@@ -982,6 +999,21 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           <span style={label11}>消費する所持金</span>
           <input type="number" min="1" value={p.amount ?? 1} onChange={(e) => setParams({ amount: Number(e.target.value) })} />
         </label>
+      )}
+
+      {action.action_type === 'set_scene_situation' && (
+        <div>
+          <input
+            style={{ width: '100%' }}
+            placeholder="${target1}と二人きりでイチャイチャしてる"
+            value={p.text ?? ''}
+            onChange={(e) => setParams({ text: e.target.value })}
+          />
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            この部屋セッションが続く間（次にこのアクションが再実行されるか、部屋を移動するまで）、地の文生成のシステムプロンプトに「現在の場面状況：〜」として渡り続けます。${'{キャラ名}'}
+            ${'{target1}'} ${'{target2}'} …のプレースホルダーが使えます（`insert_dialogue`と同じ構文、名前に置換）。
+          </p>
+        </div>
       )}
 
       {(action.action_type === 'grant_item' || action.action_type === 'remove_item') && (

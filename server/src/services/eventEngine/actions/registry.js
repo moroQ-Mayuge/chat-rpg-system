@@ -11,6 +11,7 @@ import { executeRemoveItem } from './removeItem.js';
 import { executeChangeStatus } from './changeStatus.js';
 import { executeSetAddress } from './setAddress.js';
 import { executeSpendMoney } from './spendMoney.js';
+import { executeSetSceneSituation } from './setSceneSituation.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -26,6 +27,7 @@ export const actionRegistry = {
   change_status: executeChangeStatus,
   set_address: executeSetAddress,
   spend_money: executeSpendMoney,
+  set_scene_situation: executeSetSceneSituation,
 };
 
 export async function executeAction(action, execCtx) {

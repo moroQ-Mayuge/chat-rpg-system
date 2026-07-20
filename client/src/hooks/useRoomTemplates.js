@@ -56,6 +56,14 @@ export function useRoomWorldConfig(roomTemplateId, worldId) {
     queryKey: ['roomTemplates', roomTemplateId, 'worlds', worldId, 'config'],
     queryFn: () => roomTemplatesApi.getWorldConfig(roomTemplateId, worldId),
     enabled: roomTemplateId != null && worldId != null,
+    // This page holds unsaved per-slot edits in local component state; a
+    // background refetch (default: on window refocus) would replace `config`
+    // under those edits mid-session. rowsForSlot() in RoomWorldConfigPage.jsx
+    // now always re-derives untouched slots from the latest `config` rather
+    // than freezing a snapshot, so a refetch is no longer destructive -- but
+    // disabling the refocus refetch here still avoids surprising a mid-edit
+    // user with rows quietly changing under them.
+    refetchOnWindowFocus: false,
   });
 }
 

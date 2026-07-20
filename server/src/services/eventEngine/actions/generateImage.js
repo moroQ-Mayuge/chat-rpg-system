@@ -13,6 +13,7 @@ import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo
 import { broadcast } from '../../../ws/rooms.js';
 import { resolveOutfitTags } from '../../outfitTagCategories.js';
 import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetToken } from '../placeholderResolution.js';
 import { listActiveStatuses } from '../../../db/repositories/characterStatusStatesRepo.js';
 
 // Undress-state statuses (exclusive_group 'undress_state_*') can each carry
@@ -52,14 +53,7 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
   if (!promptOverride) return { text: '', referencedIds };
 
   const text = promptOverride.replace(/\$\{([^}]+)\}/g, (match, token) => {
-    const dotIndex = token.indexOf('.');
-    const base = dotIndex === -1 ? token : token.slice(0, dotIndex);
-    const categoryKey = dotIndex === -1 ? null : token.slice(dotIndex + 1);
-
-    const positionalMatch = base.match(/^target(\d+)$/);
-    const participant = positionalMatch
-      ? candidateParticipants[Number(positionalMatch[1]) - 1]
-      : participantsByName.get(base);
+    const { participant, categoryKey } = resolveTargetToken(token, candidateParticipants, participantsByName);
     if (!participant) return '';
     referencedIds.add(participant.character_id);
     const outfit = participant.current_outfit_id
@@ -71,9 +65,15 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
   return { text, referencedIds };
 }
 
-// { image_type: "scene"|"event", prompt_override?, target_character_ids?, mentioned_limit? }
+// { image_type: "scene"|"event", prompt_override?, target_character_ids?, mentioned_limit?, auto_append_unreferenced? }
 export async function executeGenerateImage(params, execCtx) {
-  const { image_type = 'event', prompt_override = null, target_character_ids = null, mentioned_limit = null } = params;
+  const {
+    image_type = 'event',
+    prompt_override = null,
+    target_character_ids = null,
+    mentioned_limit = null,
+    auto_append_unreferenced = true,
+  } = params;
   // Falls back to the player's explicit @mention (chat enhancement backlog
   // item 3c) when the event itself doesn't pin down a target — lets "whoever
   // I mentioned" resolve without the event author having to hardcode it.
@@ -109,16 +109,21 @@ export async function executeGenerateImage(params, execCtx) {
         // Candidates referenced by target_character_ids but not explicitly used
         // via a ${name} placeholder still get their tags appended, so they
         // aren't silently dropped from the generated image (SPEC.md 3.6.4).
-        const leftoverTags = candidateParticipants
-          .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
-          .map((p) =>
-            resolveOutfitTags(
-              db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id),
-              null,
-              getSuppressedOutfitFields(p.character_id, statusCtx),
-            ),
-          )
-          .filter(Boolean);
+        // auto_append_unreferenced=false (per-event opt-out) skips this
+        // entirely -- useful when the scene has onlookers who are present
+        // but not narratively part of the action being depicted.
+        const leftoverTags = auto_append_unreferenced
+          ? candidateParticipants
+              .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
+              .map((p) =>
+                resolveOutfitTags(
+                  db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id),
+                  null,
+                  getSuppressedOutfitFields(p.character_id, statusCtx),
+                ),
+              )
+              .filter(Boolean)
+          : [];
 
         const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
 

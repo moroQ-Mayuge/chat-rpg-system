@@ -48,19 +48,25 @@ export default function RoomWorldConfigPage() {
 
   if (isLoading || !worlds || !characters || !allProps || !config) return <p>読み込み中...</p>;
 
-  const currentAssignments =
-    assignments ??
-    Object.fromEntries(
-      config.slot_assignments.map((slot) => [
-        slot.slot_id,
-        slot.assignments.map((a) => ({
-          character_id: a.character_id,
-          time_slot_indices: a.time_slot_indices,
-          random_fill_mode: a.random_fill_mode ?? 'always',
-          random_probability: a.random_probability ?? 1,
-        })),
-      ]),
-    );
+  // Per-slot fallback: a slot the user hasn't touched this session must
+  // always read from the current `config` (fresh from the server), not a
+  // frozen full-map snapshot taken at the moment of the FIRST edit anywhere
+  // on the page. The old `currentAssignments` built that snapshot once via
+  // Object.fromEntries and never revisited it, so a slot absent from the
+  // snapshot (e.g. one added server-side after the snapshot was taken, or
+  // simply missed because `assignments` only ever gets one shallow copy)
+  // would fall back to `?? []` on save and silently wipe its real rows.
+  function rowsForSlot(slot) {
+    const local = assignments?.[slot.slot_id];
+    if (local) return local;
+    return slot.assignments.map((a) => ({
+      character_id: a.character_id,
+      time_slot_indices: a.time_slot_indices,
+      random_fill_mode: a.random_fill_mode ?? 'always',
+      random_probability: a.random_probability ?? 1,
+    }));
+  }
+  const currentAssignments = Object.fromEntries(config.slot_assignments.map((slot) => [slot.slot_id, rowsForSlot(slot)]));
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
 

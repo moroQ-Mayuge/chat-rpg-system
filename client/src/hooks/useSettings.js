@@ -71,6 +71,18 @@ export function useLlmGenerationSettingsMutations() {
   };
 }
 
+export function useChatInputSettings() {
+  return useQuery({ queryKey: ['chatInputSettings'], queryFn: settingsApi.getChatInputSettings });
+}
+
+export function useChatInputSettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['chatInputSettings'] });
+  return {
+    update: useMutation({ mutationFn: settingsApi.updateChatInputSettings, onSuccess: invalidate }),
+  };
+}
+
 export function useImageGenerationSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imageGenerationSettings'] });
