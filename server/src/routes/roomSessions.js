@@ -30,6 +30,9 @@ import { getImageGenerationSettings } from '../db/repositories/imageGenerationSe
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { withDisambiguatedNames } from '../services/participantNaming.js';
 import { broadcast } from '../ws/rooms.js';
+import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
+import { adjustValue, getValue } from '../db/repositories/relationshipStatesRepo.js';
+import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpdate.js';
 
 export const roomSessionsRouter = Router();
 
@@ -166,7 +169,15 @@ roomSessionsRouter.post('/:id/sell-item', (req, res) => {
   res.json({ money, message });
 });
 
-roomSessionsRouter.post('/:id/exit', (req, res) => {
+roomSessionsRouter.post('/:id/exit', async (req, res) => {
+  // Catch-up relationship auto-update (SPEC.md): force-run while the
+  // session is still active (participants still resolvable) so any turns
+  // since the last periodic check aren't lost when the session ends.
+  const session = getRoomSession(req.params.id);
+  if (session) {
+    const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
+    await maybeRunRelationshipAutoUpdate(session, world, { force: true });
+  }
   res.json(exitRoomSession(req.params.id));
 });
 
@@ -176,7 +187,7 @@ roomSessionsRouter.post('/:id/exit', (req, res) => {
 // playthrough's sub-count budget (World.movement_points_per_time_slot),
 // which only advances the time slot once exhausted. Participants flagged
 // is_accompanying follow into the new session.
-roomSessionsRouter.post('/:id/move', (req, res) => {
+roomSessionsRouter.post('/:id/move', async (req, res) => {
   const session = getRoomSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'not_found' });
 
@@ -195,6 +206,11 @@ roomSessionsRouter.post('/:id/move', (req, res) => {
   const carryOverParticipants = session.participants
     .filter((p) => p.is_accompanying)
     .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+
+  // Catch-up relationship auto-update (SPEC.md): same rationale as /exit —
+  // room移動 also ends this room_session's message stream, so any turns
+  // since the last periodic check should be captured before it does.
+  await maybeRunRelationshipAutoUpdate(session, getWorld(playthroughWorldId), { force: true });
 
   endSessionForMove(session.id);
   const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
@@ -375,6 +391,32 @@ async function generateReply(
       return;
     }
 
+    if (parsed.type === 'stat_change') {
+      // Defense in depth: even though promptBuilder.js only teaches the model
+      // this tag when the World has opted in, a base model could still emit
+      // it unprompted (same class of risk as ITEM_GRANT hallucination) --
+      // ignore it outright rather than trust the World toggle was consulted
+      // upstream.
+      if (!world.self_stat_auto_update_enabled || parsed.delta == null) return;
+      const participant = resolveParticipantFuzzy(parsed.characterName);
+      const axis = listLlmAutoUpdateEnabledAxes('self_stat').find((a) => a.name === parsed.axisName?.trim());
+      // Unresolved character/axis name (hallucination or typo) is silently
+      // dropped -- same fallback philosophy as ITEM_GRANT's category miss,
+      // but here there's no safe fallback value to apply, so the line is
+      // simply not acted on.
+      if (!participant || !axis) return;
+      const previousValue = getValue(session.playthrough_id, participant.character_id, axis.id, sessionId, participant.id);
+      const newValue = adjustValue(session.playthrough_id, participant.character_id, axis.id, 'add', parsed.delta, sessionId, participant.id);
+      if (world.notify_relationship_changes && newValue !== previousValue) {
+        const direction = newValue > previousValue ? '上がった' : '下がった';
+        broadcast(sessionId, {
+          type: 'relationship_changed',
+          description: `${participant.display_name}の${axis.name}が${direction}`,
+        });
+      }
+      return;
+    }
+
     if (forbiddenNames.has(parsed.characterName.trim())) return;
 
     const participant = resolveParticipantFuzzy(parsed.characterName);
@@ -464,6 +506,17 @@ async function generateReply(
     }
   } catch (err) {
     console.error('Event engine run failed:', err);
+  }
+
+  try {
+    // Periodic relationship auto-update (SPEC.md): no-ops internally unless
+    // world.relationship_update_interval_turns worth of user turns have
+    // elapsed since this session's last check. Wrapped separately from the
+    // event engine's try/catch so a failure here can't be misattributed to
+    // it, but for the same reason: must never block the chat response itself.
+    await maybeRunRelationshipAutoUpdate(session, world);
+  } catch (err) {
+    console.error('Relationship auto-update failed:', err);
   }
 
   broadcast(sessionId, { type: 'generation_done' });

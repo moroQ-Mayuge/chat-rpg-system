@@ -237,6 +237,16 @@ export function endSessionForMove(id) {
   return getRoomSession(id);
 }
 
+// Bookkeeping for the LLM relationship-value auto-update mechanism (SPEC.md):
+// countUserTurnsForPlaythrough() value as of the last time this session ran
+// the periodic/catch-up update, so the next check knows how many turns have
+// elapsed since. getRoomSession() already returns this column as-is via its
+// `SELECT rs.*` (see roomSessionsRepo.js's getRoomSession), so no extra read
+// path is needed beyond this setter.
+export function setRelationshipUpdateCheckpoint(sessionId, turnNumber) {
+  db.prepare('UPDATE room_sessions SET relationship_update_last_turn = ? WHERE id = ?').run(turnNumber, sessionId);
+}
+
 export function setAccompanying(sessionId, characterId, isAccompanying) {
   db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ?').run(
     isAccompanying ? 1 : 0,

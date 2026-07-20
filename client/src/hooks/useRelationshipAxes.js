@@ -10,6 +10,7 @@ export function useRelationshipAxisMutations() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['relationshipAxes'] });
   return {
     create: useMutation({ mutationFn: relationshipAxesApi.create, onSuccess: invalidate }),
+    update: useMutation({ mutationFn: ({ id, data }) => relationshipAxesApi.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: relationshipAxesApi.remove, onSuccess: invalidate }),
   };
 }

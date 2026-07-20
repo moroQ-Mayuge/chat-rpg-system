@@ -18,11 +18,13 @@ const NAME_THEN_BRACKET_PATTERN = /^([^[\]:]+?)\[(.+?)\]:\s*(.*)$/;
 const EMOTION_PATTERN = /\[EMOTION:([a-zA-Z0-9_]+)\]\s*$/;
 const EMOTION_KEY_ONLY_PATTERN = /^EMOTION:([a-zA-Z0-9_]+)$/i;
 const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
+const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
 
 // Returns null for a blank line, otherwise one of:
 //   { type: 'scene_change', description }
 //   { type: 'narration', text }
 //   { type: 'item_grant', itemName, categoryName, description }
+//   { type: 'stat_change', characterName, axisName, delta }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
 // turn (rather than merged into a previous turn) — necessary for incremental
@@ -64,6 +66,16 @@ export function parseScriptLine(rawLine) {
     // so a line missing it is still handled rather than misparsed.
     const [itemName, categoryName] = itemGrantMatch[1].split('|').map((s) => s.trim());
     return { type: 'item_grant', itemName, categoryName: categoryName || null, description: rest.trim() };
+  }
+
+  const statChangeMatch = tag.match(STAT_CHANGE_PATTERN);
+  if (statChangeMatch) {
+    // "キャラ名|軸名|符号付き整数" — same "|"-delimited shape as ITEM_GRANT.
+    // A malformed/non-numeric third field yields delta:null so the caller
+    // (roomSessions.js) can silently ignore the line rather than misapply it.
+    const [characterName, axisName, deltaStr] = statChangeMatch[1].split('|').map((s) => s.trim());
+    const delta = deltaStr != null ? parseInt(deltaStr, 10) : NaN;
+    return { type: 'stat_change', characterName, axisName, delta: Number.isNaN(delta) ? null : delta };
   }
 
   const emotionMatch = rest.match(EMOTION_PATTERN);

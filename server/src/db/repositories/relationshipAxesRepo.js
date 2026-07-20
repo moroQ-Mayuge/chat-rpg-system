@@ -15,21 +15,34 @@ export function createRelationshipAxis({
   default_value = 0,
   scope = 'relationship',
   regen_per_time_slot = null,
+  llm_auto_update_enabled = true,
 }) {
   const result = db
     .prepare(
-      'INSERT INTO relationship_axes (name, min_value, max_value, default_value, scope, regen_per_time_slot) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO relationship_axes (name, min_value, max_value, default_value, scope, regen_per_time_slot, llm_auto_update_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(name, min_value, max_value, default_value, scope, regen_per_time_slot);
+    .run(name, min_value, max_value, default_value, scope, regen_per_time_slot, llm_auto_update_enabled ? 1 : 0);
   return getRelationshipAxis(result.lastInsertRowid);
 }
 
-export function updateRelationshipAxis(id, { name, min_value, max_value, default_value, scope, regen_per_time_slot }) {
+export function updateRelationshipAxis(
+  id,
+  { name, min_value, max_value, default_value, scope, regen_per_time_slot, llm_auto_update_enabled },
+) {
   db.prepare(
     `UPDATE relationship_axes
-     SET name = ?, min_value = ?, max_value = ?, default_value = ?, scope = ?, regen_per_time_slot = ?
+     SET name = ?, min_value = ?, max_value = ?, default_value = ?, scope = ?, regen_per_time_slot = ?, llm_auto_update_enabled = ?
      WHERE id = ?`,
-  ).run(name, min_value, max_value, default_value, scope ?? 'relationship', regen_per_time_slot ?? null, id);
+  ).run(
+    name,
+    min_value,
+    max_value,
+    default_value,
+    scope ?? 'relationship',
+    regen_per_time_slot ?? null,
+    llm_auto_update_enabled === false ? 0 : 1,
+    id,
+  );
   return getRelationshipAxis(id);
 }
 
@@ -45,6 +58,14 @@ export function listRegeneratingSelfStatAxes() {
 // (statusSnapshotRepo.js) covering every self-stat, not just the drifting ones.
 export function listSelfStatAxes() {
   return db.prepare("SELECT * FROM relationship_axes WHERE scope = 'self_stat'").all();
+}
+
+// Axes eligible for the LLM auto-update mechanism (SPEC.md): scope is
+// 'self_stat' or 'relationship', filtered to llm_auto_update_enabled=1 so an
+// admin can exclude a specific axis (e.g. one meant to be changed only by
+// explicit event actions) from the LLM's free-form adjustments.
+export function listLlmAutoUpdateEnabledAxes(scope) {
+  return db.prepare('SELECT * FROM relationship_axes WHERE scope = ? AND llm_auto_update_enabled = 1').all(scope);
 }
 
 export function deleteRelationshipAxis(id) {

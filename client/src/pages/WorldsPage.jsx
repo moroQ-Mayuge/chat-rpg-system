@@ -41,6 +41,8 @@ const emptyForm = {
   currency_enabled: false,
   currency_unit: '円',
   initial_money: 0,
+  self_stat_auto_update_enabled: false,
+  relationship_update_interval_turns: '',
 };
 
 export default function WorldsPage() {
@@ -100,6 +102,8 @@ export default function WorldsPage() {
         currency_enabled: Boolean(world.currency_enabled),
         currency_unit: world.currency_unit ?? '円',
         initial_money: world.initial_money ?? 0,
+        self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
+        relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
       });
     }
   }, [editingId, worlds]);
@@ -122,6 +126,8 @@ export default function WorldsPage() {
     const payload = {
       ...form,
       max_response_tokens: form.max_response_tokens === '' ? null : Number(form.max_response_tokens),
+      relationship_update_interval_turns:
+        form.relationship_update_interval_turns === '' ? null : Number(form.relationship_update_interval_turns),
     };
     if (editingId === 'new') {
       await create.mutateAsync(payload);
@@ -494,6 +500,33 @@ export default function WorldsPage() {
               />
               関係性の変化をチャット画面に通知する
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.self_stat_auto_update_enabled}
+                onChange={(e) => setForm({ ...form, self_stat_auto_update_enabled: e.target.checked })}
+              />
+              状態値（自己ステータス）をLLMが毎送信ごとに自動増減する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              対象軸は関係性軸／自己ステータスマスター画面の「LLM自動増減の対象」で個別に除外できます。
+            </p>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              関係値の自動更新間隔（送信回数ごと、空欄で無効）
+              <input
+                type="number"
+                min="1"
+                style={{ display: 'block', width: 200 }}
+                value={form.relationship_update_interval_turns}
+                onChange={(e) => setForm({ ...form, relationship_update_interval_turns: e.target.value })}
+                placeholder="空欄で無効"
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              設定した送信回数ごと、またはセッション終了時（部屋移動・退出時）にLLMが関係値の増減を判断します。
+            </p>
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

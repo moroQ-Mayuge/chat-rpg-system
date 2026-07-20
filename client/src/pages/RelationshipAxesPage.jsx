@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { useRelationshipAxes, useRelationshipAxisMutations } from '../hooks/useRelationshipAxes.js';
 
-const emptyForm = { name: '', min_value: 0, max_value: 100, default_value: 0, scope: 'relationship', regen_per_time_slot: '' };
+const emptyForm = {
+  name: '',
+  min_value: 0,
+  max_value: 100,
+  default_value: 0,
+  scope: 'relationship',
+  regen_per_time_slot: '',
+  llm_auto_update_enabled: true,
+};
 
 export default function RelationshipAxesPage() {
   const { data: axes, isLoading } = useRelationshipAxes();
-  const { create, remove } = useRelationshipAxisMutations();
+  const { create, update, remove } = useRelationshipAxisMutations();
   const [form, setForm] = useState(emptyForm);
 
   async function handleCreate() {
@@ -20,6 +28,16 @@ export default function RelationshipAxesPage() {
   async function handleDelete(id) {
     if (!window.confirm('この関係性軸を削除しますか？（キャラの初期値も失われます）')) return;
     await remove.mutateAsync(id);
+  }
+
+  // LLMによる状態値/関係値の自動増減（SPEC.md）の対象からこの軸を個別に除外/復帰する。
+  // update APIは全フィールドを受け取る実装のため、既存値をそのまま引き回しつつ
+  // このフラグだけ反転させて送る。
+  async function handleToggleLlmAutoUpdate(axis) {
+    await update.mutateAsync({
+      id: axis.id,
+      data: { ...axis, llm_auto_update_enabled: !axis.llm_auto_update_enabled },
+    });
   }
 
   if (isLoading) return <p>読み込み中...</p>;
@@ -43,7 +61,13 @@ export default function RelationshipAxesPage() {
                 {axis.regen_per_time_slot != null && `／時間帯ごとに${axis.regen_per_time_slot > 0 ? '+' : ''}${axis.regen_per_time_slot}`}
               </span>
             </span>
-            <button onClick={() => handleDelete(axis.id)}>削除</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <label style={{ fontSize: 11, color: '#888', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="checkbox" checked={Boolean(axis.llm_auto_update_enabled)} onChange={() => handleToggleLlmAutoUpdate(axis)} />
+                LLM自動増減の対象
+              </label>
+              <button onClick={() => handleDelete(axis.id)}>削除</button>
+            </div>
           </div>
         ))}
       </div>
@@ -86,6 +110,14 @@ export default function RelationshipAxesPage() {
             />
           </label>
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={form.llm_auto_update_enabled}
+            onChange={(e) => setForm({ ...form, llm_auto_update_enabled: e.target.checked })}
+          />
+          LLMによる自動増減の対象にする（状態値は毎送信ごと、関係値はWorld設定の間隔ごと）
+        </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={handleCreate} disabled={!form.name}>
             追加

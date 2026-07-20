@@ -9,6 +9,8 @@ import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCateg
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
+import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
+import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 
 const HISTORY_LIMIT = 20;
 
@@ -180,6 +182,32 @@ function buildSystemPrompt(session, participants, options = {}) {
     ].join('\n');
   }
 
+  // Status-value auto-update (SPEC.md): World opt-in (self_stat_auto_update_enabled,
+  // default off -- new/unpredictable model behavior). Piggybacks on this same
+  // per-turn completion via a STAT_CHANGE tag rather than a second LLM call
+  // every message (unlike the periodic relationship auto-update, which can
+  // afford a follow-up call since it only runs every N turns -- see
+  // relationshipAutoUpdate.js). Axis eligibility is per-axis
+  // (llm_auto_update_enabled), so an admin can exclude specific self-stats
+  // from the LLM's free-form adjustments.
+  let statBlock = null;
+  const selfStatAxes = world.self_stat_auto_update_enabled ? listLlmAutoUpdateEnabledAxes('self_stat') : [];
+  if (selfStatAxes.length > 0) {
+    const statLines = disambiguated.map((p) => {
+      const values = selfStatAxes
+        .map((axis) => `${axis.name}${getValue(session.playthrough_id, p.character_id, axis.id, session.id, p.id)}/${axis.max_value}`)
+        .join('、');
+      return `${p.display_name}：${values}`;
+    });
+    statBlock = [
+      '[状態値について]',
+      '各キャラクターの現在の状態値：',
+      ...statLines,
+      '物語上、状態値が変化する出来事があった場合のみ、以下の形式で出力してください（任意）：',
+      '[STAT_CHANGE: キャラ名|軸名|符号付き整数]',
+    ].join('\n');
+  }
+
   // Room-session-scoped free text an event can set at runtime via
   // set_scene_situation (e.g. "${target1}と二人きりでイチャイチャしてる"),
   // resets automatically on room move (new room_sessions row) since it's
@@ -211,6 +239,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
     '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）',
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（キャラクターが物語上、実際にユーザーへ具体的な物を渡した場合のみ。世間話や比喩表現では使わない）。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
+    statBlock ? '[STAT_CHANGE: キャラ名|軸名|符号付き整数]: 状態値が変化した場合のみ（任意）' : null,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
     departedNames.length > 0
@@ -220,6 +249,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     noSelfSpeechRule,
     surroundingsBlock,
     shopBlock,
+    statBlock,
     '',
     '出力例（場所が変わった場合）：',
     '[SCENE_CHANGE]: 夕暮れの校門前',
@@ -231,6 +261,10 @@ function buildSystemPrompt(session, participants, options = {}) {
     `[ITEM_GRANT: 手作りクッキー|${itemCategoryNames[0] ?? '未分類'}]: みおが焼いた素朴な味のクッキー`,
     '[NARRATION]: みおは小さな包みを差し出した。',
     '',
+    statBlock ? '出力例（状態値が変化した場合）：' : null,
+    statBlock ? '[NARRATION]: 激しい運動で息が上がっている。' : null,
+    statBlock ? `[STAT_CHANGE: ${disambiguated[0]?.display_name ?? 'みお'}|${selfStatAxes[0]?.name ?? '体力'}|-10]` : null,
+    statBlock ? '' : null,
     '❌ 誤った例（名前がブラケットの外に出ている）: 陽葵[困り顔]: 今日は暇だなあ',
     '✅ 正しい例: [陽葵]: 今日は暇だなあ [EMOTION:smile]',
   ].join('\n');

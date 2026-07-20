@@ -382,6 +382,12 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - `operation`: `"add"` / `"subtract"` / `"set"`
 - `value`: int（RelationshipAxisのmin/maxでクランプする）。change_status/set_addressも`character_id`の`"all_present"`/`"mentioned"`/`mentioned_limit`の扱いは同じ
 
+**LLMによる状態値/関係値の自動増減（2026-07-20追加、migration 0056）**：上記`change_relationship`/自己ステータスの時間経過回復（`applySelfStatRegen`）はどちらもイベント作者が事前に決めた固定値の変更だが、この機構はLLMがその場の物語展開に応じて増減量を自由に判断する。状態値（自己ステータス）と関係値で仕組みが異なる：
+
+- **状態値（自己ステータス、毎送信ごと）**：`worlds.self_stat_auto_update_enabled`（既定false、World単位オプトイン）が真のとき、通常の応答生成（1ターン1回のLLM呼び出し）に相乗りする形で、システムプロンプトに同席キャラ全員の現在の状態値（`scope='self_stat'`かつ`llm_auto_update_enabled=1`の軸のみ）を提示し、`[STAT_CHANGE: キャラ名|軸名|符号付き整数]`という新規出力タグ（`ITEM_GRANT`と同じ`|`区切り形式）で変化を申告させる。追加のLLM呼び出しを発生させない（毎送信ごとに実行するため、レイテンシ増を避ける設計判断）。`responseParser.js`の`parseScriptLine`が`{type:'stat_change', characterName, axisName, delta}`としてパースし、`roomSessions.js`の`handleParsedLine`がキャラ名・軸名を解決した上で`relationshipStatesRepo.js`の`adjustValue`（`operation:'add'`）を呼ぶ。キャラ名/軸名が解決できない行は黙って無視する（ITEM_GRANTのカテゴリ未一致と同じフォールバック思想）。
+- **関係値（一定送信回数ごと、またはセッション終了時）**：`worlds.relationship_update_interval_turns`（nullable、既定null=無効、World単位で送信回数を設定）が設定されているとき、`server/src/services/relationshipAutoUpdate.js`の`maybeRunRelationshipAutoUpdate`が、プレイスルー累積ユーザーターン数が前回チェックポイント（`room_sessions.relationship_update_last_turn`）から設定間隔以上進んだ時点で発火する。イベントエンジンの`llm_judge`条件と同じ「単発のプレーンなuser roleメッセージに会話を埋め込み、低温度（temperature 0.2）で応答させる」方式の**専用の追加LLM呼び出し**（間隔を空けて実行するためレイテンシ増を許容できる）で、直近の会話とキャラごとの現在の関係値（`scope='relationship'`かつ`llm_auto_update_enabled=1`の軸のみ）を提示し、「キャラ名|軸名|符号付き整数」形式の複数行、または変化なしの場合は「変化なし」で応答させる。セッションが終了する時点（`/exit`ルート、または部屋移動`/move`ルート）でも`{force:true}`で追い上げ実行され、間隔未達分の会話も取りこぼさない。
+- 両者とも`relationship_axes.llm_auto_update_enabled`（既定true）で軸ごとに対象から除外できる（関係性軸／自己ステータスマスター画面）。既存の`change_relationship`イベントアクションとは独立に動作し併用可能（同じ`adjustValue`を経由するため、しきい値連動の`axis_status_triggers`もどちらの経路でも自動的に効く）。値の変化は`world.notify_relationship_changes`が真の場合、既存の`relationship_changed`通知（チャット画面のトースト表示）で両方とも共有される。
+
 **change_outfit** - 衣装変更
 ```json
 { "character_id": 3, "outfit_id": 7 }
@@ -841,6 +847,9 @@ World単位で貨幣システムの有無・単位を設定できる（`worlds.c
 | min_value | int | |
 | max_value | int | |
 | default_value | int | |
+| scope | text | `relationship`（対あなた）／`self_stat`（キャラ自身）。migration 0023 |
+| regen_per_time_slot | int, nullable | 自己ステータスの時間経過での自然増減。migration 0023 |
+| llm_auto_update_enabled | int(bool), 既定1 | 2026-07-20追加（migration 0056）。LLMによる状態値/関係値の自動増減（後述）の対象からこの軸を個別に除外できる |
 
 ### character_relationship_defaults
 | カラム | 型 | 備考 |
