@@ -838,7 +838,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             onChange={(e) => setParams({ prompt_override: e.target.value })}
           />
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-            ${'{キャラ名}'} で固定のキャラを、${'{target1}'} ${'{target2}'} …で「対象キャラ」欄で選んだ順番のキャラを、それぞれ現在衣装のdanbooruタグに置換します（対象キャラ未選択時は同席者全員の順）。具体的な性的表現の内容はここで自由入力してください。
+            ${'{キャラ名}'} で固定のキャラを、${'{target1}'} ${'{target2}'} …で「対象キャラ」欄で選んだ順番のキャラを、それぞれ現在衣装のdanbooruタグに置換します（対象キャラ未選択時は@メンション優先→同席者全員の順）。具体的な性的表現の内容はここで自由入力してください。
           </p>
           <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
             ${'{target1.category}'} のように末尾に「.カテゴリ名」を付けると、衣装タグの一部だけを個別に指定できます（現在の脱衣状態で抑制されているタグ列は自動的に除外されます）。

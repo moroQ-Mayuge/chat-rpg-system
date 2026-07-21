@@ -91,7 +91,7 @@ export async function executeGenerateImage(params, execCtx) {
         const session = getRoomSession(execCtx.sessionId);
         const participantsByName = new Map(session.participants.map((p) => [p.name, p]));
         const candidateParticipants = effectiveTargetIds
-          ? session.participants.filter((p) => effectiveTargetIds.includes(p.character_id))
+          ? effectiveTargetIds.map((id) => session.participants.find((p) => p.character_id === id)).filter(Boolean)
           : session.participants;
 
         const settings = getImageGenerationSettings(image_type);

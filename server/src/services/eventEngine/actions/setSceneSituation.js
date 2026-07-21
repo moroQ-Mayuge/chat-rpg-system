@@ -13,7 +13,7 @@ export function executeSetSceneSituation(params, execCtx) {
   const participants = execCtx.session.participants;
   const participantsByName = buildParticipantsByName(participants);
   const mentionedIds = resolveMentionedList(execCtx.mentionedCharacterIds, null);
-  const candidateParticipants = mentionedIds.length > 0 ? participants.filter((p) => mentionedIds.includes(p.character_id)) : participants;
+  const candidateParticipants = mentionedIds.length > 0 ? mentionedIds.map((id) => participants.find((p) => p.character_id === id)).filter(Boolean) : participants;
 
   const resolvedText = text.replace(/\$\{([^}]+)\}/g, (match, token) => {
     const { participant } = resolveTargetToken(token, candidateParticipants, participantsByName);
