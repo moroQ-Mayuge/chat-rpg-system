@@ -15,6 +15,8 @@ import {
   useLlmGenerationSettingsMutations,
   useChatInputSettings,
   useChatInputSettingsMutations,
+  useImagePromptDisplaySettings,
+  useImagePromptDisplaySettingsMutations,
   useStatusDisplayPreferences,
   useStatusDisplayPreferencesMutations,
 } from '../hooks/useSettings.js';
@@ -794,6 +796,41 @@ function LlmGenerationSettingsSection() {
   );
 }
 
+function ImagePromptDisplaySettingsSection() {
+  const { data: settings } = useImagePromptDisplaySettings();
+  const { update } = useImagePromptDisplaySettingsMutations();
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+
+  if (!form) return null;
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  return (
+    <div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(form.show_image_generation_prompt)}
+          onChange={(e) => setForm({ ...form, show_image_generation_prompt: e.target.checked })}
+        />
+        生成画像の下に、生成に使ったプロンプトを折りたたみ表示する
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        オフ（デフォルト）の場合、チャット上の生成画像にプロンプト表示は出ません。オンにすると画像の下に折りたたみ（デフォルト非表示）で表示され、クリックで展開できます。
+      </p>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
+          {update.isPending ? '保存中...' : '保存'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChatInputSettingsSection() {
   const { data: settings } = useChatInputSettings();
   const { update } = useChatInputSettingsMutations();
@@ -917,6 +954,11 @@ export default function SettingsPage() {
           <div style={cardStyle}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>チャット入力設定</p>
             <ChatInputSettingsSection />
+          </div>
+
+          <div style={cardStyle}>
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>生成画像のプロンプト表示</p>
+            <ImagePromptDisplaySettingsSection />
           </div>
 
           <div style={cardStyle}>

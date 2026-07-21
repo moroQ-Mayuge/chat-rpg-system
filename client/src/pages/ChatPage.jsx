@@ -8,7 +8,7 @@ import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useItemsForWorld } from '../hooks/useItems.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
-import { useChatInputSettings } from '../hooks/useSettings.js';
+import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -422,6 +422,7 @@ export default function ChatPage() {
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
   const { data: chatInputSettings } = useChatInputSettings();
+  const { data: imagePromptDisplaySettings } = useImagePromptDisplaySettings();
 
   const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice } = useChatStream(id, () => {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
@@ -620,6 +621,12 @@ export default function ChatPage() {
             return (
               <div key={m.id} style={{ margin: '8px 0', textAlign: 'center' }}>
                 <img src={m.image_path} alt="シーン" style={{ maxWidth: '100%', borderRadius: 8 }} />
+                {imagePromptDisplaySettings?.show_image_generation_prompt && m.prompt && (
+                  <details style={{ textAlign: 'left', marginTop: 4 }}>
+                    <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>生成プロンプト</summary>
+                    <p style={{ fontSize: 11, color: '#666', whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{m.prompt}</p>
+                  </details>
+                )}
               </div>
             );
           }

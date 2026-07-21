@@ -7,8 +7,8 @@ function attachImagePath(message) {
   if (!message) return message;
   let result = message;
   if (result.content_type === 'image' && result.image_id) {
-    const image = db.prepare('SELECT file_path FROM generated_images WHERE id = ?').get(result.image_id);
-    result = { ...result, image_path: image?.file_path ?? null };
+    const image = db.prepare('SELECT file_path, prompt FROM generated_images WHERE id = ?').get(result.image_id);
+    result = { ...result, image_path: image?.file_path ?? null, prompt: image?.prompt ?? null };
   }
   if (result.mentioned_character_ids) {
     result = { ...result, mentioned_character_ids: JSON.parse(result.mentioned_character_ids) };

@@ -21,6 +21,7 @@ import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
 import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
 import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 import { getChatInputSettings, updateChatInputSettings } from '../db/repositories/chatInputSettingsRepo.js';
+import { getImagePromptDisplaySettings, updateImagePromptDisplaySettings } from '../db/repositories/imagePromptDisplaySettingsRepo.js';
 
 export const settingsRouter = Router();
 
@@ -144,6 +145,14 @@ settingsRouter.get('/chat-input-settings', (req, res) => {
 
 settingsRouter.put('/chat-input-settings', (req, res) => {
   res.json(updateChatInputSettings(req.body));
+});
+
+settingsRouter.get('/image-prompt-display-settings', (req, res) => {
+  res.json(getImagePromptDisplaySettings());
+});
+
+settingsRouter.put('/image-prompt-display-settings', (req, res) => {
+  res.json(updateImagePromptDisplaySettings(req.body));
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {

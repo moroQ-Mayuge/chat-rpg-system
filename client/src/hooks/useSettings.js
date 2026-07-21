@@ -83,6 +83,18 @@ export function useChatInputSettingsMutations() {
   };
 }
 
+export function useImagePromptDisplaySettings() {
+  return useQuery({ queryKey: ['imagePromptDisplaySettings'], queryFn: settingsApi.getImagePromptDisplaySettings });
+}
+
+export function useImagePromptDisplaySettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imagePromptDisplaySettings'] });
+  return {
+    update: useMutation({ mutationFn: settingsApi.updateImagePromptDisplaySettings, onSuccess: invalidate }),
+  };
+}
+
 export function useImageGenerationSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imageGenerationSettings'] });
