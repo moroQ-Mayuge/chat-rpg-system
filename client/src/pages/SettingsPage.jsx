@@ -897,6 +897,34 @@ function StartKoboldcppButton({ onStarted }) {
   );
 }
 
+function StopKoboldcppButton({ onStopped }) {
+  const [isStopping, setIsStopping] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleStop() {
+    if (!window.confirm('KoboldCppを終了しますか？（生成中の場合は失敗する可能性があります）')) return;
+    setIsStopping(true);
+    setError(null);
+    try {
+      await settingsApi.stopKoboldcpp();
+      onStopped();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsStopping(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={handleStop} disabled={isStopping}>
+        {isStopping ? '終了しています...' : 'KoboldCppを終了'}
+      </button>
+      {error && <p style={{ color: 'red', fontSize: 11, marginTop: 4 }}>エラー: {error}</p>}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { data: status, isLoading, refetch, isFetching } = useSettingsStatus();
 
@@ -940,6 +968,9 @@ export default function SettingsPage() {
 
             {!status.textModel.connected && (
               <StartKoboldcppButton onStarted={() => setTimeout(refetch, 3000)} />
+            )}
+            {status.textModel.connected && (
+              <StopKoboldcppButton onStopped={() => setTimeout(refetch, 1500)} />
             )}
           </div>
 

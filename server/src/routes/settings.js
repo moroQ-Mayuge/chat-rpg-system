@@ -14,7 +14,7 @@ import {
 } from '../db/repositories/imageStylePresetsRepo.js';
 import { listImageFormats, setImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { listImageGenerationSettings, updateImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
-import { launchKoboldcpp } from '../services/koboldcppLauncher.js';
+import { launchKoboldcpp, stopKoboldcpp } from '../services/koboldcppLauncher.js';
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { listModelFiles } from '../services/koboldcppModelFiles.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
@@ -159,6 +159,15 @@ settingsRouter.post('/start-koboldcpp', (req, res) => {
   try {
     const result = launchKoboldcpp();
     res.json({ started: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+settingsRouter.post('/stop-koboldcpp', async (req, res) => {
+  try {
+    const result = await stopKoboldcpp();
+    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

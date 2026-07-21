@@ -1,8 +1,11 @@
-import { spawn } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
+
+const execAsync = promisify(exec);
 
 function findFirstFile(dir, extension) {
   if (!fs.existsSync(dir)) return null;
@@ -117,4 +120,25 @@ export function launchKoboldcpp() {
   child.unref();
 
   return { pid: child.pid, sdModelIncluded: Boolean(sdModel), port };
+}
+
+// Kills by process image name rather than a tracked PID: launchKoboldcpp's
+// child is detached+unref()'d (so its PID isn't retained across a `node
+// --watch` server restart), and the user may have started koboldcpp.exe
+// directly via start-koboldcpp.bat instead of through this app. taskkill
+// exits with code 128 (rejects) when no matching process exists -- treated
+// as "already stopped" rather than an error. Checked via the documented
+// exit code rather than parsing stderr text, since that's locale-dependent
+// (verified Japanese-locale Windows: stderr comes back as a non-UTF-8
+// encoded "process not found" message, not the English string).
+export async function stopKoboldcpp() {
+  try {
+    await execAsync('taskkill /IM koboldcpp.exe /F');
+    return { stopped: true };
+  } catch (err) {
+    if (err.code === 128) {
+      return { stopped: false, reason: 'not_running' };
+    }
+    throw err;
+  }
 }
