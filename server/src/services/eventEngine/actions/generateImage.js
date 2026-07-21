@@ -100,7 +100,7 @@ export async function executeGenerateImage(params, execCtx) {
         // (0030_room_world_decoupling.sql).
         const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(execCtx.playthroughId).world_id;
         const stylePrompt = resolveStylePromptForWorld(worldId);
-        const tagParts = buildSceneTagParts(session, session.participants);
+        const tagParts = buildSceneTagParts(session, candidateParticipants);
         const basePrompt = renderPromptTemplate(settings.prompt_template, { style_preset: stylePrompt, ...tagParts });
 
         const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId };
