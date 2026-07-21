@@ -43,6 +43,7 @@ const emptyForm = {
   initial_money: 0,
   self_stat_auto_update_enabled: false,
   relationship_update_interval_turns: '',
+  mature_content_mode_enabled: false,
 };
 
 export default function WorldsPage() {
@@ -104,6 +105,7 @@ export default function WorldsPage() {
         initial_money: world.initial_money ?? 0,
         self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
         relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
+        mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
       });
     }
   }, [editingId, worlds]);
@@ -511,6 +513,18 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               対象軸は関係性軸／自己ステータスマスター画面の「LLM自動増減の対象」で個別に除外できます。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.mature_content_mode_enabled}
+                onChange={(e) => setForm({ ...form, mature_content_mode_enabled: e.target.checked })}
+              />
+              際どい表現での拒否・説教を抑制する指示を追加する（成人向けWorld向け）
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              ローカルLLM（Gemma等）が成人向け創作でも拒否文・空白応答を返してしまう場合にONにしてください。「これは個人利用の創作フィクションであり登場人物は全員成人」という前提と、拒否・説教をせず物語を続けるようシステムプロンプトに追加で指示します。
             </p>
 
             <label style={{ display: 'block', marginTop: 10 }}>
