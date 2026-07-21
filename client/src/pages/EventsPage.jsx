@@ -12,6 +12,7 @@ import GroupedList from '../components/ui/GroupedList.jsx';
 import { groupByKeys } from '../utils/grouping.js';
 import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 import { eventsApi } from '../api/events.js';
+import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 
 // scope==='global' events have no World (they apply everywhere) — bucketed
 // separately from the World-unassigned "未分類" fallback groupByKeys would
@@ -1228,6 +1229,7 @@ export default function EventsPage() {
 
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [selectedExportIds, setSelectedExportIds] = useState(new Set());
 
   useEffect(() => {
     if (selectedId === null) {
@@ -1279,6 +1281,12 @@ export default function EventsPage() {
     e.target.value = '';
     if (!file) return;
     try {
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        const result = await contentBundleApi.import(file);
+        window.alert(formatBundleImportSummary(result));
+        queryClient.invalidateQueries({ queryKey: ['eventDefinitions'] });
+        return;
+      }
       const json = JSON.parse(await file.text());
       const result = await eventsApi.import(json);
       const warnings = [];
@@ -1295,6 +1303,20 @@ export default function EventsPage() {
     }
   }
 
+  function toggleExportSelected(id) {
+    setSelectedExportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleExportSelected() {
+    if (selectedExportIds.size === 0) return;
+    await contentBundleApi.exportEventDefinitions([...selectedExportIds]);
+  }
+
   const eventGroups = buildEventGroups(definitions ?? [], worlds);
 
   function renderEventCard(def) {
@@ -1304,6 +1326,9 @@ export default function EventsPage() {
         onClick={() => selectEvent(def.id)}
         style={{
           cursor: 'pointer',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'flex-start',
           background: def.id === selectedId ? '#eef2ff' : '#f7f7f7',
           border: def.id === selectedId ? '1px solid #6366f1' : '1px solid #eee',
           borderRadius: 6,
@@ -1312,11 +1337,20 @@ export default function EventsPage() {
           marginBottom: 8,
         }}
       >
-        <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>{def.name}</p>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: '#888' }}>
-          <span>{def.scope}</span>
-          <span>優先度 {def.priority}</span>
-          {!def.enabled && <span>無効</span>}
+        <input
+          type="checkbox"
+          checked={selectedExportIds.has(def.id)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => toggleExportSelected(def.id)}
+          style={{ marginTop: 3 }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>{def.name}</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11, color: '#888' }}>
+            <span>{def.scope}</span>
+            <span>優先度 {def.priority}</span>
+            {!def.enabled && <span>無効</span>}
+          </div>
         </div>
       </div>
     );
@@ -1336,12 +1370,19 @@ export default function EventsPage() {
           >
             + 新規イベント
           </button>
-          <label style={{ display: 'block', width: '100%', marginBottom: 12 }}>
+          <label style={{ display: 'block', width: '100%', marginBottom: 8 }}>
             <span style={{ display: 'block', width: '100%', textAlign: 'center', border: '1px solid #ddd', borderRadius: 6, padding: '4px 0', cursor: 'pointer', fontSize: 13 }}>
-              インポート
+              インポート（JSON/zip）
             </span>
-            <input type="file" accept="application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+            <input type="file" accept="application/json,.json,.zip" style={{ display: 'none' }} onChange={handleImportFile} />
           </label>
+          <button
+            style={{ width: '100%', marginBottom: 12 }}
+            disabled={selectedExportIds.size === 0}
+            onClick={handleExportSelected}
+          >
+            選択したイベントをエクスポート（{selectedExportIds.size}件）
+          </button>
           <GroupedList groups={eventGroups} renderGroupItems={(group) => group.items.map(renderEventCard)} />
         </div>
 

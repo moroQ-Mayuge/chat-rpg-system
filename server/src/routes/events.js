@@ -8,11 +8,27 @@ import {
 } from '../db/repositories/eventDefinitionsRepo.js';
 import { listOverridesForTemplate, setOverride, deleteOverride } from '../db/repositories/roomTemplateEventsRepo.js';
 import { exportEventDefinitionJson, importEventDefinitionJson } from '../services/eventPortability.js';
+import { exportEventDefinitionsBundle } from '../services/contentBundle/index.js';
 
 export const eventsRouter = Router();
 
 eventsRouter.get('/event-definitions', (req, res) => {
   res.json(listEventDefinitions());
+});
+
+// Must be registered before '/:id' below -- "export-bundle" would otherwise
+// be captured as an :id value and hit getEventDefinition('export-bundle').
+eventsRouter.get('/event-definitions/export-bundle', async (req, res) => {
+  const ids = (req.query.ids ?? '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n));
+  if (ids.length === 0) return res.status(400).json({ error: 'ids_required' });
+  try {
+    const zipBuffer = await exportEventDefinitionsBundle(ids);
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="events-bundle-${ids.length}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
 });
 
 eventsRouter.get('/event-definitions/:id', (req, res) => {

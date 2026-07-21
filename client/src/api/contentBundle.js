@@ -27,6 +27,10 @@ export const contentBundleApi = {
     const { blob, filename } = await api.getBlob(`/room-templates/${id}/export-bundle?${params.toString()}`);
     triggerDownload(blob, filename);
   },
+  exportEventDefinitions: async (ids) => {
+    const { blob, filename } = await api.getBlob(`/event-definitions/export-bundle?ids=${ids.join(',')}`);
+    triggerDownload(blob, filename);
+  },
   import: (file, targetWorldId) => {
     const formData = new FormData();
     formData.append('bundle', file);

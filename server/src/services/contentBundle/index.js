@@ -18,6 +18,7 @@ import {
   importAxisStatusTriggerEntries,
   importEventDefinitionEntries,
 } from './worldSystemsBundle.js';
+import { exportEventDefinitionJson } from '../eventPortability.js';
 
 function emptyManifest() {
   return {
@@ -80,6 +81,15 @@ export async function exportRoomTemplateBundle(roomTemplateId, { includeCharacte
     manifest.characters = characterIds.map((id) => collectCharacterEntry(id, imageCollector));
   }
   return buildZip(manifest, imageCollector.entries);
+}
+
+// User-picked (checkbox-selected) events, as opposed to
+// collectEventDefinitionEntriesForWorld's "everything a World owns" --
+// no ownership inference needed since the ids are already explicit.
+export async function exportEventDefinitionsBundle(eventIds) {
+  const manifest = emptyManifest();
+  manifest.event_definitions = eventIds.map((id) => exportEventDefinitionJson(id));
+  return buildZip(manifest, []);
 }
 
 // Single shared entry point for all bundle kinds (character-only, world,
