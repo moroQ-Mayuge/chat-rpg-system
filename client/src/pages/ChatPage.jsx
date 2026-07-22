@@ -553,36 +553,38 @@ export default function ChatPage() {
         </details>
       )}
 
-      <p style={{ fontSize: 11, color: '#888', flexShrink: 0, margin: '0 0 4px' }}>
-        参加キャラ:{' '}
-        {session.participants.length === 0
-          ? 'なし'
-          : session.participants.map((p) => (
-              <span key={p.id} style={{ marginRight: 8 }}>
-                {p.name}
-                <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
-                {session.room_is_place && (
-                  <button
-                    type="button"
-                    onClick={() => toggleAccompanying(p.character_id, p.is_accompanying)}
-                    style={{
-                      fontSize: 10,
-                      marginLeft: 3,
-                      padding: '1px 5px',
-                      borderRadius: 8,
-                      border: '1px solid #ccc',
-                      background: p.is_accompanying ? '#dbeafe' : 'transparent',
-                      color: p.is_accompanying ? '#2563eb' : '#888',
-                      cursor: 'pointer',
-                    }}
-                    title="移動時に同行させるか"
-                  >
-                    {p.is_accompanying ? '同行中' : '同行させる'}
-                  </button>
-                )}
-              </span>
-            ))}
-      </p>
+      <details style={{ marginBottom: 6, flexShrink: 0 }} open={session.participants.length <= 3}>
+        <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>参加キャラ（{session.participants.length}）</summary>
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          {session.participants.length === 0
+            ? 'なし'
+            : session.participants.map((p) => (
+                <span key={p.id} style={{ marginRight: 8 }}>
+                  {p.name}
+                  <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
+                  {session.room_is_place && (
+                    <button
+                      type="button"
+                      onClick={() => toggleAccompanying(p.character_id, p.is_accompanying)}
+                      style={{
+                        fontSize: 10,
+                        marginLeft: 3,
+                        padding: '1px 5px',
+                        borderRadius: 8,
+                        border: '1px solid #ccc',
+                        background: p.is_accompanying ? '#dbeafe' : 'transparent',
+                        color: p.is_accompanying ? '#2563eb' : '#888',
+                        cursor: 'pointer',
+                      }}
+                      title="移動時に同行させるか"
+                    >
+                      {p.is_accompanying ? '同行中' : '同行させる'}
+                    </button>
+                  )}
+                </span>
+              ))}
+        </p>
+      </details>
 
       {Object.values(session.status_display_visibility.panel).some(Boolean) && (
         <details style={{ marginBottom: 6, flexShrink: 0 }}>
@@ -737,10 +739,10 @@ export default function ChatPage() {
       )}
       {itemPanel?.command_type === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, marginBottom: 4, flexShrink: 0, overflowX: 'auto' }}>
         <button
           type="button"
-          style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#15803d' }}
+          style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#15803d', flexShrink: 0 }}
           title="周辺を調査・確認する（アドベンチャー的な行動用）"
           onClick={() => insertMention('周辺')}
         >
@@ -750,7 +752,7 @@ export default function ChatPage() {
           <button
             key={p.id}
             type="button"
-            style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb' }}
+            style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb', flexShrink: 0 }}
             onClick={() => insertMention(p.name)}
           >
             @{p.name}
