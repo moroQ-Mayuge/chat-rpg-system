@@ -19,6 +19,18 @@ const SCOPE_LABELS = {
   accompanying: '同行中のみ継続（同行が続く限り引き継ぎ）',
 };
 
+// undress_state_upper_*/undress_state_lower_* (undressState.js's 4-track
+// convention) share status names across the two tracks by design (e.g. both
+// upper and lower have their own "なし"), which makes same-named rows hard
+// to tell apart at a glance in this flat list -- surface a colored badge
+// instead of making the reader parse the raw exclusive_group string.
+function undressBodyPartLabel(exclusiveGroup) {
+  if (!exclusiveGroup) return null;
+  if (exclusiveGroup.includes('_upper_')) return '上半身';
+  if (exclusiveGroup.includes('_lower_')) return '下半身';
+  return null;
+}
+
 function statusToForm(s) {
   return {
     name: s.name,
@@ -90,6 +102,21 @@ export default function CharacterStatusesPage() {
             }}
           >
             <span>
+              {undressBodyPartLabel(s.exclusive_group) && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: '#fff',
+                    background: undressBodyPartLabel(s.exclusive_group) === '上半身' ? '#2563eb' : '#ea580c',
+                    borderRadius: 4,
+                    padding: '1px 5px',
+                    marginRight: 6,
+                  }}
+                >
+                  {undressBodyPartLabel(s.exclusive_group)}
+                </span>
+              )}
               {s.name}{' '}
               <span style={{ fontSize: 11, color: '#888' }}>
                 {SCOPE_LABELS[s.persistence_scope]}
