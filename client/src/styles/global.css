@@ -43,6 +43,19 @@ body {
   gap: 16px;
 }
 
+/* Desktop: cap the list pane's height and let it scroll on its own instead
+   of growing the whole page (a World/scope with many rows, e.g. 40+
+   characters, otherwise pushes the page to several screens tall). Not
+   `align-self: start` alone -- max-height caps the box regardless of how
+   tall the grid row (driven by the editor pane) ends up. Mobile's
+   .mobile-list-open override below replaces this with a full-screen
+   overlay, so it isn't affected. */
+.sidebar-layout .sidebar-pane {
+  align-self: start;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
 /* Mobile: the sidebar list pane (.sidebar-pane) is hidden by default and
    the editor pane takes the full width — opened as a full-screen overlay
    via the .mobile-list-open modifier (see useMobileListToggle.js), closed
@@ -67,11 +80,17 @@ body {
 
   .sidebar-layout.mobile-list-open .sidebar-pane {
     display: flex !important;
+    flex-direction: column;
     position: fixed;
     inset: 0;
     z-index: 10;
     background: #fff;
     overflow: auto;
+    /* The desktop 80vh cap above (a separate, non-media-query rule) doesn't
+       get cleared just because this rule is more specific -- max-height
+       isn't redeclared there, so it'd otherwise still clip this full-screen
+       overlay down to 80vh. */
+    max-height: none;
     padding: 16px;
   }
 
