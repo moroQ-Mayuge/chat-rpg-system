@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRoomSession, useRoomSessionMutations } from '../hooks/useRoomSession.js';
@@ -419,6 +419,14 @@ export default function ChatPage() {
     playthrough?.world_id,
   );
   const [draft, setDraft] = useState('');
+  // Route param :id changes on room move without remounting ChatPage (same
+  // route pattern), so leftover draft text -- including @mention tokens kept
+  // around by clearDraftAfterSend's default "keep mentions" behavior --
+  // otherwise survives into the new room and can reference a character who
+  // isn't even present there anymore.
+  useEffect(() => {
+    setDraft('');
+  }, [id]);
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
   const { data: chatInputSettings } = useChatInputSettings();
