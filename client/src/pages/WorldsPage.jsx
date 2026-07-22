@@ -45,7 +45,34 @@ const emptyForm = {
   self_stat_auto_update_enabled: false,
   relationship_update_interval_turns: '',
   mature_content_mode_enabled: false,
+  weather_tag_map: {},
+  time_slot_tag_map: {},
 };
+
+// Per-label danbooru tag input for weather_options/time_slot_labels, so
+// image generation can pull in a matching ${weather_tags}/${time_slot_tags}
+// (see imagePromptBuilder.js's buildSceneTagParts). Keyed by the label text
+// itself rather than array index, so it keeps working if entries are
+// reordered/renamed via the TagChips editor above it.
+function TagMapEditor({ labels, map, onChange }) {
+  if (!labels || labels.length === 0) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>各項目に対応するdanbooruタグ（画像生成用、任意）</p>
+      {labels.map((label) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <span style={{ fontSize: 12, width: 70, flexShrink: 0 }}>{label}</span>
+          <input
+            style={{ flex: 1, fontSize: 12 }}
+            value={map[label] ?? ''}
+            onChange={(e) => onChange({ ...map, [label]: e.target.value })}
+            placeholder="例: cloudy"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function WorldsPage() {
   const queryClient = useQueryClient();
@@ -107,6 +134,8 @@ export default function WorldsPage() {
         self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
         relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
         mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
+        weather_tag_map: world.weather_tag_map ?? {},
+        time_slot_tag_map: world.time_slot_tag_map ?? {},
       });
     }
   }, [editingId, worlds]);
@@ -409,6 +438,11 @@ export default function WorldsPage() {
                   onChange={(tags) => setForm({ ...form, time_slot_labels: tags })}
                   placeholder="+ 時間帯を追加"
                 />
+                <TagMapEditor
+                  labels={form.time_slot_labels}
+                  map={form.time_slot_tag_map}
+                  onChange={(m) => setForm({ ...form, time_slot_tag_map: m })}
+                />
               </div>
               <div>
                 <p>天候候補</p>
@@ -416,6 +450,11 @@ export default function WorldsPage() {
                   tags={form.weather_options}
                   onChange={(tags) => setForm({ ...form, weather_options: tags })}
                   placeholder="+ 天候を追加"
+                />
+                <TagMapEditor
+                  labels={form.weather_options}
+                  map={form.weather_tag_map}
+                  onChange={(m) => setForm({ ...form, weather_tag_map: m })}
                 />
               </div>
               <div>

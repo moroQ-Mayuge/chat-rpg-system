@@ -5,6 +5,8 @@ import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
 import { resolveOutfitTags } from './outfitTagCategories.js';
+import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
+import { getWorld } from '../db/repositories/worldsRepo.js';
 
 export const MAIN_WIDTH = 1216;
 export const MAIN_HEIGHT = 832;
@@ -43,16 +45,19 @@ function webPathToFsPath(webPath) {
 // Splits out the danbooru tag sources for a scene per SPEC.md 3.7 composition
 // order (location/atmosphere tags -> prop tags -> present characters' outfit
 // tags) as separate fields, for substitution into a per-kind prompt template
-// (${location_tags}, ${atmosphere_tags}, ${prop_tags}, ${character_tags}).
-// Free-text-only fields (location/atmosphere prose, library-external props)
-// are intentionally excluded — they're LLM context only, not image tags.
+// (${location_tags}, ${atmosphere_tags}, ${prop_tags}, ${character_tags},
+// ${weather_tags}, ${time_slot_tags}). Free-text-only fields (location/
+// atmosphere prose, library-external props) are intentionally excluded —
+// they're LLM context only, not image tags.
 export function buildSceneTagParts(session, participants) {
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(session.room_template_id);
 
   // Props are placed per-World now (rooms are shared master data, see
   // 0030_room_world_decoupling.sql) — resolve the World from the session's
   // playthrough rather than the room itself.
-  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  const playthrough = getPlaythrough(session.playthrough_id);
+  const worldId = playthrough.world_id;
+  const world = getWorld(worldId);
   const propTags = db
     .prepare(
       `SELECT p.danbooru_tags FROM world_room_props wrp
@@ -75,6 +80,11 @@ export function buildSceneTagParts(session, participants) {
     atmosphere_tags: session.current_atmosphere_tags || '',
     prop_tags: propTags,
     character_tags: characterTags,
+    // Looked up by the World's current free-text weather/time-slot label
+    // (worlds.weather_tag_map/time_slot_tag_map, admin-configured per label
+    // in WorldsPage.jsx) -- '' if that label has no tag mapped yet.
+    weather_tags: world.weather_tag_map[playthrough.current_weather] ?? '',
+    time_slot_tags: world.time_slot_tag_map[playthrough.current_time_slot_label] ?? '',
   };
 }
 

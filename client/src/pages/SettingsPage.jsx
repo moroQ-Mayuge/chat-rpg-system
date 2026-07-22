@@ -174,8 +174,8 @@ const IMAGE_KIND_LABELS = {
 const IMAGE_KIND_PLACEHOLDERS = {
   standing: ['style_preset', 'character_tags', 'extra_hint'],
   expression: ['style_preset', 'character_tags', 'expression_tag', 'extra_hint'],
-  scene: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'extra_hint'],
-  event: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'extra_hint'],
+  scene: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'weather_tags', 'time_slot_tags', 'extra_hint'],
+  event: ['style_preset', 'location_tags', 'atmosphere_tags', 'prop_tags', 'character_tags', 'weather_tags', 'time_slot_tags', 'extra_hint'],
   room_background: ['style_preset', 'location_tags', 'atmosphere_tags', 'extra_hint'],
   world_thumbnail: ['style_preset', 'world_tags', 'extra_hint'],
 };
@@ -194,6 +194,8 @@ const VARIABLE_DESCRIPTIONS = {
   atmosphere_tags: 'シーンの雰囲気タグ（天候・時間帯の雰囲気など）',
   prop_tags: '部屋に配置された設備・小道具のdanbooruタグ',
   world_tags: 'World単位で設定されたイメージタグ',
+  weather_tags: '現在の天候に対してWorld編集画面で設定したdanbooruタグ（未設定の天候は空欄）',
+  time_slot_tags: '現在の時間帯に対してWorld編集画面で設定したdanbooruタグ（未設定の時間帯は空欄）',
 };
 
 // title属性でPCのホバー時にツールチップを出しつつ、タップでも同じ説明を
