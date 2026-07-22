@@ -37,6 +37,7 @@ export function usePlaythroughMutations(worldId) {
       mutationFn: ({ id, data }) => playthroughsApi.updateProtagonist(id, data),
       onSuccess: invalidate,
     }),
+    remove: useMutation({ mutationFn: (id) => playthroughsApi.remove(id), onSuccess: invalidate }),
   };
 }
 

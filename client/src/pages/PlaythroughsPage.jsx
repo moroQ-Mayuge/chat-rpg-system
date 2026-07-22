@@ -121,10 +121,15 @@ export default function PlaythroughsPage() {
   const navigate = useNavigate();
   const { data: worlds } = useWorlds();
   const { data: playthroughs, isLoading } = usePlaythroughsForWorld(worldId);
-  const { create } = usePlaythroughMutations(worldId);
+  const { create, remove } = usePlaythroughMutations(worldId);
   const [newName, setNewName] = useState('');
 
   const world = worlds?.find((w) => String(w.id) === worldId);
+
+  async function handleDelete(playthrough) {
+    if (!window.confirm(`ルート「${playthrough.name}」を削除しますか？(このルートのチャット履歴・部屋滞在も全て削除されます。元に戻せません)`)) return;
+    await remove.mutateAsync(playthrough.id);
+  }
 
   async function resume(playthroughId) {
     const activeSession = await playthroughsApi.getActiveSession(playthroughId);
@@ -157,7 +162,12 @@ export default function PlaythroughsPage() {
                   {p.current_day}日目 {p.current_time_slot_label} ／ {p.current_weather} ／ {p.current_season_label}
                 </p>
               </div>
-              <button onClick={() => resume(p.id)}>続きから</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => resume(p.id)}>続きから</button>
+                <button onClick={() => handleDelete(p)} disabled={remove.isPending}>
+                  削除
+                </button>
+              </div>
             </div>
             {world && <ProtagonistSettingsPanel playthrough={p} world={world} />}
           </div>

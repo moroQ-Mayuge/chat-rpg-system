@@ -66,8 +66,19 @@ export function createPlaythrough(worldId, name) {
   return getPlaythrough(result.lastInsertRowid);
 }
 
+// room_sessions.playthrough_id is (historically) ON DELETE NO ACTION, unlike
+// every other table that references playthroughs directly (character_*_states,
+// event_fire_history, playthrough_inventory, relationship_states, session_flags
+// are all CASCADE) -- deleting room_sessions explicitly first avoids a foreign
+// key violation, and each room_session's own dependents (messages,
+// generated_images, room_session_characters, etc.) are all CASCADE on
+// room_session_id, so they clean up automatically.
 export function deletePlaythrough(id) {
-  db.prepare('DELETE FROM playthroughs WHERE id = ?').run(id);
+  const del = db.transaction(() => {
+    db.prepare('DELETE FROM room_sessions WHERE playthrough_id = ?').run(id);
+    db.prepare('DELETE FROM playthroughs WHERE id = ?').run(id);
+  });
+  del();
   return { deleted: true };
 }
 

@@ -4,6 +4,7 @@ import {
   getPlaythrough,
   createPlaythrough,
   updateProtagonistSettings,
+  deletePlaythrough,
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
 import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory, transferItem } from '../db/repositories/inventoryRepo.js';
@@ -25,6 +26,10 @@ playthroughsRouter.get('/:id', (req, res) => {
   const playthrough = getPlaythrough(req.params.id);
   if (!playthrough) return res.status(404).json({ error: 'not_found' });
   res.json(playthrough);
+});
+
+playthroughsRouter.delete('/:id', (req, res) => {
+  res.json(deletePlaythrough(req.params.id));
 });
 
 playthroughsRouter.put('/:id/protagonist', (req, res) => {
