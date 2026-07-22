@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useLocalStorageState } from '../../hooks/useLocalStorageState.js';
+
+const setSerialize = (s) => JSON.stringify([...s]);
+const setDeserialize = (s) => new Set(JSON.parse(s));
 
 // Generalizes RoomTemplatesPage.jsx's original collapsible-World-group
 // implementation so it can be shared by any list screen. Layout-agnostic —
 // item rendering (narrow sidebar rows vs a card grid) is entirely up to
 // renderGroupItems, this component only owns the group header + collapse
 // state.
-export default function GroupedList({ groups, renderGroupItems, emptyMessage }) {
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+// storageKey (optional): when passed, which groups are collapsed persists to
+// localStorage per-caller (e.g. "characters" vs "events") so it survives a
+// reload instead of resetting to all-expanded every time.
+export default function GroupedList({ groups, renderGroupItems, emptyMessage, storageKey }) {
+  const [collapsedGroups, setCollapsedGroups] = useLocalStorageState(
+    storageKey ? `groupedList:${storageKey}:collapsed` : null,
+    new Set(),
+    { serialize: setSerialize, deserialize: setDeserialize },
+  );
 
   function toggleGroup(key) {
     setCollapsedGroups((current) => {

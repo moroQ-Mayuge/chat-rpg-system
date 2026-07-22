@@ -1383,7 +1383,7 @@ export default function EventsPage() {
           >
             選択したイベントをエクスポート（{selectedExportIds.size}件）
           </button>
-          <GroupedList groups={eventGroups} renderGroupItems={(group) => group.items.map(renderEventCard)} />
+          <GroupedList groups={eventGroups} storageKey="events" renderGroupItems={(group) => group.items.map(renderEventCard)} />
         </div>
 
         <div className="events-form" style={{ border: '1px solid #ddd', borderRadius: 8, padding: 16 }}>

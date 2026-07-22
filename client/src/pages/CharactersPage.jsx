@@ -462,7 +462,7 @@ export default function CharactersPage() {
             </label>
           ))}
         </div>
-        <GroupedList groups={characterGroups} renderGroupItems={(group) => group.items.map(renderCharacterRow)} />
+        <GroupedList groups={characterGroups} storageKey="characters" renderGroupItems={(group) => group.items.map(renderCharacterRow)} />
         <button onClick={startNew}>+ 新規キャラ</button>
         <label style={{ fontSize: 12, cursor: 'pointer' }}>
           インポート（zip）

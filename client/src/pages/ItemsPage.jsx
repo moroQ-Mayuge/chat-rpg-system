@@ -203,7 +203,7 @@ function ItemsSection({ worlds }) {
       </p>
       <div className={`sidebar-layout${mobileListOpen ? ' mobile-list-open' : ''}`} style={{ '--sidebar-width': '220px' }}>
         <div className="sidebar-pane" style={{ display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #ddd', paddingRight: 12 }}>
-          <GroupedList groups={groups} renderGroupItems={(group) => group.items.map(renderItemRow)} emptyMessage="まだアイテムがありません" />
+          <GroupedList groups={groups} storageKey="items" renderGroupItems={(group) => group.items.map(renderItemRow)} emptyMessage="まだアイテムがありません" />
           <button onClick={startNew}>+ 新規アイテム</button>
         </div>
 

@@ -83,6 +83,7 @@ export default function RoomTemplatesPage() {
 
       <GroupedList
         groups={groups}
+        storageKey="room-templates"
         emptyMessage="まだ部屋がありません"
         renderGroupItems={(group) => (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>

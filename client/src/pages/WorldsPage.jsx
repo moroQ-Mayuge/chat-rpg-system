@@ -8,6 +8,7 @@ import TagChips from '../components/ui/TagChips.jsx';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
 import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
+import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
 
 const DEFAULT_STATUS_DISPLAY_SETTINGS = {
   strip: { self_stat: false, status: false, relationship_stage: false },
@@ -70,7 +71,7 @@ export default function WorldsPage() {
   const [form, setForm] = useState(emptyForm);
   const [thumbGenerating, setThumbGenerating] = useState(false);
   const [thumbGenerateError, setThumbGenerateError] = useState(null);
-  const [sortKey, setSortKey] = useState('name');
+  const [sortKey, setSortKey] = useLocalStorageState('worlds:sortKey', 'name');
 
   useEffect(() => {
     if (editingId == null || !worlds) return;
