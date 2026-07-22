@@ -183,7 +183,21 @@ const emptyEvent = {
   prerequisite_reset_scope: 'playthrough',
   conditions: [],
   actions: [],
+  outcome_nodes: [],
 };
+
+// Mirrored in server/src/db/repositories/eventDefinitionsRepo.js and
+// server/src/services/eventEngine/index.js -- see 0061_event_outcome_nesting.sql
+// for why (form/QA-burden cap, not a schema limitation).
+const MAX_OUTCOME_NODE_DEPTH = 2;
+
+let nextOutcomeNodeKey = 1;
+// Only meaningful within one save payload (see eventDefinitionsRepo.js's
+// insertOutcomeNodes) -- a string so it can never collide with a real
+// integer id loaded from the server.
+function newOutcomeNodeId() {
+  return `new-${nextOutcomeNodeKey++}`;
+}
 
 const rowStyle = { background: '#f7f7f7', border: '1px solid #eee', borderRadius: 6, padding: 10, marginBottom: 8 };
 const rowHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 };
@@ -202,7 +216,7 @@ function MentionedLimitField({ value, onChange }) {
   );
 }
 
-function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, onChange, onRemove }) {
+function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
   const [keywordDraft, setKeywordDraft] = useState('');
@@ -220,7 +234,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <select
             value={condition.condition_type}
-            onChange={(e) => onChange({ condition_type: e.target.value, params: conditionDefaults(e.target.value) })}
+            onChange={(e) => onChange({ ...condition, condition_type: e.target.value, params: conditionDefaults(e.target.value) })}
           >
             {CONDITION_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
@@ -228,7 +242,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
               </option>
             ))}
           </select>
-          {hasOutcomeBranch && (
+          {!fixedPhase && hasOutcomeBranch && (
             <select value={condition.phase ?? 'trigger'} onChange={(e) => onChange({ ...condition, phase: e.target.value })}>
               <option value="trigger">発火条件</option>
               <option value="outcome">結果判定条件</option>
@@ -618,7 +632,10 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
     <div style={rowStyle}>
       <div style={rowHeaderStyle}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <select value={action.action_type} onChange={(e) => onChange({ action_type: e.target.value, params: actionDefaults(e.target.value) })}>
+          <select
+            value={action.action_type}
+            onChange={(e) => onChange({ ...action, action_type: e.target.value, params: actionDefaults(e.target.value) })}
+          >
             {ACTION_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
                 {t.label}
@@ -1171,6 +1188,173 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
   );
 }
 
+// A removed node takes any nested child (depth 2, the only descendant level
+// possible under the current cap) down with it, along with every
+// condition/action attached to any of them.
+function collectNodeAndDescendantIds(outcomeNodes, nodeId) {
+  const ids = new Set([nodeId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const n of outcomeNodes) {
+      if (ids.has(n.parent_node_id) && !ids.has(n.id)) {
+        ids.add(n.id);
+        changed = true;
+      }
+    }
+  }
+  return ids;
+}
+
+// Renders one nested success/failure decision point (see
+// 0061_event_outcome_nesting.sql). Unlike the root-level conditions/actions
+// lists (index-based, EventsPage's own state), this filters the SAME flat
+// draft.conditions/draft.actions/draft.outcome_nodes arrays by object
+// identity -- simpler than threading a "filtered index -> real index"
+// mapping through, and safe since these arrays' item references stay stable
+// across renders until something actually changes them.
+function OutcomeNodeEditor({
+  node,
+  depth,
+  outcomeNodes,
+  setOutcomeNodes,
+  conditions,
+  setConditions,
+  actions,
+  setActions,
+  characters,
+  axes,
+  expressionTypes,
+  items,
+  statuses,
+}) {
+  const nodeConditions = conditions.filter((c) => c.outcome_node_id === node.id);
+  const nodeActions = actions.filter((a) => a.outcome_node_id === node.id);
+
+  function removeThisNode() {
+    const idsToRemove = collectNodeAndDescendantIds(outcomeNodes, node.id);
+    setOutcomeNodes(outcomeNodes.filter((n) => !idsToRemove.has(n.id)));
+    setConditions(conditions.filter((c) => !idsToRemove.has(c.outcome_node_id)));
+    setActions(actions.filter((a) => !idsToRemove.has(a.outcome_node_id)));
+  }
+
+  return (
+    <div style={{ ...rowStyle, background: '#fff', border: '1px dashed #aaa' }}>
+      <div style={rowHeaderStyle}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <strong style={{ fontSize: 12 }}>{node.branch_key === 'success' ? '成功分岐のネスト' : '失敗分岐のネスト'}</strong>
+          <span style={label11}>結合</span>
+          <select
+            value={node.outcome_logic}
+            onChange={(e) =>
+              setOutcomeNodes(outcomeNodes.map((n) => (n.id === node.id ? { ...n, outcome_logic: e.target.value } : n)))
+            }
+          >
+            <option value="AND">AND</option>
+            <option value="OR">OR</option>
+          </select>
+        </div>
+        <button onClick={removeThisNode}>このネストを削除</button>
+      </div>
+
+      <p style={{ fontSize: 12, fontWeight: 500, margin: '8px 0 4px' }}>結果判定条件</p>
+      {nodeConditions.map((condition, i) => (
+        <ConditionEditor
+          key={i}
+          condition={condition}
+          characters={characters}
+          axes={axes}
+          items={items}
+          statuses={statuses}
+          hasOutcomeBranch
+          fixedPhase="outcome"
+          onChange={(next) => setConditions(conditions.map((c) => (c === condition ? next : c)))}
+          onRemove={() => setConditions(conditions.filter((c) => c !== condition))}
+        />
+      ))}
+      <button
+        onClick={() =>
+          setConditions([
+            ...conditions,
+            { condition_type: 'probability', params: conditionDefaults('probability'), phase: 'outcome', outcome_node_id: node.id },
+          ])
+        }
+      >
+        + 条件を追加
+      </button>
+
+      <p style={{ fontSize: 12, fontWeight: 500, margin: '8px 0 4px' }}>アクション</p>
+      {nodeActions.map((action, i) => (
+        <ActionEditor
+          key={i}
+          action={action}
+          characters={characters}
+          axes={axes}
+          expressionTypes={expressionTypes}
+          items={items}
+          statuses={statuses}
+          hasOutcomeBranch
+          onChange={(next) => setActions(actions.map((a) => (a === action ? next : a)))}
+          onRemove={() => setActions(actions.filter((a) => a !== action))}
+        />
+      ))}
+      <button
+        onClick={() =>
+          setActions([
+            ...actions,
+            { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue'), outcome: 'always', outcome_node_id: node.id },
+          ])
+        }
+      >
+        + アクションを追加
+      </button>
+
+      {depth < MAX_OUTCOME_NODE_DEPTH && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          {['success', 'failure'].map((branchKey) => {
+            const child = outcomeNodes.find((n) => n.parent_node_id === node.id && n.branch_key === branchKey);
+            if (child) {
+              return (
+                <div key={branchKey} style={{ flex: 1 }}>
+                  <OutcomeNodeEditor
+                    node={child}
+                    depth={depth + 1}
+                    outcomeNodes={outcomeNodes}
+                    setOutcomeNodes={setOutcomeNodes}
+                    conditions={conditions}
+                    setConditions={setConditions}
+                    actions={actions}
+                    setActions={setActions}
+                    characters={characters}
+                    axes={axes}
+                    expressionTypes={expressionTypes}
+                    items={items}
+                    statuses={statuses}
+                  />
+                </div>
+              );
+            }
+            return (
+              <button
+                key={branchKey}
+                style={{ flex: 1, fontSize: 11 }}
+                onClick={() =>
+                  setOutcomeNodes([
+                    ...outcomeNodes,
+                    { id: newOutcomeNodeId(), parent_node_id: node.id, branch_key: branchKey, outcome_logic: 'AND' },
+                  ])
+                }
+              >
+                + {branchKey === 'success' ? '成功' : '失敗'}時にさらにネストを追加
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OverridesSection({ eventDefinitionId }) {
   const { data: roomTemplates } = useRoomTemplates();
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -1499,6 +1683,57 @@ export default function EventsPage() {
               </>
             )}
           </div>
+
+          {draft.has_outcome_branch && (
+            <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>
+                成功/失敗のさらに先のネスト（最大{MAX_OUTCOME_NODE_DEPTH}段）
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['success', 'failure'].map((branchKey) => {
+                  const child = draft.outcome_nodes.find((n) => (n.parent_node_id ?? null) === null && n.branch_key === branchKey);
+                  if (child) {
+                    return (
+                      <div key={branchKey} style={{ flex: 1 }}>
+                        <OutcomeNodeEditor
+                          node={child}
+                          depth={1}
+                          outcomeNodes={draft.outcome_nodes}
+                          setOutcomeNodes={(next) => setDraft({ ...draft, outcome_nodes: next })}
+                          conditions={draft.conditions}
+                          setConditions={(next) => setDraft({ ...draft, conditions: next })}
+                          actions={draft.actions}
+                          setActions={(next) => setDraft({ ...draft, actions: next })}
+                          characters={characters}
+                          axes={axes}
+                          expressionTypes={expressionTypes}
+                          items={items}
+                          statuses={statuses}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={branchKey}
+                      style={{ flex: 1, fontSize: 11 }}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          outcome_nodes: [
+                            ...draft.outcome_nodes,
+                            { id: newOutcomeNodeId(), parent_node_id: null, branch_key: branchKey, outcome_logic: 'AND' },
+                          ],
+                        })
+                      }
+                    >
+                      + {branchKey === 'success' ? '成功' : '失敗'}時にさらにネストを追加
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>前提イベント（連鎖）</p>

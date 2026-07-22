@@ -39,11 +39,19 @@ eventsRouter.get('/event-definitions/:id', (req, res) => {
 
 eventsRouter.post('/event-definitions', (req, res) => {
   if (!req.body.name) return res.status(400).json({ error: 'name_required' });
-  res.status(201).json(createEventDefinition(req.body));
+  try {
+    res.status(201).json(createEventDefinition(req.body));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 eventsRouter.put('/event-definitions/:id', (req, res) => {
-  res.json(updateEventDefinition(req.params.id, req.body));
+  try {
+    res.json(updateEventDefinition(req.params.id, req.body));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 eventsRouter.delete('/event-definitions/:id', (req, res) => {

@@ -39,6 +39,51 @@ function passesPrerequisite(def, playthroughId, roomSessionId) {
   });
 }
 
+// Mirrored in server/src/db/repositories/eventDefinitionsRepo.js and
+// client/src/pages/EventsPage.jsx -- see 0061_event_outcome_nesting.sql for
+// why (form/QA-burden cap, not a schema limitation). Enforced here too
+// (not just at save time) as a defensive guard against any data that
+// somehow violates it (a stale export, a hand-edited DB row, etc.).
+const MAX_OUTCOME_NODE_DEPTH = 2;
+
+function findChildOutcomeNode(def, parentNodeId, branchKey) {
+  return def.outcome_nodes.find((n) => (n.parent_node_id ?? null) === parentNodeId && n.branch_key === branchKey);
+}
+
+// Resolves one level of the outcome tree (the root, or a nested node under
+// it) and recurses depth-first into whichever child node matches the
+// resolved branch -- so a level's own matching actions always run before its
+// descendant's, mirroring how the tree reads top-to-bottom in the editor.
+// actionResults is one shared flat array across every level (root and all
+// descended nodes): roomSessions.js's broadcastRelationshipChanges walks a
+// fired event's actionResults as a single flat list, so nesting must not
+// change that shape.
+async function resolveOutcomeLevel(def, nodeId, depth, outcomeLogic, baseCtx, buildExecCtx, actionResults) {
+  const ownConditions = def.conditions.filter(
+    (c) => (c.outcome_node_id ?? null) === nodeId && (nodeId === null ? c.phase === 'outcome' : true),
+  );
+  const results = await Promise.all(
+    ownConditions.map((condition) => evaluateCondition(condition, { ...baseCtx, eventDefinitionId: def.id })),
+  );
+  const outcome = (outcomeLogic === 'OR' ? results.some(Boolean) : results.every(Boolean)) ? 'success' : 'failure';
+
+  const ownActions = def.actions.filter((a) => (a.outcome_node_id ?? null) === nodeId);
+  for (const action of ownActions) {
+    if (action.outcome !== 'always' && action.outcome !== outcome) continue;
+    const result = await executeAction(action, buildExecCtx());
+    actionResults.push({ actionType: action.action_type, result });
+  }
+
+  if (depth < MAX_OUTCOME_NODE_DEPTH) {
+    const child = findChildOutcomeNode(def, nodeId, outcome);
+    if (child) {
+      await resolveOutcomeLevel(def, child.id, depth + 1, child.outcome_logic, baseCtx, buildExecCtx, actionResults);
+    }
+  }
+
+  return outcome;
+}
+
 function resolveExclusiveGroups(eligibleDefs) {
   const seenGroups = new Set();
   const firing = [];
@@ -107,44 +152,42 @@ export async function runEventEngine({
   const firing = resolveExclusiveGroups(eligible);
   const fired = [];
 
+  // Actions run sequentially and re-fetch session state as needed, so a
+  // character_join earlier in this same event (root or nested) is visible to
+  // a later change_relationship/generate_image action in the same firing.
+  const buildExecCtx = () => ({
+    sessionId,
+    playthroughId,
+    roomTemplateId,
+    session: getRoomSession(sessionId),
+    turnNumber,
+    mentionedCharacterIds,
+    instanceHintByCharacterId,
+  });
+
   for (const def of firing) {
-    // Success/failure outcome branching (chat enhancement backlog item 5):
-    // when enabled, a second condition set (phase='outcome') determines
-    // which of the event's actions actually run. Disabled by default so
-    // pre-existing events keep firing every action unconditionally.
+    // Success/failure outcome branching (chat enhancement backlog item 5),
+    // extended to an optional nested sub-branch under either resolved
+    // branch (see 0061_event_outcome_nesting.sql / resolveOutcomeLevel
+    // above). Disabled by default so pre-existing events keep firing every
+    // action unconditionally.
     let outcome = null;
+    const actionResults = [];
     if (def.has_outcome_branch) {
-      const outcomeConditions = def.conditions.filter((c) => c.phase === 'outcome');
-      const outcomeResults = await Promise.all(
-        outcomeConditions.map((condition) => evaluateCondition(condition, { ...baseCtx, eventDefinitionId: def.id })),
-      );
-      const outcomePassed = def.outcome_logic === 'OR' ? outcomeResults.some(Boolean) : outcomeResults.every(Boolean);
-      outcome = outcomePassed ? 'success' : 'failure';
+      outcome = await resolveOutcomeLevel(def, null, 0, def.outcome_logic, baseCtx, buildExecCtx, actionResults);
+    } else {
+      for (const action of def.actions) {
+        const result = await executeAction(action, buildExecCtx());
+        actionResults.push({ actionType: action.action_type, result });
+      }
     }
 
     // Recorded with the resolved outcome (if any) so a later event's
     // prerequisite check can require a specific success/failure result.
+    // Only the ROOT outcome is ever recorded -- nested sub-branch results
+    // are purely internal to this one firing's action selection.
     recordFire(playthroughId, def.id, turnNumber, outcome, sessionId);
 
-    const actionResults = [];
-    for (const action of def.actions) {
-      if (outcome && action.outcome !== 'always' && action.outcome !== outcome) continue;
-
-      // Actions run sequentially and re-fetch session state as needed, so a
-      // character_join earlier in this same event is visible to a later
-      // change_relationship/generate_image action in the same firing.
-      const execCtx = {
-        sessionId,
-        playthroughId,
-        roomTemplateId,
-        session: getRoomSession(sessionId),
-        turnNumber,
-        mentionedCharacterIds,
-        instanceHintByCharacterId,
-      };
-      const result = await executeAction(action, execCtx);
-      actionResults.push({ actionType: action.action_type, result });
-    }
     fired.push({ eventDefinitionId: def.id, name: def.name, outcome, actionResults });
   }
 
