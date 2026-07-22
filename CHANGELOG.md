@@ -1,5 +1,34 @@
 # 変更履歴
 
+## v0.1.4
+
+実プレイのバグ報告・UI/UX要望・データ管理要望への一括対応(9件、うち1件は大規模機能側へ差し戻し)
+
+**EventsPageのモバイルレイアウト修正 + サイドバー一覧の高さ制限**
+- `EventsPage.jsx`の`sidebar-pane`だけ`flexDirection:'column'`のインラインスタイルが漏れており、モバイル用CSS(`display:flex !important`のみでdirection未指定)がデフォルトの`row`方向になり、新規イベント/インポート/一括エクスポートボタンが横に潰れていたバグを修正。個別ページでなく共有CSSクラス側に`flex-direction: column`を追加
+- あわせて`.sidebar-pane`をデスクトップで`max-height:80vh`+独立スクロール化。項目数が多いWorld/一覧(40件超のキャラ等)がページ全体を数画面分の縦長にしていた問題を解消。モバイルの全画面オーバーレイ側は`max-height:none`で明示的に打ち消し
+
+**@メンション入力が部屋移動後もリセットされないバグの修正**
+- `ChatPage`はルートパラメータ`:id`が変わるだけで(部屋移動時)アンマウントされないため、入力欄の下書き(@メンショントークン含む)が新しい部屋にそのまま残り、存在しないキャラを指したままになる不具合を修正。`:id`変化時に下書きをクリアするeffectを追加
+
+**キャラ状態マスター一覧に上半身/下半身バッジを追加**
+- `undress_state_upper_*`/`undress_state_lower_*`は意図的に同名ステータス(「なし」等)を上下トラックで共有するため、一覧で見分けにくい問題を解消。`exclusive_group`から判定した色分けバッジ(上半身=青／下半身=橙)を表示
+
+**並び順・折りたたみ状態のlocalStorage永続化**
+- 新規`useLocalStorageState`フック(keyに`null`を渡すとフック規約を守ったまま永続化なしのプレーンな`useState`として振る舞う)を追加。`GroupedList`が`storageKey`propを受け取り、Characters/Events/Items/RoomTemplatesPageそれぞれの折りたたみグループ状態がリロード後も保持されるように。WorldsPageの並び順セレクタも同じフックで永続化
+
+**チャット画面: 参加キャラ欄の折りたたみ化 + @メンションバーの横スクロール化**
+- 参加人数が多い部屋でメインのチャットログが圧迫されていた問題に対応。参加キャラ一覧(同行させるボタン群)を`<details>`化(4人以上で既定折りたたみ、既存の「移動先」と同じパターン)、@メンションボタン行を`flex-wrap`から1行`nowrap`+横スクロールに変更
+
+**画像生成に天候・時間帯のdanbooruタグ対応を追加**
+- `worlds.weather_tag_map`/`time_slot_tag_map`(既存の自由記述`weather_options`/`time_slot_labels`のラベルをキーにしたJSONマップ)を新設し、World編集画面で天候・時間帯の選択肢ごとにdanbooruタグを個別設定可能に。`buildSceneTagParts`がプレイスルーの現在の天候/時間帯ラベルでこのマップを引き、`${weather_tags}`/`${time_slot_tags}`として既存の場所/雰囲気/小道具/キャラタグと並べてシーン・イベント画像のプロンプトテンプレートで使えるように。ラベルキー方式のため、後から選択肢を並べ替え・編集しても対応が壊れない
+
+**ルート(プレイスルー)削除機能の追加**
+- 既存の`deletePlaythrough()`は存在したが未配線かつ実際には動作しない実装だった——`room_sessions.playthrough_id`だけ他の`playthroughs`参照テーブル(`character_*_states`/`event_fire_history`/`playthrough_inventory`/`relationship_states`/`session_flags`はすべてCASCADE)と異なり`ON DELETE NO ACTION`のため、ルームセッションを持つルートを削除しようとすると必ず外部キー違反になっていた。トランザクション内で`room_sessions`を先に明示削除する形に修正し(その先の`messages`/`generated_images`等は`room_session_id`のCASCADEで自動的に片付く)、`DELETE /playthroughs/:id`ルートとルート一覧画面の削除ボタン(確認ダイアログ付き)を新設
+
+**その他**
+- 部屋版「LLMでランダム作成」ボタンは調査の結果、キャラ版のような実装が一度もされていない未実装プレースホルダーだったと判明(「Phase 5/6実装後に有効化」のdisabled固定)。今回は対応を見送り、大規模機能の検討対象として持ち越し
+
 ## v0.1.3
 
 実プレイ継続フェーズでの機能拡充・不具合修正。管理UIの一覧画面統一、部屋参加者制御の作り直し（行単位ランダム＋モブ複製）、モブキャラ概念、通貨・買い物、曜日/祝日カレンダー、LLM主導のステータス自動増減、キャラ-World明示アタッチなど
