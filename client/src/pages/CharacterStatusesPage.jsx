@@ -11,7 +11,28 @@ const emptyForm = {
   exclusive_group: '',
   default_address_on_grant: '',
   suppresses_outfit_fields: '',
+  disturbs_outfit_field: '',
+  disturbance_style: '',
 };
+
+// The 4 OUTFIT_TAG_FIELDS the undress-state ladder actually tracks
+// (undressState.js's UNDRESS_STATE_TRACKS) -- the other 15 outfit tag
+// columns have no undress-ladder concept, so they're excluded here.
+const DISTURBABLE_FIELDS = [
+  ['clothing_upper', '服装：上半身'],
+  ['clothing_upper_outer', '上着：上半身'],
+  ['clothing_lower', '服装：下半身'],
+  ['clothing_lower_outer', '上着：下半身'],
+  ['underwear_upper', '下着：上半身'],
+  ['underwear_lower', '下着：下半身'],
+];
+
+const DISTURBANCE_STYLES = [
+  ['open', '開く（ボタン式シャツ等）'],
+  ['pull', 'ずらす（チューブトップ等）'],
+  ['lift', 'たくし上げる（スカート等）'],
+  ['aside', '横にずらす（首掛けワンピ等）'],
+];
 
 const SCOPE_LABELS = {
   playthrough: '永続（部屋を移動しても持続）',
@@ -39,6 +60,8 @@ function statusToForm(s) {
     exclusive_group: s.exclusive_group ?? '',
     default_address_on_grant: s.default_address_on_grant ?? '',
     suppresses_outfit_fields: s.suppresses_outfit_fields ?? '',
+    disturbs_outfit_field: s.disturbs_outfit_field ?? '',
+    disturbance_style: s.disturbance_style ?? '',
   };
 }
 
@@ -124,6 +147,7 @@ export default function CharacterStatusesPage() {
                 {s.exclusive_group ? `／排他グループ:${s.exclusive_group}` : ''}
                 {s.default_address_on_grant ? `／付与時に呼び方を「${s.default_address_on_grant}」へ変更` : ''}
                 {s.suppresses_outfit_fields ? `／抑制する衣装タグ:${s.suppresses_outfit_fields}` : ''}
+                {s.disturbs_outfit_field && s.disturbance_style ? `／乱れ:${s.disturbs_outfit_field}=${s.disturbance_style}` : ''}
               </span>
             </span>
             <button
@@ -198,6 +222,41 @@ export default function CharacterStatusesPage() {
               placeholder="例：clothing_upper_outer,clothing_upper（このステータスがアクティブな間、画像生成タグから除外）"
             />
           </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>乱れ対象フィールド（任意）</span>
+              <select
+                style={{ width: '100%' }}
+                value={form.disturbs_outfit_field}
+                onChange={(e) => setForm({ ...form, disturbs_outfit_field: e.target.value })}
+              >
+                <option value="">なし</option>
+                {DISTURBABLE_FIELDS.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#888', display: 'block' }}>乱れスタイル（任意）</span>
+              <select
+                style={{ width: '100%' }}
+                value={form.disturbance_style}
+                onChange={(e) => setForm({ ...form, disturbance_style: e.target.value })}
+              >
+                <option value="">なし</option>
+                {DISTURBANCE_STYLES.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+            このステータスがアクティブな間、指定フィールドは（抑制されていなければ）タグを表示したまま、設定画面の「衣装の乱れ・露出タグ」で登録した固定タグを追加します（例：シャツ, open）。
+          </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button onClick={handleSave} disabled={!form.name}>
               {isNew ? '追加' : '保存'}

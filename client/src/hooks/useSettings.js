@@ -95,6 +95,18 @@ export function useImagePromptDisplaySettingsMutations() {
   };
 }
 
+export function useOutfitExposureTagSettings() {
+  return useQuery({ queryKey: ['outfitExposureTagSettings'], queryFn: settingsApi.getOutfitExposureTagSettings });
+}
+
+export function useOutfitExposureTagSettingsMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['outfitExposureTagSettings'] });
+  return {
+    update: useMutation({ mutationFn: settingsApi.updateOutfitExposureTagSettings, onSuccess: invalidate }),
+  };
+}
+
 export function useImageGenerationSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['imageGenerationSettings'] });

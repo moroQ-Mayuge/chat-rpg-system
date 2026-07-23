@@ -34,7 +34,8 @@ export function listActiveStatuses(characterId, { playthroughId, roomSessionId, 
   const effectiveInstanceId = isMobCharacter(characterId) ? roomSessionCharacterId ?? null : null;
   return db
     .prepare(
-      `SELECT css.*, cs.name, cs.persistence_scope, cs.removes_from_session, cs.exclusive_group, cs.suppresses_outfit_fields
+      `SELECT css.*, cs.name, cs.persistence_scope, cs.removes_from_session, cs.exclusive_group, cs.suppresses_outfit_fields,
+              cs.disturbs_outfit_field, cs.disturbance_style
        FROM character_status_states css
        JOIN character_statuses cs ON cs.id = css.status_id
        WHERE css.character_id = ?

@@ -30,10 +30,14 @@ export function createStatus({
   exclusive_group,
   default_address_on_grant,
   suppresses_outfit_fields,
+  disturbs_outfit_field,
+  disturbance_style,
 }) {
   const result = db
     .prepare(
-      'INSERT INTO character_statuses (name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields) VALUES (?, ?, ?, ?, ?, ?)',
+      `INSERT INTO character_statuses
+        (name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields, disturbs_outfit_field, disturbance_style)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -42,16 +46,30 @@ export function createStatus({
       exclusive_group || null,
       default_address_on_grant || null,
       suppresses_outfit_fields ?? '',
+      disturbs_outfit_field ?? '',
+      disturbance_style ?? '',
     );
   return getStatus(result.lastInsertRowid);
 }
 
 export function updateStatus(
   id,
-  { name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields },
+  {
+    name,
+    persistence_scope,
+    removes_from_session,
+    exclusive_group,
+    default_address_on_grant,
+    suppresses_outfit_fields,
+    disturbs_outfit_field,
+    disturbance_style,
+  },
 ) {
   db.prepare(
-    'UPDATE character_statuses SET name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ?, suppresses_outfit_fields = ? WHERE id = ?',
+    `UPDATE character_statuses
+     SET name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ?,
+         suppresses_outfit_fields = ?, disturbs_outfit_field = ?, disturbance_style = ?
+     WHERE id = ?`,
   ).run(
     name,
     persistence_scope,
@@ -59,6 +77,8 @@ export function updateStatus(
     exclusive_group || null,
     default_address_on_grant || null,
     suppresses_outfit_fields ?? '',
+    disturbs_outfit_field ?? '',
+    disturbance_style ?? '',
     id,
   );
   return getStatus(id);

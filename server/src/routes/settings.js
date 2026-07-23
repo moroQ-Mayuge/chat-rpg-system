@@ -22,6 +22,7 @@ import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../
 import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 import { getChatInputSettings, updateChatInputSettings } from '../db/repositories/chatInputSettingsRepo.js';
 import { getImagePromptDisplaySettings, updateImagePromptDisplaySettings } from '../db/repositories/imagePromptDisplaySettingsRepo.js';
+import { getOutfitExposureTagSettings, updateOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 
 export const settingsRouter = Router();
 
@@ -153,6 +154,14 @@ settingsRouter.get('/image-prompt-display-settings', (req, res) => {
 
 settingsRouter.put('/image-prompt-display-settings', (req, res) => {
   res.json(updateImagePromptDisplaySettings(req.body));
+});
+
+settingsRouter.get('/outfit-exposure-tag-settings', (req, res) => {
+  res.json(getOutfitExposureTagSettings());
+});
+
+settingsRouter.put('/outfit-exposure-tag-settings', (req, res) => {
+  res.json(updateOutfitExposureTagSettings(req.body));
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {

@@ -17,6 +17,8 @@ import {
   useChatInputSettingsMutations,
   useImagePromptDisplaySettings,
   useImagePromptDisplaySettingsMutations,
+  useOutfitExposureTagSettings,
+  useOutfitExposureTagSettingsMutations,
   useStatusDisplayPreferences,
   useStatusDisplayPreferencesMutations,
 } from '../hooks/useSettings.js';
@@ -833,6 +835,53 @@ function ImagePromptDisplaySettingsSection() {
   );
 }
 
+const EXPOSURE_TAG_FIELDS = [
+  ['open_tag', 'open（開く：ボタン式シャツ等）'],
+  ['pull_tag', 'pull（ずり下げる：チューブトップ等）'],
+  ['lift_tag', 'lift（たくし上げる：スカート等）'],
+  ['aside_tag', 'aside（横にずらす：首掛けワンピ等）'],
+  ['topless_tag', '上半身裸（自動判定）'],
+  ['bottomless_tag', '下半身裸（自動判定）'],
+  ['completely_nude_tag', '全裸（自動判定）'],
+  ['breast_out_tag', '胸露出（自動判定）'],
+];
+
+function OutfitExposureTagSettingsSection() {
+  const { data: settings } = useOutfitExposureTagSettings();
+  const { update } = useOutfitExposureTagSettingsMutations();
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    if (settings) setForm(settings);
+  }, [settings]);
+
+  if (!form) return null;
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(settings);
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+        {EXPOSURE_TAG_FIELDS.map(([key, label]) => (
+          <label key={key}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 2 }}>{label}</span>
+            <input
+              style={{ width: '100%' }}
+              value={form[key] ?? ''}
+              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            />
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
+          {update.isPending ? '保存中...' : '保存'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ChatInputSettingsSection() {
   const { data: settings } = useChatInputSettings();
   const { update } = useChatInputSettingsMutations();
@@ -992,6 +1041,14 @@ export default function SettingsPage() {
           <div style={cardStyle}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>生成画像のプロンプト表示</p>
             <ImagePromptDisplaySettingsSection />
+          </div>
+
+          <div style={cardStyle}>
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>衣装の乱れ・露出タグ</p>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 8px' }}>
+              キャラ状態マスターで「乱れ対象フィールド」「乱れスタイル」を設定した脱衣ラダーの段階が有効な間、画像生成プロンプトに自動で追加する固定タグです。下4つは全裸/上半身裸/下半身裸/胸露出の自動判定用タグです。
+            </p>
+            <OutfitExposureTagSettingsSection />
           </div>
 
           <div style={cardStyle}>

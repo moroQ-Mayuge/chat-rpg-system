@@ -4,7 +4,8 @@ import path from 'node:path';
 import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
-import { resolveOutfitTags } from './outfitTagCategories.js';
+import { resolveOutfitTags, getActiveOutfitStatusModifiers, computeNudityTags } from './outfitTagCategories.js';
+import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 
@@ -69,9 +70,24 @@ export function buildSceneTagParts(session, participants) {
     .filter(Boolean)
     .join(', ');
 
+  // Threads undress-state suppression/disturbance through ambient scene
+  // generation too (0064 gap-fix) -- previously this path ignored
+  // suppressedFields entirely, so an undressed character's suppressed
+  // clothing tags leaked into background scene prompts even though the
+  // event-triggered generate_image path already respected them.
+  const exposureTagSettings = getOutfitExposureTagSettings();
   const characterTags = participants
     .filter((p) => p.current_outfit_id)
-    .map((p) => resolveOutfitTags(db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id), null))
+    .map((p) => {
+      const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
+      const { suppressedFields, disturbedFieldStyles } = getActiveOutfitStatusModifiers(p.character_id, {
+        playthroughId: session.playthrough_id,
+        roomSessionId: session.id,
+      });
+      const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, exposureTagSettings);
+      const nudityTags = computeNudityTags(outfit, suppressedFields, disturbedFieldStyles, exposureTagSettings);
+      return [tags, ...nudityTags].filter(Boolean).join(', ');
+    })
     .filter(Boolean)
     .join(', ');
 
