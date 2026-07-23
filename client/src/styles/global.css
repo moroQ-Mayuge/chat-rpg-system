@@ -83,6 +83,13 @@ body {
     flex-direction: column;
     position: fixed;
     inset: 0;
+    /* inset:0 alone does not reliably cap this box to the viewport height --
+       verified live: the box grows to fit all content (e.g. 1709px for 43
+       characters) instead, so overflow:auto below never has anything to
+       scroll and content past the viewport becomes completely unreachable
+       (position:fixed also takes it out of the document's own scroll). An
+       explicit height pins it to the viewport regardless of content size. */
+    height: 100vh;
     z-index: 10;
     background: #fff;
     overflow: auto;
