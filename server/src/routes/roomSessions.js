@@ -33,6 +33,7 @@ import { broadcast } from '../ws/rooms.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { adjustValue, getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpdate.js';
+import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
 
 export const roomSessionsRouter = Router();
 
@@ -177,6 +178,7 @@ roomSessionsRouter.post('/:id/exit', async (req, res) => {
   if (session) {
     const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
     await maybeRunRelationshipAutoUpdate(session, world, { force: true });
+    await maybeRunImpressionAutoUpdate(session, world);
   }
   res.json(exitRoomSession(req.params.id));
 });
@@ -210,7 +212,9 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
   // Catch-up relationship auto-update (SPEC.md): same rationale as /exit —
   // room移動 also ends this room_session's message stream, so any turns
   // since the last periodic check should be captured before it does.
-  await maybeRunRelationshipAutoUpdate(session, getWorld(playthroughWorldId), { force: true });
+  const moveWorld = getWorld(playthroughWorldId);
+  await maybeRunRelationshipAutoUpdate(session, moveWorld, { force: true });
+  await maybeRunImpressionAutoUpdate(session, moveWorld);
 
   endSessionForMove(session.id);
   const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);

@@ -10,7 +10,7 @@ function formatAge(character) {
   return character.age_real || '不明';
 }
 
-export function serializeCharacter(character, outfit, undressStateLines = []) {
+export function serializeCharacter(character, outfit, undressStateLines = [], impressionLines = []) {
   const fields = [
     ['本名', character.full_name],
     ['あだ名', character.nickname],
@@ -35,6 +35,7 @@ export function serializeCharacter(character, outfit, undressStateLines = []) {
     ['癖口癖', character.habits],
     ['好物', character.likes],
     ['苦手', character.dislikes],
+    ...impressionLines.map((line) => [null, line]),
     ['服装', outfit?.clothing_description],
     ['装備', outfit?.equipment_description],
     ...undressStateLines.map((line) => [null, line]),

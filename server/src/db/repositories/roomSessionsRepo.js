@@ -5,6 +5,7 @@ import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
+import { ensureImpressionStatesSeeded } from './characterImpressionStatesRepo.js';
 
 const STATUS_DISPLAY_LOCATIONS = ['strip', 'panel', 'chat_log'];
 const STATUS_DISPLAY_CATEGORIES = ['self_stat', 'status', 'relationship_stage'];
@@ -199,6 +200,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)')
       .run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
+    ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     if (carryOver && options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(characterId, options.fromRoomSessionId, sessionId);
     }
@@ -212,6 +214,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)')
       .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
+    ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
       carryOverAccompanyingStatuses(carryOver.character_id, options.fromRoomSessionId, sessionId);
     }
@@ -296,6 +299,7 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
     roomSessionCharacterId = rscResult.lastInsertRowid;
   }
   ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);
+  ensureImpressionStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);
   return getRoomSession(sessionId);
 }
 

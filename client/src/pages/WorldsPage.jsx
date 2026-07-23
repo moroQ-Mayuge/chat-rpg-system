@@ -47,6 +47,7 @@ const emptyForm = {
   mature_content_mode_enabled: false,
   weather_tag_map: {},
   time_slot_tag_map: {},
+  impression_auto_update_enabled: false,
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -136,6 +137,7 @@ export default function WorldsPage() {
         mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
+        impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
       });
     }
   }, [editingId, worlds]);
@@ -580,6 +582,18 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               設定した送信回数ごと、またはセッション終了時（部屋移動・退出時）にLLMが関係値の増減を判断します。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.impression_auto_update_enabled}
+                onChange={(e) => setForm({ ...form, impression_auto_update_enabled: e.target.checked })}
+              />
+              「あなたとの関係・印象」フィールドをセッション終了時にLLMが自動更新する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              キャラ編集画面の「あなたとの関係・印象」タブでフィールドを設定しているキャラのみ対象。部屋移動・退出のたびに、直近の会話を踏まえて値を書き換えるか判断します（LLM呼び出しが追加で発生します）。
             </p>
           </div>
 

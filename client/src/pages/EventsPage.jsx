@@ -90,6 +90,7 @@ const ACTION_TYPES = [
   { value: 'set_address', label: '呼び方変更' },
   { value: 'spend_money', label: '所持金消費' },
   { value: 'set_scene_situation', label: '場面状況を設定' },
+  { value: 'set_character_impression', label: 'あなたとの関係印象を変更' },
 ];
 
 function conditionDefaults(type) {
@@ -156,6 +157,8 @@ function actionDefaults(type) {
       return { character_id: null, status_id: null, operation: 'grant', locked: false };
     case 'set_address':
       return { character_id: null, address: '' };
+    case 'set_character_impression':
+      return { character_id: null, field_key: '', value: '' };
     case 'spend_money':
       return { amount: 1000 };
     case 'set_scene_situation':
@@ -1178,6 +1181,46 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               placeholder="例：あなた♡"
               value={p.address ?? ''}
               onChange={(e) => setParams({ address: e.target.value })}
+            />
+          </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
+        </div>
+      )}
+
+      {action.action_type === 'set_character_impression' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {charOptions}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>フィールド名</span>
+            <input
+              placeholder="例：あなたとの関係"
+              value={p.field_key ?? ''}
+              onChange={(e) => setParams({ field_key: e.target.value })}
+            />
+          </label>
+          <label style={{ flex: 2, minWidth: '100%' }}>
+            <span style={label11}>新しい値</span>
+            <input
+              style={{ width: '100%' }}
+              placeholder="例：初キスしたばかりで顔を見るのが恥ずかしい"
+              value={p.value ?? ''}
+              onChange={(e) => setParams({ value: e.target.value })}
             />
           </label>
           {p.character_id === 'mentioned' && (

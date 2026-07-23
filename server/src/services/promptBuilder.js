@@ -3,6 +3,7 @@ import { serializeCharacter } from './characterSheetFormat.js';
 import { resolveProtagonist, getMoney, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
+import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -118,7 +119,13 @@ function buildSystemPrompt(session, participants, options = {}) {
       const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id, p.id);
       const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
       const undressStateLines = getUndressStateLines(session.playthrough_id, session.id, character.id);
-      return serializeCharacter(effectiveCharacter, outfit, undressStateLines);
+      // Freeform "あなたとの関係"/"あなたの印象"-style fields (0063_character_impression_fields.sql)
+      // -- only ever non-empty for characters with configured
+      // character_impression_defaults, so this is a no-op for most characters.
+      const impressionLines = listImpressionValues(session.playthrough_id, character.id, session.id, p.id)
+        .filter((f) => f.value.trim())
+        .map((f) => `${f.field_key}：${f.value}`);
+      return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines);
     })
     .join('\n');
 

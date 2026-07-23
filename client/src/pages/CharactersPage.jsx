@@ -74,10 +74,18 @@ const PERSONALITY_FIELDS = [
   ['notes', '備考'],
 ];
 
+// Pre-populated so a new character starts with a visible example rather than
+// a blank list -- these are just a starting point, freely renamed/removed.
+const DEFAULT_IMPRESSION_DEFAULTS = [
+  { field_key: 'あなたとの関係', default_value: '' },
+  { field_key: 'あなたの印象', default_value: '' },
+];
+
 const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
   is_mob: false,
+  impression_defaults: DEFAULT_IMPRESSION_DEFAULTS,
 };
 
 // Matches server/src/db/repositories/outfitsRepo.js's OUTFIT_TAG_FIELDS order.
@@ -174,7 +182,12 @@ export default function CharactersPage() {
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
     fields.is_mob = Boolean(existing.is_mob);
-    setForm({ ...fields, relationship_defaults: existing.relationship_defaults, outfits: existing.outfits });
+    setForm({
+      ...fields,
+      relationship_defaults: existing.relationship_defaults,
+      impression_defaults: existing.impression_defaults ?? [],
+      outfits: existing.outfits,
+    });
     if (existing.outfits?.length && !existing.outfits.find((o) => o.id === activeOutfitId)) {
       setActiveOutfitId(existing.outfits.find((o) => o.is_default)?.id ?? existing.outfits[0].id);
     }
@@ -205,6 +218,7 @@ export default function CharactersPage() {
   async function save() {
     const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
     payload.relationship_defaults = form.relationship_defaults;
+    payload.impression_defaults = form.impression_defaults;
     payload.attribute_tags = form.attribute_tags;
     payload.is_mob = form.is_mob;
     if (isNew) {
@@ -282,6 +296,21 @@ export default function CharactersPage() {
         d.relationship_axis_id === axisId ? { ...d, initial_value: value } : d,
       ),
     }));
+  }
+
+  function updateImpressionDefault(index, patch) {
+    setForm((f) => ({
+      ...f,
+      impression_defaults: f.impression_defaults.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+    }));
+  }
+
+  function addImpressionDefault() {
+    setForm((f) => ({ ...f, impression_defaults: [...f.impression_defaults, { field_key: '', default_value: '' }] }));
+  }
+
+  function removeImpressionDefault(index) {
+    setForm((f) => ({ ...f, impression_defaults: f.impression_defaults.filter((_, i) => i !== index) }));
   }
 
   async function addOutfit() {
@@ -538,6 +567,7 @@ export default function CharactersPage() {
                 ['appearance', '外見・衣装'],
                 ['personality', '性格・口調'],
                 ['relationships', '関係性初期値'],
+                ['impressions', 'あなたとの関係・印象'],
               ].map(([key, label]) => (
                 <button
                   key={key}
@@ -820,6 +850,36 @@ export default function CharactersPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'impressions' && (
+              <div>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 10px' }}>
+                  「あなたとの関係」「あなたの印象」のような、プレイスルーを通じて持続する自由記述フィールドです。イベントのアクション「あなたとの関係印象を変更」や、Worldの自動更新設定（下記）で書き換えられます。ここで設定するのは新しいプレイスルー開始時の初期値です。
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(form.impression_defaults ?? []).map((d, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <input
+                        style={{ width: 140, flexShrink: 0 }}
+                        placeholder="フィールド名（例：あなたとの関係）"
+                        value={d.field_key}
+                        onChange={(e) => updateImpressionDefault(i, { field_key: e.target.value })}
+                      />
+                      <input
+                        style={{ flex: 1 }}
+                        placeholder="初期値（例：ただの知り合い）"
+                        value={d.default_value}
+                        onChange={(e) => updateImpressionDefault(i, { default_value: e.target.value })}
+                      />
+                      <button onClick={() => removeImpressionDefault(i)}>削除</button>
+                    </div>
+                  ))}
+                </div>
+                <button style={{ marginTop: 8 }} onClick={addImpressionDefault}>
+                  + フィールドを追加
+                </button>
               </div>
             )}
 

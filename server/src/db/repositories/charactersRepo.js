@@ -48,8 +48,11 @@ function attachAssociations(character) {
        WHERE crd.character_id = ?`,
     )
     .all(character.id);
+  const impressionDefaults = db
+    .prepare('SELECT id, field_key, default_value FROM character_impression_defaults WHERE character_id = ? ORDER BY id ASC')
+    .all(character.id);
   const outfits = listOutfitsForCharacter(character.id);
-  return { ...character, relationship_defaults: relationshipDefaults, outfits };
+  return { ...character, relationship_defaults: relationshipDefaults, impression_defaults: impressionDefaults, outfits };
 }
 
 export function listCharacters() {
@@ -92,6 +95,22 @@ function replaceRelationshipDefaults(characterId, relationshipDefaults) {
   }
 }
 
+// Freeform (no fixed catalog, unlike relationship_defaults) -- just a
+// delete-and-reinsert of whatever {field_key, default_value} rows the client
+// sent, same convention as event_conditions/event_actions. Reinsertion order
+// doubles as display order (no separate order column needed).
+function replaceImpressionDefaults(characterId, impressionDefaults) {
+  db.prepare('DELETE FROM character_impression_defaults WHERE character_id = ?').run(characterId);
+  for (const d of impressionDefaults ?? []) {
+    if (!d.field_key?.trim()) continue;
+    db.prepare('INSERT INTO character_impression_defaults (character_id, field_key, default_value) VALUES (?, ?, ?)').run(
+      characterId,
+      d.field_key,
+      d.default_value ?? '',
+    );
+  }
+}
+
 function buildFieldValues(data) {
   const values = {};
   for (const field of CHARACTER_TEXT_FIELDS) {
@@ -111,6 +130,7 @@ export function createCharacter(data) {
     .run({ ...values, event_participation_weight: data.event_participation_weight ?? 1.0, is_mob: data.is_mob ? 1 : 0 });
   const characterId = result.lastInsertRowid;
   replaceRelationshipDefaults(characterId, data.relationship_defaults);
+  replaceImpressionDefaults(characterId, data.impression_defaults);
   createOutfit(characterId, { name: '通常', is_default: true });
   return getCharacter(characterId);
 }
@@ -127,6 +147,7 @@ export function updateCharacter(id, data) {
     id,
   });
   replaceRelationshipDefaults(id, data.relationship_defaults);
+  replaceImpressionDefaults(id, data.impression_defaults);
   return getCharacter(id);
 }
 
