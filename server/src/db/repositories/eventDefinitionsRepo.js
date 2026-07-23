@@ -15,7 +15,7 @@ function attachConditionsAndActions(def) {
   // A pre-nesting event simply has none of these; conditions/actions with a
   // null outcome_node_id are root-level, exactly as before nesting existed.
   const outcomeNodes = db
-    .prepare('SELECT id, parent_node_id, branch_key, outcome_logic, depth FROM event_outcome_nodes WHERE event_definition_id = ?')
+    .prepare('SELECT id, parent_node_id, branch_key, outcome_logic, depth, label FROM event_outcome_nodes WHERE event_definition_id = ?')
     .all(def.id);
   return {
     ...def,
@@ -89,9 +89,9 @@ function insertOutcomeNodes(eventDefinitionId, hasOutcomeBranch, nodes) {
 
       const result = db
         .prepare(
-          'INSERT INTO event_outcome_nodes (event_definition_id, parent_node_id, branch_key, outcome_logic, depth) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO event_outcome_nodes (event_definition_id, parent_node_id, branch_key, outcome_logic, depth, label) VALUES (?, ?, ?, ?, ?, ?)',
         )
-        .run(eventDefinitionId, realParentId, node.branch_key, node.outcome_logic ?? 'AND', depth);
+        .run(eventDefinitionId, realParentId, node.branch_key, node.outcome_logic ?? 'AND', depth, node.label ?? '');
       idMap.set(node.id, result.lastInsertRowid);
       depthById.set(result.lastInsertRowid, depth);
       remaining.splice(i, 1);
@@ -132,10 +132,10 @@ export function createEventDefinition(data) {
       .prepare(
         `INSERT INTO event_definitions
           (name, scope, room_template_id, enabled, condition_logic, priority, cooldown_turns, max_fires_per_session, exclusive_group,
-           has_outcome_branch, outcome_logic, prerequisite_event_definition_id, requires_prerequisite_outcome,
+           has_outcome_branch, outcome_logic, outcome_root_label, prerequisite_event_definition_id, requires_prerequisite_outcome,
            reset_scope, prerequisite_reset_scope)
          VALUES (@name, @scope, @room_template_id, @enabled, @condition_logic, @priority, @cooldown_turns, @max_fires_per_session, @exclusive_group,
-                 @has_outcome_branch, @outcome_logic, @prerequisite_event_definition_id, @requires_prerequisite_outcome,
+                 @has_outcome_branch, @outcome_logic, @outcome_root_label, @prerequisite_event_definition_id, @requires_prerequisite_outcome,
                  @reset_scope, @prerequisite_reset_scope)`,
       )
       .run({
@@ -150,6 +150,7 @@ export function createEventDefinition(data) {
         exclusive_group: data.exclusive_group ?? null,
         has_outcome_branch: data.has_outcome_branch ? 1 : 0,
         outcome_logic: data.outcome_logic ?? 'AND',
+        outcome_root_label: data.outcome_root_label ?? '',
         prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
         requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
         reset_scope: data.reset_scope ?? 'playthrough',
@@ -168,7 +169,7 @@ export function updateEventDefinition(id, data) {
          name = @name, scope = @scope, room_template_id = @room_template_id, enabled = @enabled,
          condition_logic = @condition_logic, priority = @priority, cooldown_turns = @cooldown_turns,
          max_fires_per_session = @max_fires_per_session, exclusive_group = @exclusive_group,
-         has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic,
+         has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic, outcome_root_label = @outcome_root_label,
          prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome,
          reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope
        WHERE id = @id`,
@@ -185,6 +186,7 @@ export function updateEventDefinition(id, data) {
       exclusive_group: data.exclusive_group ?? null,
       has_outcome_branch: data.has_outcome_branch ? 1 : 0,
       outcome_logic: data.outcome_logic ?? 'AND',
+      outcome_root_label: data.outcome_root_label ?? '',
       prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
       requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
       reset_scope: data.reset_scope ?? 'playthrough',

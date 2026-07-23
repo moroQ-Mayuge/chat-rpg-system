@@ -178,6 +178,7 @@ const emptyEvent = {
   reset_scope: 'playthrough',
   has_outcome_branch: false,
   outcome_logic: 'AND',
+  outcome_root_label: '',
   prerequisite_event_definition_id: null,
   requires_prerequisite_outcome: 'any',
   prerequisite_reset_scope: 'playthrough',
@@ -1206,59 +1207,112 @@ function collectNodeAndDescendantIds(outcomeNodes, nodeId) {
   return ids;
 }
 
-// Renders one nested success/failure decision point (see
-// 0061_event_outcome_nesting.sql). Unlike the root-level conditions/actions
-// lists (index-based, EventsPage's own state), this filters the SAME flat
-// draft.conditions/draft.actions/draft.outcome_nodes arrays by object
-// identity -- simpler than threading a "filtered index -> real index"
-// mapping through, and safe since these arrays' item references stay stable
-// across renders until something actually changes them.
-function OutcomeNodeEditor({
-  node,
+// Depth-first flattening of the outcome-node tree for the outline-style
+// list rendering below (root success subtree in full, then root failure
+// subtree in full) -- replaces the old recursive box-in-box OutcomeNodeEditor
+// (which squeezed unusably narrow on mobile at depth 2) with one flat list
+// where depth is expressed as indentation/a tree-line prefix instead of
+// actual DOM nesting.
+function flattenOutcomeNodes(outcomeNodes) {
+  const result = [];
+  function visit(parentId, depth) {
+    for (const branchKey of ['success', 'failure']) {
+      const node = outcomeNodes.find((n) => (n.parent_node_id ?? null) === parentId && n.branch_key === branchKey);
+      if (node) {
+        result.push({ node, depth });
+        visit(node.id, depth + 1);
+      }
+    }
+  }
+  visit(null, 1);
+  return result;
+}
+
+function defaultNodeLabel(node) {
+  return node.branch_key === 'success' ? '成功時のネスト' : '失敗時のネスト';
+}
+
+// Root(id=null) + every outcome node, in the same order flattenOutcomeNodes
+// renders them, for the action-binding group-select below.
+function listConditionGroupOptions(draft) {
+  const options = [{ value: 'root', label: draft.outcome_root_label || 'ルート条件' }];
+  for (const { node, depth } of flattenOutcomeNodes(draft.outcome_nodes)) {
+    options.push({ value: String(node.id), label: '　'.repeat(depth) + (node.label || defaultNodeLabel(node)) });
+  }
+  return options;
+}
+
+// Display text for an action row showing which condition group/outcome it's
+// bound to -- the user-facing point of separating actions from the
+// condition tree (previously an action's binding was only implicit from
+// which nested box it visually sat inside).
+function describeActionBinding(action, draft) {
+  if (action.outcome_node_id == null) {
+    const rootLabel = draft.outcome_root_label || 'ルート条件';
+    if (action.outcome === 'success') return `${rootLabel}の成功時`;
+    if (action.outcome === 'failure') return `${rootLabel}の失敗時`;
+    return '常に実行';
+  }
+  const node = draft.outcome_nodes.find((n) => n.id === action.outcome_node_id);
+  const nodeLabel = node ? node.label || defaultNodeLabel(node) : '（不明な条件群）';
+  if (action.outcome === 'success') return `${nodeLabel}の成功時`;
+  if (action.outcome === 'failure') return `${nodeLabel}の失敗時`;
+  return `${nodeLabel}到達時`;
+}
+
+// One row of the outline (root when ownNodeId===null, otherwise a nested
+// node) -- a single flat box (no recursion, no nested boxes), with depth
+// expressed via left padding + a tree-line prefix. Handles only this row's
+// own label/logic/conditions and the "add a nested branch under me" slots;
+// actual descendants render as their own separate rows via the caller's
+// flattenOutcomeNodes loop.
+function ConditionGroupRow({
   depth,
-  outcomeNodes,
-  setOutcomeNodes,
+  ownNodeId,
+  branchKey,
+  label,
+  onLabelChange,
+  outcomeLogic,
+  onOutcomeLogicChange,
+  ownConditions,
   conditions,
   setConditions,
-  actions,
-  setActions,
+  outcomeNodes,
+  setOutcomeNodes,
+  canDelete,
+  onDelete,
   characters,
   axes,
-  expressionTypes,
   items,
   statuses,
 }) {
-  const nodeConditions = conditions.filter((c) => c.outcome_node_id === node.id);
-  const nodeActions = actions.filter((a) => a.outcome_node_id === node.id);
-
-  function removeThisNode() {
-    const idsToRemove = collectNodeAndDescendantIds(outcomeNodes, node.id);
-    setOutcomeNodes(outcomeNodes.filter((n) => !idsToRemove.has(n.id)));
-    setConditions(conditions.filter((c) => !idsToRemove.has(c.outcome_node_id)));
-    setActions(actions.filter((a) => !idsToRemove.has(a.outcome_node_id)));
-  }
-
+  const treePrefix = depth === 0 ? '' : '　'.repeat(depth - 1) + '└ ';
   return (
-    <div style={{ ...rowStyle, background: '#fff', border: '1px dashed #aaa' }}>
+    <div style={{ ...rowStyle, marginLeft: depth * 4 }}>
       <div style={rowHeaderStyle}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <strong style={{ fontSize: 12 }}>{node.branch_key === 'success' ? '成功分岐のネスト' : '失敗分岐のネスト'}</strong>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#888', whiteSpace: 'pre' }}>{treePrefix}</span>
+          {branchKey && (
+            <span style={{ fontSize: 11, color: branchKey === 'success' ? '#2563eb' : '#dc2626' }}>
+              （{branchKey === 'success' ? '成功時' : '失敗時'}）
+            </span>
+          )}
+          <input
+            style={{ fontSize: 12, width: 160 }}
+            value={label}
+            onChange={(e) => onLabelChange(e.target.value)}
+            placeholder={depth === 0 ? 'ルート条件' : defaultNodeLabel({ branch_key: branchKey })}
+          />
           <span style={label11}>結合</span>
-          <select
-            value={node.outcome_logic}
-            onChange={(e) =>
-              setOutcomeNodes(outcomeNodes.map((n) => (n.id === node.id ? { ...n, outcome_logic: e.target.value } : n)))
-            }
-          >
+          <select value={outcomeLogic} onChange={(e) => onOutcomeLogicChange(e.target.value)}>
             <option value="AND">AND</option>
             <option value="OR">OR</option>
           </select>
         </div>
-        <button onClick={removeThisNode}>このネストを削除</button>
+        {canDelete && <button onClick={onDelete}>このネストを削除</button>}
       </div>
 
-      <p style={{ fontSize: 12, fontWeight: 500, margin: '8px 0 4px' }}>結果判定条件</p>
-      {nodeConditions.map((condition, i) => (
+      {ownConditions.map((condition, i) => (
         <ConditionEditor
           key={i}
           condition={condition}
@@ -1276,76 +1330,30 @@ function OutcomeNodeEditor({
         onClick={() =>
           setConditions([
             ...conditions,
-            { condition_type: 'probability', params: conditionDefaults('probability'), phase: 'outcome', outcome_node_id: node.id },
+            { condition_type: 'probability', params: conditionDefaults('probability'), phase: 'outcome', outcome_node_id: ownNodeId },
           ])
         }
       >
         + 条件を追加
       </button>
 
-      <p style={{ fontSize: 12, fontWeight: 500, margin: '8px 0 4px' }}>アクション</p>
-      {nodeActions.map((action, i) => (
-        <ActionEditor
-          key={i}
-          action={action}
-          characters={characters}
-          axes={axes}
-          expressionTypes={expressionTypes}
-          items={items}
-          statuses={statuses}
-          hasOutcomeBranch
-          onChange={(next) => setActions(actions.map((a) => (a === action ? next : a)))}
-          onRemove={() => setActions(actions.filter((a) => a !== action))}
-        />
-      ))}
-      <button
-        onClick={() =>
-          setActions([
-            ...actions,
-            { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue'), outcome: 'always', outcome_node_id: node.id },
-          ])
-        }
-      >
-        + アクションを追加
-      </button>
-
       {depth < MAX_OUTCOME_NODE_DEPTH && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          {['success', 'failure'].map((branchKey) => {
-            const child = outcomeNodes.find((n) => n.parent_node_id === node.id && n.branch_key === branchKey);
-            if (child) {
-              return (
-                <div key={branchKey} style={{ flex: 1 }}>
-                  <OutcomeNodeEditor
-                    node={child}
-                    depth={depth + 1}
-                    outcomeNodes={outcomeNodes}
-                    setOutcomeNodes={setOutcomeNodes}
-                    conditions={conditions}
-                    setConditions={setConditions}
-                    actions={actions}
-                    setActions={setActions}
-                    characters={characters}
-                    axes={axes}
-                    expressionTypes={expressionTypes}
-                    items={items}
-                    statuses={statuses}
-                  />
-                </div>
-              );
-            }
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          {['success', 'failure'].map((childBranchKey) => {
+            const childExists = outcomeNodes.some((n) => (n.parent_node_id ?? null) === ownNodeId && n.branch_key === childBranchKey);
+            if (childExists) return null;
             return (
               <button
-                key={branchKey}
-                style={{ flex: 1, fontSize: 11 }}
+                key={childBranchKey}
+                style={{ fontSize: 11 }}
                 onClick={() =>
                   setOutcomeNodes([
                     ...outcomeNodes,
-                    { id: newOutcomeNodeId(), parent_node_id: node.id, branch_key: branchKey, outcome_logic: 'AND' },
+                    { id: newOutcomeNodeId(), parent_node_id: ownNodeId, branch_key: childBranchKey, outcome_logic: 'AND', label: '' },
                   ])
                 }
               >
-                + {branchKey === 'success' ? '成功' : '失敗'}時にさらにネストを追加
+                + {childBranchKey === 'success' ? '成功' : '失敗'}時にネストを追加
               </button>
             );
           })}
@@ -1660,7 +1668,7 @@ export default function EventsPage() {
           </div>
 
           <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: draft.has_outcome_branch ? 8 : 0 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
               <input
                 type="checkbox"
                 checked={draft.has_outcome_branch}
@@ -1669,69 +1677,72 @@ export default function EventsPage() {
               成功/失敗分岐を有効にする
             </label>
             {draft.has_outcome_branch && (
-              <>
-                <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-                  発火後、条件の「結果判定条件」欄に振り分けたものだけで成功/失敗を判定し、アクションの「成功時のみ」「失敗時のみ」欄に応じて実行するアクションを絞り込みます。
-                </p>
-                <label>
-                  <span style={label11}>結果判定条件の結合</span>
-                  <select value={draft.outcome_logic} onChange={(e) => setDraft({ ...draft, outcome_logic: e.target.value })}>
-                    <option value="AND">AND</option>
-                    <option value="OR">OR</option>
-                  </select>
-                </label>
-              </>
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                発火後、下の条件群で成功/失敗を判定し、アクションの「成功時のみ」「失敗時のみ」欄に応じて実行するアクションを絞り込みます。各条件群は成功/失敗どちらか一方へさらに最大{MAX_OUTCOME_NODE_DEPTH}段までネストできます。
+              </p>
             )}
           </div>
 
           {draft.has_outcome_branch && (
             <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
-              <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>
-                成功/失敗のさらに先のネスト（最大{MAX_OUTCOME_NODE_DEPTH}段）
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['success', 'failure'].map((branchKey) => {
-                  const child = draft.outcome_nodes.find((n) => (n.parent_node_id ?? null) === null && n.branch_key === branchKey);
-                  if (child) {
-                    return (
-                      <div key={branchKey} style={{ flex: 1 }}>
-                        <OutcomeNodeEditor
-                          node={child}
-                          depth={1}
-                          outcomeNodes={draft.outcome_nodes}
-                          setOutcomeNodes={(next) => setDraft({ ...draft, outcome_nodes: next })}
-                          conditions={draft.conditions}
-                          setConditions={(next) => setDraft({ ...draft, conditions: next })}
-                          actions={draft.actions}
-                          setActions={(next) => setDraft({ ...draft, actions: next })}
-                          characters={characters}
-                          axes={axes}
-                          expressionTypes={expressionTypes}
-                          items={items}
-                          statuses={statuses}
-                        />
-                      </div>
-                    );
+              <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>結果判定条件（条件群）</p>
+              <ConditionGroupRow
+                depth={0}
+                ownNodeId={null}
+                branchKey={null}
+                label={draft.outcome_root_label}
+                onLabelChange={(v) => setDraft({ ...draft, outcome_root_label: v })}
+                outcomeLogic={draft.outcome_logic}
+                onOutcomeLogicChange={(v) => setDraft({ ...draft, outcome_logic: v })}
+                ownConditions={draft.conditions.filter((c) => (c.outcome_node_id ?? null) === null && c.phase === 'outcome')}
+                conditions={draft.conditions}
+                setConditions={(next) => setDraft({ ...draft, conditions: next })}
+                outcomeNodes={draft.outcome_nodes}
+                setOutcomeNodes={(next) => setDraft({ ...draft, outcome_nodes: next })}
+                canDelete={false}
+                characters={characters}
+                axes={axes}
+                items={items}
+                statuses={statuses}
+              />
+              {flattenOutcomeNodes(draft.outcome_nodes).map(({ node, depth }) => (
+                <ConditionGroupRow
+                  key={node.id}
+                  depth={depth}
+                  ownNodeId={node.id}
+                  branchKey={node.branch_key}
+                  label={node.label}
+                  onLabelChange={(v) =>
+                    setDraft({ ...draft, outcome_nodes: draft.outcome_nodes.map((n) => (n.id === node.id ? { ...n, label: v } : n)) })
                   }
-                  return (
-                    <button
-                      key={branchKey}
-                      style={{ flex: 1, fontSize: 11 }}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          outcome_nodes: [
-                            ...draft.outcome_nodes,
-                            { id: newOutcomeNodeId(), parent_node_id: null, branch_key: branchKey, outcome_logic: 'AND' },
-                          ],
-                        })
-                      }
-                    >
-                      + {branchKey === 'success' ? '成功' : '失敗'}時にさらにネストを追加
-                    </button>
-                  );
-                })}
-              </div>
+                  outcomeLogic={node.outcome_logic}
+                  onOutcomeLogicChange={(v) =>
+                    setDraft({
+                      ...draft,
+                      outcome_nodes: draft.outcome_nodes.map((n) => (n.id === node.id ? { ...n, outcome_logic: v } : n)),
+                    })
+                  }
+                  ownConditions={draft.conditions.filter((c) => c.outcome_node_id === node.id)}
+                  conditions={draft.conditions}
+                  setConditions={(next) => setDraft({ ...draft, conditions: next })}
+                  outcomeNodes={draft.outcome_nodes}
+                  setOutcomeNodes={(next) => setDraft({ ...draft, outcome_nodes: next })}
+                  canDelete
+                  onDelete={() => {
+                    const idsToRemove = collectNodeAndDescendantIds(draft.outcome_nodes, node.id);
+                    setDraft({
+                      ...draft,
+                      outcome_nodes: draft.outcome_nodes.filter((n) => !idsToRemove.has(n.id)),
+                      conditions: draft.conditions.filter((c) => !idsToRemove.has(c.outcome_node_id)),
+                      actions: draft.actions.filter((a) => !idsToRemove.has(a.outcome_node_id)),
+                    });
+                  }}
+                  characters={characters}
+                  axes={axes}
+                  items={items}
+                  statuses={statuses}
+                />
+              ))}
             </div>
           )}
 
@@ -1790,22 +1801,25 @@ export default function EventsPage() {
           </div>
 
           <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>条件</p>
-            {draft.conditions.map((condition, i) => (
-              <ConditionEditor
-                key={i}
-                condition={condition}
-                characters={characters}
-                axes={axes}
-                items={items}
-                statuses={statuses}
-                hasOutcomeBranch={draft.has_outcome_branch}
-                onChange={(next) =>
-                  setDraft({ ...draft, conditions: draft.conditions.map((c, idx) => (idx === i ? next : c)) })
-                }
-                onRemove={() => setDraft({ ...draft, conditions: draft.conditions.filter((_, idx) => idx !== i) })}
-              />
-            ))}
+            <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>発火条件</p>
+            {draft.conditions
+              .filter((c) => (c.phase ?? 'trigger') === 'trigger')
+              .map((condition, i) => (
+                <ConditionEditor
+                  key={i}
+                  condition={condition}
+                  characters={characters}
+                  axes={axes}
+                  items={items}
+                  statuses={statuses}
+                  hasOutcomeBranch={draft.has_outcome_branch}
+                  fixedPhase="trigger"
+                  onChange={(next) =>
+                    setDraft({ ...draft, conditions: draft.conditions.map((c) => (c === condition ? next : c)) })
+                  }
+                  onRemove={() => setDraft({ ...draft, conditions: draft.conditions.filter((c) => c !== condition) })}
+                />
+              ))}
             <button
               onClick={() =>
                 setDraft({
@@ -1824,18 +1838,67 @@ export default function EventsPage() {
           <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>アクション</p>
             {draft.actions.map((action, i) => (
-              <ActionEditor
-                key={i}
-                action={action}
-                characters={characters}
-                axes={axes}
-                expressionTypes={expressionTypes}
-                items={items}
-                statuses={statuses}
-                hasOutcomeBranch={draft.has_outcome_branch}
-                onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
-                onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}
-              />
+              <div key={i} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+                  {draft.has_outcome_branch && (
+                    <>
+                      <span style={{ fontSize: 11, color: '#888' }}>紐づく条件群:</span>
+                      <select
+                        style={{ fontSize: 11, width: 'auto' }}
+                        value={action.outcome_node_id == null ? 'root' : String(action.outcome_node_id)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const nextNodeId = v === 'root' ? null : draft.outcome_nodes.find((n) => String(n.id) === v)?.id ?? null;
+                          setDraft({
+                            ...draft,
+                            actions: draft.actions.map((a, idx) => (idx === i ? { ...a, outcome_node_id: nextNodeId } : a)),
+                          });
+                        }}
+                      >
+                        {listConditionGroupOptions(draft).map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span style={{ fontSize: 11, color: '#aaa' }}>({describeActionBinding(action, draft)})</span>
+                    </>
+                  )}
+                  <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+                    <button
+                      disabled={i === 0}
+                      onClick={() => {
+                        const next = [...draft.actions];
+                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                        setDraft({ ...draft, actions: next });
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      disabled={i === draft.actions.length - 1}
+                      onClick={() => {
+                        const next = [...draft.actions];
+                        [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                        setDraft({ ...draft, actions: next });
+                      }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+                <ActionEditor
+                  action={action}
+                  characters={characters}
+                  axes={axes}
+                  expressionTypes={expressionTypes}
+                  items={items}
+                  statuses={statuses}
+                  hasOutcomeBranch={draft.has_outcome_branch}
+                  onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
+                  onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}
+                />
+              </div>
             ))}
             <button
               onClick={() =>
@@ -1843,7 +1906,7 @@ export default function EventsPage() {
                   ...draft,
                   actions: [
                     ...draft.actions,
-                    { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue'), outcome: 'always' },
+                    { action_type: 'insert_dialogue', params: actionDefaults('insert_dialogue'), outcome: 'always', outcome_node_id: null },
                   ],
                 })
               }
