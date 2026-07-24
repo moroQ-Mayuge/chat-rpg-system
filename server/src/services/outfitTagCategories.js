@@ -38,7 +38,7 @@ const RANGE_NAMES = Object.keys(RANGE_BASE);
 
 function joinFields(outfit, fields, suppressedFields, disturbedFieldStyles, exposureTagSettings) {
   return fields
-    .filter((f) => !suppressedFields.has(f))
+    .filter((f) => !suppressedFields.has(f) && isUnderwearRevealed(outfit, f, suppressedFields, disturbedFieldStyles))
     .map((f) => {
       const value = outfit[f];
       const style = disturbedFieldStyles.get(f);
@@ -84,6 +84,26 @@ function isFieldBare(outfit, field, suppressedFields) {
 
 function isFieldAtLeastDisturbed(outfit, field, suppressedFields, disturbedFieldStyles) {
   return isFieldBare(outfit, field, suppressedFields) || disturbedFieldStyles.has(field);
+}
+
+const UNDERWEAR_REVEAL_CHAINS = {
+  underwear_upper: UPPER_CLOTHING_LAYERS,
+  underwear_lower: LOWER_CLOTHING_LAYERS,
+};
+
+// A underwear field's own tag (and any disturbance tag on it) stays out of
+// the output entirely until every layer above it is at least disturbed --
+// image generation otherwise dutifully renders whatever tags are given, so
+// leaving underwear_upper/lower unconditionally in the joined string would
+// draw visible underwear under a fully-worn shirt. Non-underwear fields
+// aren't gated at all (always revealed). A layer that doesn't exist on this
+// outfit is treated as already cleared (isFieldAtLeastDisturbed's isFieldBare
+// check), so an outfit with no outer garment doesn't block reveal on that
+// account alone.
+function isUnderwearRevealed(outfit, field, suppressedFields, disturbedFieldStyles) {
+  const chain = UNDERWEAR_REVEAL_CHAINS[field];
+  if (!chain) return true;
+  return chain.every((f) => isFieldAtLeastDisturbed(outfit, f, suppressedFields, disturbedFieldStyles));
 }
 
 // Derives whole-character nudity tags (topless/bottomless/completely_nude/
