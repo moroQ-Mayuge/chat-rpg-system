@@ -13,6 +13,7 @@ const emptyForm = {
   suppresses_outfit_fields: '',
   disturbs_outfit_field: '',
   disturbance_style: '',
+  disturbs_torn: false,
 };
 
 // The 4 OUTFIT_TAG_FIELDS the undress-state ladder actually tracks
@@ -62,6 +63,7 @@ function statusToForm(s) {
     suppresses_outfit_fields: s.suppresses_outfit_fields ?? '',
     disturbs_outfit_field: s.disturbs_outfit_field ?? '',
     disturbance_style: s.disturbance_style ?? '',
+    disturbs_torn: Boolean(s.disturbs_torn),
   };
 }
 
@@ -148,6 +150,7 @@ export default function CharacterStatusesPage() {
                 {s.default_address_on_grant ? `／付与時に呼び方を「${s.default_address_on_grant}」へ変更` : ''}
                 {s.suppresses_outfit_fields ? `／抑制する衣装タグ:${s.suppresses_outfit_fields}` : ''}
                 {s.disturbs_outfit_field && s.disturbance_style ? `／乱れ:${s.disturbs_outfit_field}=${s.disturbance_style}` : ''}
+                {s.disturbs_outfit_field && s.disturbs_torn ? `／${s.disturbance_style ? '+' : ''}torn:${s.disturbs_outfit_field}` : ''}
               </span>
             </span>
             <button
@@ -254,8 +257,16 @@ export default function CharacterStatusesPage() {
               </select>
             </label>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <input
+              type="checkbox"
+              checked={form.disturbs_torn}
+              onChange={(e) => setForm({ ...form, disturbs_torn: e.target.checked })}
+            />
+            「破る（torn）」を同時に適用する（乱れスタイルとは排他ではなく併用可）
+          </label>
           <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-            このステータスがアクティブな間、指定フィールドは（抑制されていなければ）タグを表示したまま、設定画面の「衣装の乱れ・露出タグ」で登録した固定タグを追加します（例：シャツ, open）。
+            このステータスがアクティブな間、指定フィールドは（抑制されていなければ）タグを表示したまま、先頭のタグ（主たる構造語、例：shirt）だけを書き換えます。乱れスタイルが衣装側の「操作可能」設定に含まれていない場合はスタイル語のみ落ち、torn単独/併用は常に適用されます（例：shirt lift / torn shirt / torn shirt lift）。
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button onClick={handleSave} disabled={!form.name}>

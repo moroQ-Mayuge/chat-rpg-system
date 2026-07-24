@@ -36,16 +36,53 @@ const RANGE_EQUIPMENT = {
 
 const RANGE_NAMES = Object.keys(RANGE_BASE);
 
-function joinFields(outfit, fields, suppressedFields, disturbedFieldStyles, exposureTagSettings) {
+// The tag string's own first comma-segment is treated as the garment's "main
+// structural word" (0065 -- e.g. "shirt" in "shirt, white dress shirt, long
+// sleeves"), since real danbooru convention fuses that word with a
+// disturbance style into one compound tag (shirt_lift, dress_lift, etc.)
+// rather than appending a separate bare tag. Everything after the first
+// comma is left untouched.
+function splitStructuralWord(value) {
+  const idx = value.indexOf(',');
+  if (idx === -1) return { structural: value.trim(), rest: '' };
+  return { structural: value.slice(0, idx).trim(), rest: value.slice(idx + 1).trim() };
+}
+
+function parseGarmentOperations(outfit) {
+  if (outfit.garment_operations && typeof outfit.garment_operations === 'object') return outfit.garment_operations;
+  try {
+    return JSON.parse(outfit.garment_operations || '{}');
+  } catch {
+    return {};
+  }
+}
+
+// Composes one field's final tag value: torn/style words attach to the
+// structural word only, the rest of the tag passes through unchanged.
+//   no operation     -> "{structural}, {rest}" (unchanged)
+//   style only       -> "{structural} {styleWord}, {rest}" (e.g. "shirt lift, ...")
+//   torn only        -> "torn {structural}, {rest}"
+//   both             -> "torn {structural} {styleWord}, {rest}"
+// A style whose garment_operations checkbox isn't checked for this specific
+// outfit+field falls back to structural-word-only (0065) -- character_statuses
+// is shared master data, so the same status can be granted to a character
+// whose outfit doesn't visually support that style; torn is independent of
+// this check (always applies, per spec).
+function composeFieldValue(outfit, field, style, isTorn, exposureTagSettings) {
+  const value = outfit[field];
+  if (!value) return '';
+  const { structural, rest } = splitStructuralWord(value);
+  const allowedStyles = parseGarmentOperations(outfit)[field] ?? [];
+  const effectiveStyle = style && allowedStyles.includes(style) ? style : null;
+  const styleWord = effectiveStyle ? exposureTagSettings?.[`${effectiveStyle}_tag`] : null;
+  const firstSegment = [isTorn ? 'torn' : null, structural, styleWord].filter(Boolean).join(' ');
+  return [firstSegment, rest].filter(Boolean).join(', ');
+}
+
+function joinFields(outfit, fields, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) {
   return fields
     .filter((f) => !suppressedFields.has(f) && isUnderwearRevealed(outfit, f, suppressedFields, disturbedFieldStyles))
-    .map((f) => {
-      const value = outfit[f];
-      const style = disturbedFieldStyles.get(f);
-      const disturbanceTag = style ? exposureTagSettings?.[`${style}_tag`] : null;
-      if (!value) return disturbanceTag || '';
-      return disturbanceTag ? `${value}, ${disturbanceTag}` : value;
-    })
+    .map((f) => composeFieldValue(outfit, f, disturbedFieldStyles.get(f), tornFields.has(f), exposureTagSettings))
     .filter(Boolean)
     .join(', ');
 }
@@ -62,6 +99,7 @@ export function getActiveOutfitStatusModifiers(characterId, statusCtx) {
   const active = listActiveStatuses(characterId, statusCtx);
   const suppressedFields = new Set();
   const disturbedFieldStyles = new Map();
+  const tornFields = new Set();
   for (const status of active) {
     for (const field of (status.suppresses_outfit_fields || '').split(',').map((f) => f.trim()).filter(Boolean)) {
       suppressedFields.add(field);
@@ -69,8 +107,11 @@ export function getActiveOutfitStatusModifiers(characterId, statusCtx) {
     if (status.disturbs_outfit_field && status.disturbance_style) {
       disturbedFieldStyles.set(status.disturbs_outfit_field, status.disturbance_style);
     }
+    if (status.disturbs_outfit_field && status.disturbs_torn) {
+      tornFields.add(status.disturbs_outfit_field);
+    }
   }
-  return { suppressedFields, disturbedFieldStyles };
+  return { suppressedFields, disturbedFieldStyles, tornFields };
 }
 
 const UPPER_CLOTHING_LAYERS = ['clothing_upper_outer', 'clothing_upper'];
@@ -161,27 +202,37 @@ export function computeNudityTags(outfit, suppressedFields, disturbedFieldStyles
 // Omitted entirely by every existing call site that doesn't have status
 // context (standing/expression image generation, settings-page preview).
 //
-// disturbedFieldStyles/exposureTagSettings (0064): a field that's shown (not
-// suppressed) but named by an active undress-ladder status's
-// disturbs_outfit_field gets exposureTagSettings's fixed tag for that style
-// appended after its own tag value — see getActiveOutfitStatusModifiers.
-export function resolveOutfitTags(outfit, key, suppressedFields = [], disturbedFieldStyles = new Map(), exposureTagSettings = null) {
+// disturbedFieldStyles/tornFields/exposureTagSettings (0064/0065): a field
+// that's shown (not suppressed) but named by an active undress-ladder
+// status's disturbs_outfit_field has its structural word (first comma
+// segment) combined with the style word and/or "torn" — see
+// composeFieldValue and getActiveOutfitStatusModifiers.
+export function resolveOutfitTags(
+  outfit,
+  key,
+  suppressedFields = [],
+  disturbedFieldStyles = new Map(),
+  tornFields = new Set(),
+  exposureTagSettings = null,
+) {
   if (!outfit) return '';
   const suppressed = suppressedFields instanceof Set ? suppressedFields : new Set(suppressedFields);
-  if (!key) return joinFields(outfit, CATEGORY_KEYS, suppressed, disturbedFieldStyles, exposureTagSettings);
-  if (CATEGORY_KEYS.includes(key)) return joinFields(outfit, [key], suppressed, disturbedFieldStyles, exposureTagSettings);
+  if (!key) return joinFields(outfit, CATEGORY_KEYS, suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
+  if (CATEGORY_KEYS.includes(key)) return joinFields(outfit, [key], suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
 
   const rangeMatch = key.match(new RegExp(`^(${RANGE_NAMES.join('|')})(_outer|_equipment|_full)?$`));
   if (rangeMatch) {
     const [, range, suffix] = rangeMatch;
-    if (!suffix) return joinFields(outfit, RANGE_BASE[range], suppressed, disturbedFieldStyles, exposureTagSettings);
-    if (suffix === '_outer') return joinFields(outfit, RANGE_OUTER[range], suppressed, disturbedFieldStyles, exposureTagSettings);
-    if (suffix === '_equipment') return joinFields(outfit, RANGE_EQUIPMENT[range], suppressed, disturbedFieldStyles, exposureTagSettings);
+    if (!suffix) return joinFields(outfit, RANGE_BASE[range], suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
+    if (suffix === '_outer') return joinFields(outfit, RANGE_OUTER[range], suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
+    if (suffix === '_equipment')
+      return joinFields(outfit, RANGE_EQUIPMENT[range], suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
     return joinFields(
       outfit,
       [...RANGE_BASE[range], ...RANGE_OUTER[range], ...RANGE_EQUIPMENT[range]],
       suppressed,
       disturbedFieldStyles,
+      tornFields,
       exposureTagSettings,
     );
   }

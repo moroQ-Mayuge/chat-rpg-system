@@ -80,11 +80,11 @@ export function buildSceneTagParts(session, participants) {
     .filter((p) => p.current_outfit_id)
     .map((p) => {
       const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
-      const { suppressedFields, disturbedFieldStyles } = getActiveOutfitStatusModifiers(p.character_id, {
+      const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, {
         playthroughId: session.playthrough_id,
         roomSessionId: session.id,
       });
-      const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, exposureTagSettings);
+      const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
       const nudityTags = computeNudityTags(outfit, suppressedFields, disturbedFieldStyles, exposureTagSettings);
       return [tags, ...nudityTags].filter(Boolean).join(', ');
     })

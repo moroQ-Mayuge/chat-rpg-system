@@ -43,8 +43,8 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
     const outfit = participant.current_outfit_id
       ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
       : null;
-    const { suppressedFields, disturbedFieldStyles } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
-    return resolveOutfitTags(outfit, categoryKey, suppressedFields, disturbedFieldStyles, exposureTagSettings) ?? '';
+    const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
+    return resolveOutfitTags(outfit, categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
   });
 
   return { text, referencedIds };
@@ -113,8 +113,8 @@ export async function executeGenerateImage(params, execCtx) {
               .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
               .map((p) => {
                 const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
-                const { suppressedFields, disturbedFieldStyles } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
-                const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, exposureTagSettings);
+                const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
+                const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
                 const nudityTags = computeNudityTags(outfit, suppressedFields, disturbedFieldStyles, exposureTagSettings);
                 return [tags, ...nudityTags].filter(Boolean).join(', ');
               })

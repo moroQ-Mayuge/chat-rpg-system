@@ -32,12 +32,13 @@ export function createStatus({
   suppresses_outfit_fields,
   disturbs_outfit_field,
   disturbance_style,
+  disturbs_torn,
 }) {
   const result = db
     .prepare(
       `INSERT INTO character_statuses
-        (name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields, disturbs_outfit_field, disturbance_style)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (name, persistence_scope, removes_from_session, exclusive_group, default_address_on_grant, suppresses_outfit_fields, disturbs_outfit_field, disturbance_style, disturbs_torn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -48,6 +49,7 @@ export function createStatus({
       suppresses_outfit_fields ?? '',
       disturbs_outfit_field ?? '',
       disturbance_style ?? '',
+      disturbs_torn ? 1 : 0,
     );
   return getStatus(result.lastInsertRowid);
 }
@@ -63,12 +65,13 @@ export function updateStatus(
     suppresses_outfit_fields,
     disturbs_outfit_field,
     disturbance_style,
+    disturbs_torn,
   },
 ) {
   db.prepare(
     `UPDATE character_statuses
      SET name = ?, persistence_scope = ?, removes_from_session = ?, exclusive_group = ?, default_address_on_grant = ?,
-         suppresses_outfit_fields = ?, disturbs_outfit_field = ?, disturbance_style = ?
+         suppresses_outfit_fields = ?, disturbs_outfit_field = ?, disturbance_style = ?, disturbs_torn = ?
      WHERE id = ?`,
   ).run(
     name,
@@ -79,6 +82,7 @@ export function updateStatus(
     suppresses_outfit_fields ?? '',
     disturbs_outfit_field ?? '',
     disturbance_style ?? '',
+    disturbs_torn ? 1 : 0,
     id,
   );
   return getStatus(id);

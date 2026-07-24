@@ -40,15 +40,32 @@ function attachExpressionImages(outfit) {
   return { ...outfit, expression_images: images };
 }
 
+// garment_operations (0065): OUTFIT_TAG_FIELDS name -> array of style keys
+// (subset of open/pull/lift/aside) that are visually plausible for that
+// specific garment -- e.g. a blazer supports "open" but not "lift". Parsed
+// here so every read path (not just outfitTagCategories.js's runtime
+// composition) sees a real object rather than a raw JSON string.
+function parseGarmentOperations(outfit) {
+  if (!outfit) return outfit;
+  let garment_operations;
+  try {
+    garment_operations = JSON.parse(outfit.garment_operations || '{}');
+  } catch {
+    garment_operations = {};
+  }
+  return { ...outfit, garment_operations };
+}
+
 export function getOutfit(id) {
-  return attachExpressionImages(db.prepare('SELECT * FROM outfits WHERE id = ?').get(id));
+  return parseGarmentOperations(attachExpressionImages(db.prepare('SELECT * FROM outfits WHERE id = ?').get(id)));
 }
 
 export function listOutfitsForCharacter(characterId) {
   return db
     .prepare('SELECT * FROM outfits WHERE character_id = ? ORDER BY is_default DESC, id ASC')
     .all(characterId)
-    .map(attachExpressionImages);
+    .map(attachExpressionImages)
+    .map(parseGarmentOperations);
 }
 
 function unsetOtherDefaults(characterId, exceptOutfitId) {
@@ -64,10 +81,18 @@ export function createOutfit(characterId, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, ${tagColumns})
-       VALUES (?, ?, ?, ?, ?, ${tagPlaceholders})`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
-    .run(characterId, data.name, data.clothing_description ?? '', data.equipment_description ?? '', data.is_default ? 1 : 0, ...tagValues);
+    .run(
+      characterId,
+      data.name,
+      data.clothing_description ?? '',
+      data.equipment_description ?? '',
+      data.is_default ? 1 : 0,
+      JSON.stringify(data.garment_operations ?? {}),
+      ...tagValues,
+    );
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
   return getOutfit(result.lastInsertRowid);
 }
@@ -77,9 +102,17 @@ export function updateOutfit(id, data) {
   const tagSetClause = OUTFIT_TAG_FIELDS.map((f) => `${f} = ?`).join(', ');
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
-    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, ${tagSetClause}
+    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?, ${tagSetClause}
      WHERE id = ?`,
-  ).run(data.name, data.clothing_description ?? '', data.equipment_description ?? '', data.is_default ? 1 : 0, ...tagValues, id);
+  ).run(
+    data.name,
+    data.clothing_description ?? '',
+    data.equipment_description ?? '',
+    data.is_default ? 1 : 0,
+    JSON.stringify(data.garment_operations ?? {}),
+    ...tagValues,
+    id,
+  );
   if (data.is_default) unsetOtherDefaults(outfit.character_id, id);
   return getOutfit(id);
 }

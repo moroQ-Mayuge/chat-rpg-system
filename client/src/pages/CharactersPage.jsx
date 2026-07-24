@@ -112,6 +112,18 @@ const OUTFIT_TAG_CATEGORIES = [
 ];
 const OUTFIT_TAG_FIELDS = OUTFIT_TAG_CATEGORIES.map(([key]) => key);
 
+// The 6 fields the undress-state ladder tracks (undressState.js) -- the only
+// ones where a "disturbance style" ever makes sense. Matches
+// server/src/services/outfitTagCategories.js's garment_operations gating.
+const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_upper', 'underwear_lower'];
+
+const DISTURBANCE_STYLES = [
+  ['open', '開く'],
+  ['pull', 'ずらす'],
+  ['lift', 'たくし上げる'],
+  ['aside', '横にずらす'],
+];
+
 function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
   return (
     <div>
@@ -329,6 +341,14 @@ export default function CharactersPage() {
     }));
   }
 
+  // garment_operations (0065): which disturbance styles are visually
+  // plausible for this specific garment field, toggled per style checkbox.
+  function updateGarmentOperation(field, style, checked) {
+    const current = activeOutfit.garment_operations?.[field] ?? [];
+    const next = checked ? [...current, style] : current.filter((s) => s !== style);
+    updateActiveOutfitField('garment_operations', { ...activeOutfit.garment_operations, [field]: next });
+  }
+
   function currentOutfitTags() {
     return Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, activeOutfit[key] ?? '']));
   }
@@ -342,6 +362,7 @@ export default function CharactersPage() {
         clothing_description: activeOutfit.clothing_description,
         equipment_description: activeOutfit.equipment_description,
         is_default: Boolean(activeOutfit.is_default),
+        garment_operations: activeOutfit.garment_operations ?? {},
         ...currentOutfitTags(),
       },
     });
@@ -714,7 +735,26 @@ export default function CharactersPage() {
                           {OUTFIT_TAG_CATEGORIES.map(([key, label]) => (
                             <details key={key} open={Boolean(activeOutfit[key]?.trim())} style={{ marginBottom: 4 }}>
                               <summary style={{ fontSize: 11, color: '#555', cursor: 'pointer' }}>{label}</summary>
+                              {DISTURBABLE_FIELDS.includes(key) && (
+                                <p style={{ fontSize: 10, color: '#999', margin: '4px 0' }}>
+                                  先頭のタグは主たる構造語として扱われます（例：shirt）。乱れ操作時にこの語だけが書き換わります。
+                                </p>
+                              )}
                               <DanbooruTagEditor value={activeOutfit[key]} onChange={(v) => updateActiveOutfitField(key, v)} />
+                              {DISTURBABLE_FIELDS.includes(key) && (
+                                <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                                  {DISTURBANCE_STYLES.map(([style, styleLabel]) => (
+                                    <label key={style} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={(activeOutfit.garment_operations?.[key] ?? []).includes(style)}
+                                        onChange={(e) => updateGarmentOperation(key, style, e.target.checked)}
+                                      />
+                                      {styleLabel}
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
                             </details>
                           ))}
                         </div>
