@@ -207,6 +207,12 @@ export function computeNudityTags(outfit, suppressedFields, disturbedFieldStyles
 // status's disturbs_outfit_field has its structural word (first comma
 // segment) combined with the style word and/or "torn" — see
 // composeFieldValue and getActiveOutfitStatusModifiers.
+//
+// key === null (the whole-outfit join, e.g. a bare ${target1}) also folds in
+// computeNudityTags' whole-character exposure tags (topless/bottomless/
+// completely_nude/breast_out) -- these describe overall nudity, not one
+// category, so a specific ${target1.category}/range lookup never includes
+// them (matches CATEGORY_KEYS/range branches below, unchanged).
 export function resolveOutfitTags(
   outfit,
   key,
@@ -217,7 +223,11 @@ export function resolveOutfitTags(
 ) {
   if (!outfit) return '';
   const suppressed = suppressedFields instanceof Set ? suppressedFields : new Set(suppressedFields);
-  if (!key) return joinFields(outfit, CATEGORY_KEYS, suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
+  if (!key) {
+    const tags = joinFields(outfit, CATEGORY_KEYS, suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
+    const nudityTags = computeNudityTags(outfit, suppressed, disturbedFieldStyles, exposureTagSettings);
+    return [tags, ...nudityTags].filter(Boolean).join(', ');
+  }
   if (CATEGORY_KEYS.includes(key)) return joinFields(outfit, [key], suppressed, disturbedFieldStyles, tornFields, exposureTagSettings);
 
   const rangeMatch = key.match(new RegExp(`^(${RANGE_NAMES.join('|')})(_outer|_equipment|_full)?$`));

@@ -11,7 +11,7 @@ import { resolveStylePromptForWorld } from '../../../db/repositories/imageStyleP
 import { getImageGenerationSettings } from '../../../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
-import { resolveOutfitTags, getActiveOutfitStatusModifiers, computeNudityTags } from '../../outfitTagCategories.js';
+import { resolveOutfitTags, getActiveOutfitStatusModifiers } from '../../outfitTagCategories.js';
 import { getOutfitExposureTagSettings } from '../../../db/repositories/outfitExposureTagSettingsRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 import { resolveTargetToken } from '../placeholderResolution.js';
@@ -104,19 +104,16 @@ export async function executeGenerateImage(params, execCtx) {
         // auto_append_unreferenced=false (per-event opt-out) skips this
         // entirely -- useful when the scene has onlookers who are present
         // but not narratively part of the action being depicted. Nudity tags
-        // (topless/bottomless/completely_nude/breast_out, 0064) only make
-        // sense for a character's whole outfit, so they're appended here
-        // (the "all fields combined" path) and not inside substitutePlaceholders'
-        // per-category ${name.category} lookups.
+        // (topless/bottomless/completely_nude/breast_out) are folded into
+        // resolveOutfitTags' key===null path now, so a bare ${target1}
+        // reference gets them too, not just this leftover-tags fallback.
         const leftoverTags = auto_append_unreferenced
           ? candidateParticipants
               .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
               .map((p) => {
                 const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
                 const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
-                const tags = resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
-                const nudityTags = computeNudityTags(outfit, suppressedFields, disturbedFieldStyles, exposureTagSettings);
-                return [tags, ...nudityTags].filter(Boolean).join(', ');
+                return resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
               })
               .filter(Boolean)
           : [];
