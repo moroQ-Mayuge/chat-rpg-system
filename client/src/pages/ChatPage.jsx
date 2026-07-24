@@ -140,6 +140,49 @@ function commandVisible(cmd, activeIds, currentRoomTemplateId) {
 // カテゴリのコマンドは従来通り同席者全員のOR判定（any_present）のまま。
 const UNDRESS_COMMAND_CATEGORY = '脱衣';
 
+// L3.4: which fields sit "above" a given layer in the undress cascade (アウター
+// -> ベース -> 下着), matching outfitTagCategories.js's UPPER_CLOTHING_LAYERS/
+// LOWER_CLOTHING_LAYERS/UNDERWEAR_REVEAL_CHAINS server-side. The outer layer
+// has nothing above it (always operable on its own).
+const LAYER_ABOVE = {
+  clothing_upper_outer: [],
+  clothing_upper: ['clothing_upper_outer'],
+  underwear_upper: ['clothing_upper_outer', 'clothing_upper'],
+  clothing_lower_outer: [],
+  clothing_lower: ['clothing_lower_outer'],
+  underwear_lower: ['clothing_lower_outer', 'clothing_lower'],
+};
+
+// A layer counts as "cleared" (no longer blocking the layer below it) once
+// it's either absent from this outfit, fully removed (suppressed), or has
+// any disturbance style/torn applied -- mirrors outfitTagCategories.js's
+// isFieldAtLeastDisturbed.
+function isLayerCleared(od, field) {
+  if (!od.fieldsPresent[field]) return true;
+  return od.suppressedFields.includes(field) || Boolean(od.disturbedFieldStyles[field]) || od.tornFields.includes(field);
+}
+
+// Dynamic visibility for a 脱衣 command that targets a specific garment layer
+// + operation style (action_commands.disturbance_target_field/style, L3.4) --
+// commands with neither set (every non-undress command, plus 脱衣 commands
+// that don't represent a disturbance operation) are always visible here,
+// unaffected. `od` is the mentioned participant's outfit_disturbance
+// (roomSessionsRepo.js's attachParticipants), or null if they have no outfit.
+function isDisturbanceCommandVisible(cmd, od) {
+  const field = cmd.disturbance_target_field;
+  if (!field) return true;
+  if (!od || !od.fieldsPresent[field]) return false;
+  if (!LAYER_ABOVE[field].every((f) => isLayerCleared(od, f))) return false;
+
+  const style = cmd.disturbance_target_style;
+  const alreadySuppressed = od.suppressedFields.includes(field);
+  const alreadyStyled = Boolean(od.disturbedFieldStyles[field]) || od.tornFields.includes(field);
+  if (style === 'complete') return !alreadySuppressed;
+  if (alreadySuppressed || alreadyStyled) return false;
+  if (style === 'torn') return true;
+  return (od.garmentOperations?.[field] ?? []).includes(style);
+}
+
 function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTemplateId, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
   const [openCategory, setOpenCategory] = useState(null);
@@ -148,8 +191,10 @@ function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTem
 
   const anyPresentIds = activeStatusIdSet(participants);
   const mentionedIds = activeStatusIdSet(mentionedParticipant ? [mentionedParticipant] : []);
-  const visibleCommands = commands.filter((cmd) =>
-    commandVisible(cmd, cmd.category === UNDRESS_COMMAND_CATEGORY ? mentionedIds : anyPresentIds, roomTemplateId),
+  const visibleCommands = commands.filter(
+    (cmd) =>
+      commandVisible(cmd, cmd.category === UNDRESS_COMMAND_CATEGORY ? mentionedIds : anyPresentIds, roomTemplateId) &&
+      isDisturbanceCommandVisible(cmd, mentionedParticipant?.outfit_disturbance),
   );
 
   const uncategorized = visibleCommands.filter((cmd) => !cmd.category);

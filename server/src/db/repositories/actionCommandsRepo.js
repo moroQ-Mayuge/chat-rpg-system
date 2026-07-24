@@ -29,13 +29,16 @@ export function createActionCommand({
   sub_subcategory,
   visible_when_status_ids,
   visible_when_room_template_ids,
+  disturbance_target_field,
+  disturbance_target_style,
 }) {
   const result = db
     .prepare(
       `INSERT INTO action_commands
         (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target,
-         category, subcategory, sub_subcategory, visible_when_status_ids, visible_when_room_template_ids)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         category, subcategory, sub_subcategory, visible_when_status_ids, visible_when_room_template_ids,
+         disturbance_target_field, disturbance_target_style)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       world_id ?? null,
@@ -51,6 +54,8 @@ export function createActionCommand({
       sub_subcategory ?? '',
       visible_when_status_ids ?? '',
       visible_when_room_template_ids ?? '',
+      disturbance_target_field ?? '',
+      disturbance_target_style ?? '',
     );
   return getActionCommand(result.lastInsertRowid);
 }
@@ -71,12 +76,15 @@ export function updateActionCommand(
     sub_subcategory,
     visible_when_status_ids,
     visible_when_room_template_ids,
+    disturbance_target_field,
+    disturbance_target_style,
   },
 ) {
   db.prepare(
     `UPDATE action_commands
      SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?,
-         category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?, visible_when_room_template_ids = ?
+         category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?, visible_when_room_template_ids = ?,
+         disturbance_target_field = ?, disturbance_target_style = ?
      WHERE id = ?`,
   ).run(
     world_id ?? null,
@@ -92,6 +100,8 @@ export function updateActionCommand(
     sub_subcategory ?? '',
     visible_when_status_ids ?? '',
     visible_when_room_template_ids ?? '',
+    disturbance_target_field ?? '',
+    disturbance_target_style ?? '',
     id,
   );
   return getActionCommand(id);

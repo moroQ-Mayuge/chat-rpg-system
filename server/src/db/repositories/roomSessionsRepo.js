@@ -6,6 +6,35 @@ import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
 import { ensureImpressionStatesSeeded } from './characterImpressionStatesRepo.js';
+import { getOutfit } from './outfitsRepo.js';
+import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
+
+// The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
+// 6-track convention, L3.4) -- the fields a 脱衣 action command's
+// disturbance_target_field can reference client-side.
+const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'underwear_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_lower'];
+
+// Serializes this participant's current outfit + active undress-ladder
+// modifiers into a plain JSON-friendly shape the client can use to decide
+// which 脱衣 action commands are currently operable (ChatPage.jsx's
+// isDisturbanceCommandVisible) -- reuses getActiveOutfitStatusModifiers
+// (outfitTagCategories.js) rather than re-deriving the same suppression/
+// disturbance rules on the client.
+function buildOutfitDisturbance(participant, session) {
+  if (!participant.current_outfit_id) return null;
+  const outfit = getOutfit(participant.current_outfit_id);
+  const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, {
+    playthroughId: session.playthrough_id,
+    roomSessionId: session.id,
+  });
+  return {
+    fieldsPresent: Object.fromEntries(DISTURBABLE_FIELDS.map((f) => [f, Boolean(outfit[f]?.trim())])),
+    suppressedFields: [...suppressedFields],
+    disturbedFieldStyles: Object.fromEntries(disturbedFieldStyles),
+    tornFields: [...tornFields],
+    garmentOperations: outfit.garment_operations,
+  };
+}
 
 const STATUS_DISPLAY_LOCATIONS = ['strip', 'panel', 'chat_log'];
 const STATUS_DISPLAY_CATEGORIES = ['self_stat', 'status', 'relationship_stage'];
@@ -93,6 +122,7 @@ function attachParticipants(session) {
       roomSessionId: session.id,
       roomSessionCharacterId: participant.id,
     });
+    participant.outfit_disturbance = buildOutfitDisturbance(participant, session);
   }
 
   const participants = allParticipants.filter((p) => p.is_active);
