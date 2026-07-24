@@ -28,6 +28,18 @@ function extractMentionTokens(text, names) {
   return found.map((f) => `@${f.name}`);
 }
 
+// Resolves which participant is currently @-mentioned first in the draft
+// (mention order, not participant list order -- mirrors extractMentionTokens'
+// own index-based ordering), for 脱衣 commands' mentioned-only status gating
+// below. null when the draft has no recognized @mention yet.
+function firstMentionedParticipant(draft, participants) {
+  const names = participants.map((p) => p.name);
+  const [firstToken] = extractMentionTokens(draft, names);
+  if (!firstToken) return null;
+  const name = firstToken.slice(1);
+  return participants.find((p) => p.name === name) ?? null;
+}
+
 // Compact renderer for a status snapshot ({self_stats, statuses, stages} —
 // same shape whether live (participant.status) or frozen at speak-time
 // (message.status_snapshot)), gated per-category by the effective visibility
@@ -121,14 +133,24 @@ function commandVisible(cmd, activeIds, currentRoomTemplateId) {
 // one) -- a PC98風コマンド選択メニュー layout agreed in the 2026-07-16
 // categorization plan. Commands with no category (legacy / not yet tagged)
 // render as a flat row, unchanged from before.
-function ActionCommandBar({ worldId, participants, roomTemplateId, onKeywordSend, onOpenPanel }) {
+// 脱衣系コマンド（category === '脱衣'）は、同席者全員のOR判定ではなく
+// @メンション先頭のキャラ1人の状態だけを見て表示/非表示を決める --
+// 「服を脱がす」操作の対象はメンション先頭の1人に限定する仕様のため、他の
+// 同席者がたまたま該当ステータスを持っていても表示に影響させない。それ以外の
+// カテゴリのコマンドは従来通り同席者全員のOR判定（any_present）のまま。
+const UNDRESS_COMMAND_CATEGORY = '脱衣';
+
+function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTemplateId, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
   const [openCategory, setOpenCategory] = useState(null);
   const [openSubcategory, setOpenSubcategory] = useState(null);
   if (!commands || commands.length === 0) return null;
 
-  const activeIds = activeStatusIdSet(participants);
-  const visibleCommands = commands.filter((cmd) => commandVisible(cmd, activeIds, roomTemplateId));
+  const anyPresentIds = activeStatusIdSet(participants);
+  const mentionedIds = activeStatusIdSet(mentionedParticipant ? [mentionedParticipant] : []);
+  const visibleCommands = commands.filter((cmd) =>
+    commandVisible(cmd, cmd.category === UNDRESS_COMMAND_CATEGORY ? mentionedIds : anyPresentIds, roomTemplateId),
+  );
 
   const uncategorized = visibleCommands.filter((cmd) => !cmd.category);
   const categorized = visibleCommands.filter((cmd) => cmd.category);
@@ -763,6 +785,7 @@ export default function ChatPage() {
       <ActionCommandBar
         worldId={playthrough.world_id}
         participants={session.participants}
+        mentionedParticipant={firstMentionedParticipant(draft, session.participants)}
         roomTemplateId={session.room_template_id}
         onKeywordSend={sendKeywordCommand}
         onOpenPanel={setItemPanel}
