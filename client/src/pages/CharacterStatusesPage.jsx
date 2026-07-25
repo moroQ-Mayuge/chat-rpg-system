@@ -20,10 +20,10 @@ const emptyForm = {
 // (undressState.js's UNDRESS_STATE_TRACKS) -- the other 15 outfit tag
 // columns have no undress-ladder concept, so they're excluded here.
 const DISTURBABLE_FIELDS = [
-  ['clothing_upper', '服装：上半身'],
-  ['clothing_upper_outer', '上着：上半身'],
-  ['clothing_lower', '服装：下半身'],
-  ['clothing_lower_outer', '上着：下半身'],
+  ['clothing_upper', '中衣（ベース）：上半身'],
+  ['clothing_upper_outer', '上着（アウター）：上半身'],
+  ['clothing_lower', '中衣（ベース）：下半身'],
+  ['clothing_lower_outer', '上着（アウター）：下半身'],
   ['underwear_upper', '下着：上半身'],
   ['underwear_lower', '下着：下半身'],
 ];
