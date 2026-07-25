@@ -9,6 +9,13 @@ import {
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
 import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory, transferItem } from '../db/repositories/inventoryRepo.js';
 import { isRoomInWorld } from '../db/repositories/worldRoomTemplatesRepo.js';
+import {
+  listMemoriesForPlaythrough,
+  addMemory,
+  updateMemory,
+  deleteMemory,
+  formatOccurredLabel,
+} from '../db/repositories/characterMemoriesRepo.js';
 
 export const playthroughsRouter = Router();
 
@@ -79,4 +86,38 @@ playthroughsRouter.post('/:id/inventory/transfer', (req, res) => {
     return res.status(400).json({ error: 'item_id_and_to_character_id_required' });
   }
   res.json(transferItem(req.params.id, req.body.item_id, req.body.quantity ?? 1, req.body.to_character_id));
+});
+
+// Route-scoped character memories (0068). Nested under the playthrough because
+// that's what owns them — a character row itself is shared master data across
+// Worlds and routes, so there's no meaningful character-level listing.
+playthroughsRouter.get('/:id/memories', (req, res) => {
+  res.json(listMemoriesForPlaythrough(req.params.id));
+});
+
+playthroughsRouter.post('/:id/memories', (req, res) => {
+  if (!req.body.character_id || !req.body.content?.trim()) {
+    return res.status(400).json({ error: 'character_id_and_content_required' });
+  }
+  const memory = addMemory({
+    playthrough_id: Number(req.params.id),
+    character_id: req.body.character_id,
+    content: req.body.content,
+    is_pinned: req.body.is_pinned,
+    occurred_label: req.body.occurred_label ?? formatOccurredLabel(req.params.id),
+    source: 'manual',
+  });
+  // null = mob character, which deliberately never keeps route-persistent state.
+  if (!memory) return res.status(400).json({ error: 'mob_characters_cannot_have_memories' });
+  res.status(201).json(memory);
+});
+
+playthroughsRouter.put('/:id/memories/:memoryId', (req, res) => {
+  const memory = updateMemory(req.params.memoryId, req.body);
+  if (!memory) return res.status(404).json({ error: 'not_found' });
+  res.json(memory);
+});
+
+playthroughsRouter.delete('/:id/memories/:memoryId', (req, res) => {
+  res.json(deleteMemory(req.params.memoryId));
 });

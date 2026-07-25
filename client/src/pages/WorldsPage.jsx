@@ -49,6 +49,9 @@ const emptyForm = {
   weather_tag_map: {},
   time_slot_tag_map: {},
   impression_auto_update_enabled: false,
+  memory_prompt_limit: 5,
+  memory_auto_extract_enabled: false,
+  memory_editing_visible: true,
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -137,6 +140,9 @@ export default function WorldsPage() {
         relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
         mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
         refusal_detection_enabled: Boolean(world.refusal_detection_enabled),
+        memory_prompt_limit: world.memory_prompt_limit ?? 5,
+        memory_auto_extract_enabled: Boolean(world.memory_auto_extract_enabled),
+        memory_editing_visible: Boolean(world.memory_editing_visible),
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -581,6 +587,49 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               上記の抑制指示をすり抜けて拒否文が生成された場合の事後対策です。応答が「申し訳ございません」等の拒否フレーズだけで完結していたら、チャットに表示・保存せず「応答なし」という一時通知だけを出します。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>キャラの記憶（シーンをまたいで保持）</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              「前のセッションで何があったか」をルート単位で蓄積し、キャラ設定の一部としてプロンプトに載せます。上書きされないので、重要な出来事は何セッション経っても残ります。記憶はイベントアクション「記憶を追加」・下記の自動抽出・ルート画面での手動編集で追加できます。
+            </p>
+
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: 11, color: '#888' }}>プロンプトに載せる件数の上限（0で記憶機能を無効化）</span>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 80, display: 'block' }}
+                value={form.memory_prompt_limit}
+                onChange={(e) => setForm({ ...form, memory_prompt_limit: e.target.value === '' ? 0 : Number(e.target.value) })}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              ローカルLLMのコンテキストを圧迫しないための足切りです。ピン留めした記憶はこの件数の枠外で常に載ります。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.memory_auto_extract_enabled}
+                onChange={(e) => setForm({ ...form, memory_auto_extract_enabled: e.target.checked })}
+              />
+              セッション終了時にLLMが重要な出来事を自動で記憶に残す
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              部屋の移動・退室のたびにLLMを1回追加で呼び、その場面に「今後もずっと覚えているような出来事」があれば最大2件まで記録します。台本にない自発的な展開も拾えますが、その分の生成時間がかかります。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.memory_editing_visible}
+                onChange={(e) => setForm({ ...form, memory_editing_visible: e.target.checked })}
+              />
+              ルート一覧画面に記憶の編集パネルを表示する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              制作中は記憶を直接編集できると便利ですが、遊ぶユーザーに見せたくない場合はOFFにしてください。OFFにしても記憶の蓄積とプロンプトへの反映は通常どおり動きます。
             </p>
 
             <label style={{ display: 'block', marginTop: 10 }}>

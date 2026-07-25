@@ -10,6 +10,8 @@ function parseWorld(row) {
     mature_content_mode_enabled: Boolean(row.mature_content_mode_enabled),
     refusal_detection_enabled: Boolean(row.refusal_detection_enabled),
     impression_auto_update_enabled: Boolean(row.impression_auto_update_enabled),
+    memory_auto_extract_enabled: Boolean(row.memory_auto_extract_enabled),
+    memory_editing_visible: Boolean(row.memory_editing_visible),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
@@ -89,6 +91,9 @@ export function createWorld({
   weather_tag_map = {},
   time_slot_tag_map = {},
   impression_auto_update_enabled = false,
+  memory_prompt_limit = 5,
+  memory_auto_extract_enabled = false,
+  memory_editing_visible = true,
 }) {
   const result = db
     .prepare(
@@ -97,8 +102,9 @@ export function createWorld({
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
-         weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -133,6 +139,9 @@ export function createWorld({
       JSON.stringify(time_slot_tag_map ?? {}),
       impression_auto_update_enabled ? 1 : 0,
       refusal_detection_enabled ? 1 : 0,
+      memory_prompt_limit ?? 5,
+      memory_auto_extract_enabled ? 1 : 0,
+      memory_editing_visible ? 1 : 0,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -172,6 +181,9 @@ export function updateWorld(
     time_slot_tag_map,
     impression_auto_update_enabled,
     refusal_detection_enabled,
+    memory_prompt_limit,
+    memory_auto_extract_enabled,
+    memory_editing_visible,
   },
 ) {
   db.prepare(
@@ -180,7 +192,8 @@ export function updateWorld(
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
          attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?,
          currency_enabled = ?, currency_unit = ?, initial_money = ?, self_stat_auto_update_enabled = ?, relationship_update_interval_turns = ?, mature_content_mode_enabled = ?,
-         weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?
+         weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?,
+         memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -215,6 +228,9 @@ export function updateWorld(
     JSON.stringify(time_slot_tag_map ?? {}),
     impression_auto_update_enabled ? 1 : 0,
     refusal_detection_enabled ? 1 : 0,
+    memory_prompt_limit ?? 5,
+    memory_auto_extract_enabled ? 1 : 0,
+    memory_editing_visible ? 1 : 0,
     id,
   );
   return getWorld(id);

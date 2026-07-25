@@ -4,6 +4,7 @@ import { resolveProtagonist, getMoney, getPlaythrough } from '../db/repositories
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
+import { listMemoriesForPrompt } from '../db/repositories/characterMemoriesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -125,7 +126,16 @@ function buildSystemPrompt(session, participants, options = {}) {
       const impressionLines = listImpressionValues(session.playthrough_id, character.id, session.id, p.id)
         .filter((f) => f.value.trim())
         .map((f) => `${f.field_key}：${f.value}`);
-      return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines);
+      // Route-scoped episodic memory (0068_character_memories.sql) -- unlike
+      // the impression fields above (current mood, overwritten each session),
+      // these accumulate, so a significant past event still reaches the model
+      // many sessions later. Bounded by world.memory_prompt_limit for local
+      // context budget; 0 disables injection entirely, and mob characters
+      // never have rows here at all.
+      const memoryLines = listMemoriesForPrompt(session.playthrough_id, character.id, world.memory_prompt_limit).map(
+        (m) => (m.occurred_label ? `記憶（${m.occurred_label}）：${m.content}` : `記憶：${m.content}`),
+      );
+      return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines, memoryLines);
     })
     .join('\n');
 

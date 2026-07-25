@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
-import { usePlaythroughsForWorld, usePlaythroughMutations } from '../hooks/usePlaythroughs.js';
+import {
+  usePlaythroughsForWorld,
+  usePlaythroughMutations,
+  useCharacterMemories,
+  useCharacterMemoryMutations,
+} from '../hooks/usePlaythroughs.js';
+import { useCharacters } from '../hooks/useCharacters.js';
 import { playthroughsApi } from '../api/playthroughs.js';
 
 const emptyProtagonistForm = {
@@ -116,6 +122,106 @@ function ProtagonistSettingsPanel({ playthrough, world }) {
   );
 }
 
+// Route-scoped episodic memory editor (0068). Lives on the route rather than
+// the character edit screen because a characters row is shared master data
+// across Worlds/routes while its memories belong to one specific route.
+// Hidden entirely when the World turns off memory_editing_visible (so a
+// finished World doesn't expose authoring controls to whoever plays it).
+function MemoriesPanel({ playthrough }) {
+  const [expanded, setExpanded] = useState(false);
+  // Only fetch once opened -- most routes are never expanded in a given visit.
+  const { data: memories } = useCharacterMemories(playthrough.id, expanded);
+  const { data: characters } = useCharacters();
+  const { add, update, remove } = useCharacterMemoryMutations(playthrough.id);
+  const [newCharacterId, setNewCharacterId] = useState('');
+  const [newContent, setNewContent] = useState('');
+
+  // Mobs deliberately can't hold route-persistent state, so they're not
+  // offerable targets (the server rejects them too).
+  const eligibleCharacters = (characters ?? []).filter((c) => !c.is_mob);
+  const nameFor = (id) => characters?.find((c) => c.id === id)?.name ?? `#${id}`;
+
+  const byCharacter = new Map();
+  for (const m of memories ?? []) {
+    if (!byCharacter.has(m.character_id)) byCharacter.set(m.character_id, []);
+    byCharacter.get(m.character_id).push(m);
+  }
+
+  async function handleAdd() {
+    if (!newCharacterId || !newContent.trim()) return;
+    await add.mutateAsync({ character_id: Number(newCharacterId), content: newContent.trim() });
+    setNewContent('');
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button style={{ fontSize: 11 }} onClick={() => setExpanded((e) => !e)}>
+        {expanded ? '記憶を閉じる ▲' : '記憶 ▼'}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: 8, border: '1px solid #ddd', borderRadius: 6, padding: 10, background: '#fafafa' }}>
+          <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+            このルートでの出来事の記録です。📌のものは件数上限の枠外で必ずプロンプトに載ります。
+          </p>
+
+          {[...byCharacter.entries()].map(([characterId, rows]) => (
+            <div key={characterId} style={{ marginBottom: 10 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 'bold' }}>{nameFor(characterId)}</p>
+              {rows.map((m) => (
+                <div key={m.id} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                  <button
+                    style={{ fontSize: 11, padding: '2px 5px', opacity: m.is_pinned ? 1 : 0.35 }}
+                    title={m.is_pinned ? 'ピン留めを解除' : 'ピン留めする'}
+                    onClick={() => update.mutate({ memoryId: m.id, data: { is_pinned: !m.is_pinned } })}
+                  >
+                    📌
+                  </button>
+                  <span style={{ fontSize: 10, color: '#888', flexShrink: 0, width: 70 }}>{m.occurred_label}</span>
+                  <input
+                    style={{ flex: 1, fontSize: 12 }}
+                    defaultValue={m.content}
+                    onBlur={(e) => {
+                      if (e.target.value !== m.content) update.mutate({ memoryId: m.id, data: { content: e.target.value } });
+                    }}
+                  />
+                  <span style={{ fontSize: 10, color: '#aaa', flexShrink: 0 }}>
+                    {{ manual: '手動', event: 'イベント', auto: '自動' }[m.source] ?? m.source}
+                  </span>
+                  <button style={{ fontSize: 11, padding: '2px 5px' }} onClick={() => remove.mutate(m.id)}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+          {(memories?.length ?? 0) === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ記憶がありません</p>}
+
+          <div style={{ display: 'flex', gap: 4, marginTop: 8, borderTop: '1px solid #e5e5e5', paddingTop: 8 }}>
+            <select style={{ fontSize: 12 }} value={newCharacterId} onChange={(e) => setNewCharacterId(e.target.value)}>
+              <option value="">キャラを選択</option>
+              {eligibleCharacters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <input
+              style={{ flex: 1, fontSize: 12 }}
+              placeholder="例：無理やりキスをされて、とても怖い思いをした"
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+            />
+            <button style={{ fontSize: 11 }} onClick={handleAdd} disabled={add.isPending || !newCharacterId || !newContent.trim()}>
+              追加
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PlaythroughsPage() {
   const { worldId } = useParams();
   const navigate = useNavigate();
@@ -170,6 +276,7 @@ export default function PlaythroughsPage() {
               </div>
             </div>
             {world && <ProtagonistSettingsPanel playthrough={p} world={world} />}
+            {world?.memory_editing_visible && <MemoriesPanel playthrough={p} />}
           </div>
         ))}
         {playthroughs.length === 0 && <p>まだルートがありません</p>}

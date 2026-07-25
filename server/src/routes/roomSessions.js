@@ -35,6 +35,7 @@ import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxe
 import { adjustValue, getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpdate.js';
 import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
+import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
 
 export const roomSessionsRouter = Router();
 
@@ -180,6 +181,7 @@ roomSessionsRouter.post('/:id/exit', async (req, res) => {
     const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
     await maybeRunRelationshipAutoUpdate(session, world, { force: true });
     await maybeRunImpressionAutoUpdate(session, world);
+    await maybeRunMemoryAutoExtract(session, world);
   }
   res.json(exitRoomSession(req.params.id));
 });
@@ -216,6 +218,7 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
   const moveWorld = getWorld(playthroughWorldId);
   await maybeRunRelationshipAutoUpdate(session, moveWorld, { force: true });
   await maybeRunImpressionAutoUpdate(session, moveWorld);
+  await maybeRunMemoryAutoExtract(session, moveWorld);
 
   endSessionForMove(session.id);
   const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);

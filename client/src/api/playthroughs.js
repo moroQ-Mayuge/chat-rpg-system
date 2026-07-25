@@ -14,4 +14,8 @@ export const playthroughsApi = {
   useInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory/use`, { item_id: itemId, quantity }),
   transferInventoryItem: (id, itemId, quantity, toCharacterId) =>
     api.post(`/playthroughs/${id}/inventory/transfer`, { item_id: itemId, quantity, to_character_id: toCharacterId }),
+  listMemories: (id) => api.get(`/playthroughs/${id}/memories`),
+  addMemory: (id, data) => api.post(`/playthroughs/${id}/memories`, data),
+  updateMemory: (id, memoryId, data) => api.put(`/playthroughs/${id}/memories/${memoryId}`, data),
+  removeMemory: (id, memoryId) => api.del(`/playthroughs/${id}/memories/${memoryId}`),
 };

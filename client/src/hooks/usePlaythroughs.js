@@ -49,6 +49,27 @@ export function useInventory(playthroughId) {
   });
 }
 
+export function useCharacterMemories(playthroughId, enabled = true) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'memories'],
+    queryFn: () => playthroughsApi.listMemories(playthroughId),
+    enabled: playthroughId != null && enabled,
+  });
+}
+
+export function useCharacterMemoryMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'memories'] });
+  return {
+    add: useMutation({ mutationFn: (data) => playthroughsApi.addMemory(playthroughId, data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ memoryId, data }) => playthroughsApi.updateMemory(playthroughId, memoryId, data),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({ mutationFn: (memoryId) => playthroughsApi.removeMemory(playthroughId, memoryId), onSuccess: invalidate }),
+  };
+}
+
 export function useInventoryMutations(playthroughId) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'inventory'] });
