@@ -8,6 +8,7 @@ function parseWorld(row) {
     currency_enabled: Boolean(row.currency_enabled),
     self_stat_auto_update_enabled: Boolean(row.self_stat_auto_update_enabled),
     mature_content_mode_enabled: Boolean(row.mature_content_mode_enabled),
+    refusal_detection_enabled: Boolean(row.refusal_detection_enabled),
     impression_auto_update_enabled: Boolean(row.impression_auto_update_enabled),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
@@ -84,6 +85,7 @@ export function createWorld({
   self_stat_auto_update_enabled = false,
   relationship_update_interval_turns = null,
   mature_content_mode_enabled = false,
+  refusal_detection_enabled = false,
   weather_tag_map = {},
   time_slot_tag_map = {},
   impression_auto_update_enabled = false,
@@ -95,8 +97,8 @@ export function createWorld({
          protagonist_name, protagonist_nickname, protagonist_occupation, protagonist_appearance, protagonist_gender, protagonist_notes, protagonist_mode, attribute_tags,
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
-         weather_tag_map, time_slot_tag_map, impression_auto_update_enabled)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -130,6 +132,7 @@ export function createWorld({
       JSON.stringify(weather_tag_map ?? {}),
       JSON.stringify(time_slot_tag_map ?? {}),
       impression_auto_update_enabled ? 1 : 0,
+      refusal_detection_enabled ? 1 : 0,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -168,6 +171,7 @@ export function updateWorld(
     weather_tag_map,
     time_slot_tag_map,
     impression_auto_update_enabled,
+    refusal_detection_enabled,
   },
 ) {
   db.prepare(
@@ -176,7 +180,7 @@ export function updateWorld(
          protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?, protagonist_appearance = ?, protagonist_gender = ?, protagonist_notes = ?, protagonist_mode = ?,
          attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?,
          currency_enabled = ?, currency_unit = ?, initial_money = ?, self_stat_auto_update_enabled = ?, relationship_update_interval_turns = ?, mature_content_mode_enabled = ?,
-         weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?
+         weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -210,6 +214,7 @@ export function updateWorld(
     JSON.stringify(weather_tag_map ?? {}),
     JSON.stringify(time_slot_tag_map ?? {}),
     impression_auto_update_enabled ? 1 : 0,
+    refusal_detection_enabled ? 1 : 0,
     id,
   );
   return getWorld(id);

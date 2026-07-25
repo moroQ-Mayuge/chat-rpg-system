@@ -12,10 +12,12 @@ export function useChatStream(sessionId, onGenerationDone) {
   const [error, setError] = useState(null);
   const [sceneChangeNotice, setSceneChangeNotice] = useState(null);
   const [relationshipNotice, setRelationshipNotice] = useState(null);
+  const [refusalNotice, setRefusalNotice] = useState(null);
   const onDoneRef = useRef(onGenerationDone);
   onDoneRef.current = onGenerationDone;
   const sceneChangeTimerRef = useRef(null);
   const relationshipTimerRef = useRef(null);
+  const refusalTimerRef = useRef(null);
 
   // Both notices previously persisted forever once set (known gap) — each
   // now clears itself after NOTICE_DURATION_MS, restarting the timer if a
@@ -41,6 +43,8 @@ export function useChatStream(sessionId, onGenerationDone) {
         showNotice(setSceneChangeNotice, sceneChangeTimerRef, data.description);
       } else if (data.type === 'relationship_changed') {
         showNotice(setRelationshipNotice, relationshipTimerRef, data.description);
+      } else if (data.type === 'generation_refused') {
+        showNotice(setRefusalNotice, refusalTimerRef, '応答なし（LLMが応答を生成できませんでした）');
       } else if (data.type === 'generation_done') {
         setIsGenerating(false);
         onDoneRef.current?.();
@@ -59,8 +63,9 @@ export function useChatStream(sessionId, onGenerationDone) {
       ws.close();
       clearTimeout(sceneChangeTimerRef.current);
       clearTimeout(relationshipTimerRef.current);
+      clearTimeout(refusalTimerRef.current);
     };
   }, [sessionId]);
 
-  return { isGenerating, error, sceneChangeNotice, relationshipNotice };
+  return { isGenerating, error, sceneChangeNotice, relationshipNotice, refusalNotice };
 }

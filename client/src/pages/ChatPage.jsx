@@ -499,7 +499,7 @@ export default function ChatPage() {
   const { data: chatInputSettings } = useChatInputSettings();
   const { data: imagePromptDisplaySettings } = useImagePromptDisplaySettings();
 
-  const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice } = useChatStream(id, () => {
+  const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice, refusalNotice } = useChatStream(id, () => {
     queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
     // A message_complete event can be a purchase/sale narration (money_changed
     // fires alongside it), so keep the 所持金 display fresh too.
@@ -771,6 +771,13 @@ export default function ChatPage() {
           <div style={{ textAlign: 'center', margin: '6px 0' }}>
             <span style={{ fontSize: 10, color: '#be185d', border: '1px dashed #be185d', borderRadius: 4, padding: '2px 6px' }}>
               💗 {relationshipNotice}
+            </span>
+          </div>
+        )}
+        {refusalNotice && (
+          <div style={{ textAlign: 'center', margin: '6px 0' }}>
+            <span style={{ fontSize: 10, color: '#888', border: '1px dashed #888', borderRadius: 4, padding: '2px 6px' }}>
+              ⚠ {refusalNotice}
             </span>
           </div>
         )}

@@ -45,6 +45,7 @@ const emptyForm = {
   self_stat_auto_update_enabled: false,
   relationship_update_interval_turns: '',
   mature_content_mode_enabled: false,
+  refusal_detection_enabled: false,
   weather_tag_map: {},
   time_slot_tag_map: {},
   impression_auto_update_enabled: false,
@@ -135,6 +136,7 @@ export default function WorldsPage() {
         self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
         relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
         mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
+        refusal_detection_enabled: Boolean(world.refusal_detection_enabled),
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -567,6 +569,18 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               ローカルLLM（Gemma等）が成人向け創作でも拒否文・空白応答を返してしまう場合にONにしてください。「これは個人利用の創作フィクションであり登場人物は全員成人」という前提と、拒否・説教をせず物語を続けるようシステムプロンプトに追加で指示します。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.refusal_detection_enabled}
+                onChange={(e) => setForm({ ...form, refusal_detection_enabled: e.target.checked })}
+              />
+              拒否文が生成されてしまった場合、画面に表示せず履歴にも保存しない
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              上記の抑制指示をすり抜けて拒否文が生成された場合の事後対策です。応答が「申し訳ございません」等の拒否フレーズだけで完結していたら、チャットに表示・保存せず「応答なし」という一時通知だけを出します。
             </p>
 
             <label style={{ display: 'block', marginTop: 10 }}>

@@ -19,6 +19,7 @@ import { listMessagesForSession, createMessage } from '../db/repositories/messag
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
 import { parseScriptLine } from '../services/responseParser.js';
+import { isRefusalText } from '../services/refusalDetection.js';
 import { generateChatCompletion, generateImage, generateTxt2Image } from '../services/koboldClient.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, suggestSceneTags } from '../services/imagePromptBuilder.js';
 import { renderPromptTemplate } from '../services/promptTemplate.js';
@@ -466,6 +467,26 @@ async function generateReply(
     broadcast(sessionId, { type: 'message_complete', message });
   }
 
+  // Refusal detection (0067): a genuine local-model refusal is almost always
+  // the ENTIRE response collapsed into one block (no character tag, just an
+  // apology/decline sentence), so rather than buffering the whole response
+  // (which would sacrifice the one-bubble-at-a-time reveal below), only the
+  // FIRST block is held back. As soon as a second block arrives, the
+  // response is clearly continuing normally, so both are flushed immediately
+  // and every later block streams through as before. Only if the stream
+  // ends with exactly one held block do we check it against isRefusalText.
+  let heldBlock = null;
+  function onNewBlock(parsed) {
+    if (!parsed) return;
+    if (heldBlock === null) {
+      heldBlock = parsed;
+      return;
+    }
+    handleParsedLine(heldBlock);
+    heldBlock = null;
+    handleParsedLine(parsed);
+  }
+
   let lineBuffer = '';
   const fullText = await generateChatCompletion({
     messages: built.messages,
@@ -478,11 +499,27 @@ async function generateReply(
       while ((newlineIndex = lineBuffer.indexOf('\n')) !== -1) {
         const line = lineBuffer.slice(0, newlineIndex);
         lineBuffer = lineBuffer.slice(newlineIndex + 1);
-        handleParsedLine(parseScriptLine(line));
+        onNewBlock(parseScriptLine(line));
       }
     },
   });
-  handleParsedLine(parseScriptLine(lineBuffer));
+  onNewBlock(parseScriptLine(lineBuffer));
+
+  let refused = false;
+  if (heldBlock !== null) {
+    if (world.refusal_detection_enabled && isRefusalText(heldBlock.text)) {
+      refused = true;
+      broadcast(sessionId, { type: 'generation_refused' });
+    } else {
+      handleParsedLine(heldBlock);
+    }
+    heldBlock = null;
+  }
+
+  if (refused) {
+    broadcast(sessionId, { type: 'generation_done' });
+    return;
+  }
 
   try {
     // Explicit @mention wins when present (the user pointed at a specific
