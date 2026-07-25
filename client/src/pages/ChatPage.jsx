@@ -176,10 +176,18 @@ function isDisturbanceCommandVisible(cmd, od) {
 
   const style = cmd.disturbance_target_style;
   const alreadySuppressed = od.suppressedFields.includes(field);
-  const alreadyStyled = Boolean(od.disturbedFieldStyles[field]) || od.tornFields.includes(field);
+  // Style (open/pull/lift/aside) and torn are independent axes, so the
+  // "once chosen, locked" rule only applies among styles (L3.5) -- a garment
+  // can be lifted AND torn at once, which is exactly the compound tag
+  // outfitTagCategories.js's composeFieldValue already builds.
+  const alreadyStyled = Boolean(od.disturbedFieldStyles[field]);
+  const alreadyTorn = od.tornFields.includes(field);
   if (style === 'complete') return !alreadySuppressed;
-  if (alreadySuppressed || alreadyStyled) return false;
-  if (style === 'torn') return true;
+  if (alreadySuppressed) return false;
+  // Tearing stays available while the layer is merely disturbed -- only a
+  // fully removed layer (above) or an already-torn one takes it away.
+  if (style === 'torn') return !alreadyTorn;
+  if (alreadyStyled) return false;
   return (od.garmentOperations?.[field] ?? []).includes(style);
 }
 
