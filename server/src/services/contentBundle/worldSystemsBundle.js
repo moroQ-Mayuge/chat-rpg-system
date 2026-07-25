@@ -2,7 +2,7 @@ import { db } from '../../db/connection.js';
 import { listAllStatuses, createStatus, attachStatusToWorld } from '../../db/repositories/characterStatusesRepo.js';
 import { listRelationshipAxes } from '../../db/repositories/relationshipAxesRepo.js';
 import { createTrigger } from '../../db/repositories/axisStatusTriggersRepo.js';
-import { listEventDefinitions } from '../../db/repositories/eventDefinitionsRepo.js';
+import { listEventDefinitions, setEventPrerequisite } from '../../db/repositories/eventDefinitionsRepo.js';
 import { listRoomTemplatesForWorld, listWorldsForRoomTemplate } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { exportEventDefinitionJson, importEventDefinitionJson, collectCharacterIds, collectStatusIds } from '../eventPortability.js';
 
@@ -147,19 +147,22 @@ export function importAxisStatusTriggerEntries(entries, statusNameToId, warnings
   return created;
 }
 
-// Imported in the same order they were exported (ascending original id) so a
-// prerequisite event is always created before whatever references it by name.
-// importedRoomTemplates/importedCharacters/importedStatuses: this import
-// batch's own rooms/characters/statuses (or the target World's own, when
-// merging into an existing World), so a name that collides with a
-// pre-existing entity elsewhere in the install resolves to the right one
-// (see importEventDefinitionJson's preferredRoomTemplates/preferredCharacters/
-// preferredStatuses options).
+// Imported in two passes. Pass 1 creates every event with its prerequisite
+// left unset; pass 2 wires the prerequisites up. A single pass used to rely on
+// the export order (ascending original id) happening to place a prerequisite
+// before whatever references it, which isn't guaranteed at all — authors
+// routinely add a prerequisite event AFTER the event that depends on it, giving
+// it a higher id, and that link was then silently dropped on import. Deferring
+// also lets pass 2 prefer this batch's own events over same-named events
+// elsewhere in the install (event names collide freely across Worlds), the same
+// rationale as the preferredRoomTemplates/preferredCharacters/preferredStatuses
+// options below.
 export function importEventDefinitionEntries(entries, warnings, importedRoomTemplates = [], importedCharacters = [], importedStatuses = []) {
-  let created = 0;
+  const imported = [];
   for (const json of entries) {
     const result = importEventDefinitionJson(json, {
       suffixName: false,
+      deferPrerequisite: true,
       preferredRoomTemplates: importedRoomTemplates,
       preferredCharacters: importedCharacters,
       preferredStatuses: importedStatuses,
@@ -169,8 +172,31 @@ export function importEventDefinitionEntries(entries, warnings, importedRoomTemp
     if (result.unresolvedStatuses.length) warnings.push(`イベント「${label}」: ステータス参照が未解決です（${result.unresolvedStatuses.join(', ')}）`);
     if (result.unresolvedOutfits.length) warnings.push(`イベント「${label}」: 衣装参照が未解決です（${result.unresolvedOutfits.join(', ')}）`);
     if (!result.roomTemplateResolved) warnings.push(`イベント「${label}」: 部屋テンプレート参照が未解決のため共通イベント化しました`);
-    if (!result.prerequisiteResolved) warnings.push(`イベント「${label}」: 前提イベント参照が未解決です`);
-    created += 1;
+    imported.push({ json, def: result.eventDefinition });
   }
-  return created;
+
+  // First occurrence wins when the batch itself contains duplicate names —
+  // arbitrary but deterministic, and matches the export side's "keep the
+  // lowest id" dedupe.
+  const batchIdByName = new Map();
+  for (const { def } of imported) {
+    if (!batchIdByName.has(def.name)) batchIdByName.set(def.name, def.id);
+  }
+
+  for (const { json, def } of imported) {
+    const prereqName = json.prerequisite_event_name;
+    if (!prereqName) continue;
+    // Fall back to the whole install so a partial import can still attach to a
+    // prerequisite the destination World already has. Never let an event become
+    // its own prerequisite.
+    const resolvedId =
+      batchIdByName.get(prereqName) ?? listEventDefinitions().find((d) => d.name === prereqName && d.id !== def.id)?.id ?? null;
+    if (resolvedId == null) {
+      warnings.push(`イベント「${def.name}」: 前提イベント「${prereqName}」が見つかりませんでした`);
+      continue;
+    }
+    setEventPrerequisite(def.id, resolvedId);
+  }
+
+  return imported.length;
 }

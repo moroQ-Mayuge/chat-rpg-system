@@ -265,8 +265,13 @@ export function importEventDefinitionJson(json, options = {}) {
     }
   }
 
+  // options.deferPrerequisite: the caller is importing a whole batch and will
+  // wire prerequisites itself in a second pass (worldSystemsBundle.js). Needed
+  // because a prerequisite may be created LATER in the same batch — resolving
+  // by name here would find nothing (and silently drop the link), or worse,
+  // bind to a same-named event belonging to some other World.
   let prerequisiteResolved = true;
-  if (json.prerequisite_event_name) {
+  if (json.prerequisite_event_name && !options.deferPrerequisite) {
     const prereq = listEventDefinitions().find((d) => d.name === json.prerequisite_event_name);
     if (prereq) {
       data.prerequisite_event_definition_id = prereq.id;
@@ -274,6 +279,8 @@ export function importEventDefinitionJson(json, options = {}) {
       prerequisiteResolved = false;
       data.prerequisite_event_definition_id = null;
     }
+  } else if (options.deferPrerequisite) {
+    data.prerequisite_event_definition_id = null;
   }
 
   if (options.suffixName !== false) data.name = `${data.name}（インポート）`;

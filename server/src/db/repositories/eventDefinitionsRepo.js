@@ -198,6 +198,16 @@ export function updateEventDefinition(id, data) {
   return getEventDefinition(id);
 }
 
+// Targeted prerequisite wiring, used by the bundle importer's second pass
+// (worldSystemsBundle.js) to link events to prerequisites created in the same
+// batch. Deliberately not updateEventDefinition: that one also rebuilds every
+// condition/action via replaceConditionsAndActions, which would throw away the
+// rows the import just created.
+export function setEventPrerequisite(id, prerequisiteEventDefinitionId) {
+  db.prepare('UPDATE event_definitions SET prerequisite_event_definition_id = ? WHERE id = ?').run(prerequisiteEventDefinitionId, id);
+  return getEventDefinition(id);
+}
+
 export function deleteEventDefinition(id) {
   db.prepare('DELETE FROM event_definitions WHERE id = ?').run(id);
   return { deleted: true };
