@@ -294,12 +294,19 @@ async function generateReply(
   // asks for a description of the place rather than for the scene to move on.
   const isSurroundingsCheck = typeof userMessageContent === 'string' && userMessageContent.includes('@周辺');
   const ephemeralUserTurn = isContinuation ? (isSurroundingsCheck ? SURROUNDINGS_TURN : CONTINUATION_TURN) : null;
-  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn, isSurroundingsCheck });
-  if (!built) return;
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const world = getWorld(worldId);
   const maxTokens = world.max_response_tokens;
+
+  // The prompt is sized against the model's real context window, so it needs
+  // to know how much room this call will ask back for.
+  const built = await buildMultiCharacterMessages(session, {
+    ephemeralUserTurn,
+    isSurroundingsCheck,
+    responseTokenReserve: maxTokens ?? undefined,
+  });
+  if (!built) return;
 
   broadcast(sessionId, { type: 'generation_start' });
 

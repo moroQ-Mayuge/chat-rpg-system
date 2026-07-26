@@ -13,18 +13,28 @@ import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
+import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
+import { getMaxContextLength, countTokens } from './koboldClient.js';
 
-const HISTORY_LIMIT = 20;
+// Loose ceilings only. How much history actually survives is decided by the
+// token budget in buildMultiCharacterMessages, measured against the running
+// model — these just bound how much work that measurement has to consider, so
+// raising the model's context window genuinely lengthens the replayed history
+// instead of hitting a hardcoded cap.
+const MAX_HISTORY_ENTRIES = 200;
+const MAX_HISTORY_ROWS = 400;
 
-// HISTORY_LIMIT alone bounds the number of history ENTRIES, not their size —
-// and consecutive character/narration rows from one generation are merged into
-// a single assistant entry, so a long scene can collapse into a handful of
-// enormous messages that still blow past the model's context window. Measured
-// against the project's Gemma build, Japanese prose runs ~1.5 chars per token,
-// so this budget is roughly 4,000 tokens: enough to leave room for the system
-// prompt (~1,700–2,900 tokens for 2–6 participants) plus the response inside a
-// default 8,192-token context. Oldest entries are dropped first.
-const HISTORY_CHAR_BUDGET = 6000;
+// Used to pre-filter rows before the exact token pass, and as the sole bound
+// when KoboldCpp can't be reached for measurement. Japanese prose measured
+// ~1.5 chars/token against this project's Gemma build; the pre-filter is
+// deliberately generous (chars are cheap, an oversized tokencount call is not)
+// since the exact pass trims whatever is left over.
+const CHARS_PER_TOKEN = 1.5;
+const PREFILTER_SLACK = 1.3;
+// Chat-template control tokens and other per-request overhead we can't see.
+const SAFETY_MARGIN_TOKENS = 320;
+const DEFAULT_CONTEXT_TOKENS = 8192;
+const DEFAULT_RESPONSE_RESERVE_TOKENS = 512;
 const ROW_RENDER_OVERHEAD = 24;
 
 function getCharacterAndOutfit(participant) {
@@ -318,7 +328,7 @@ function buildSystemPrompt(session, participants, options = {}) {
 // rows produced by one earlier generation are re-joined into a single
 // script-format assistant message, since that's how they were originally
 // generated together.
-function buildHistoryMessages(sessionId) {
+function buildHistoryMessages(sessionId, charBudget) {
   // Newest rows, then flipped back to chronological order. This used to be
   // ORDER BY id ASC, which took the OLDEST rows: past that window a session's
   // replayed history froze at its opening scene forever, so the player's own
@@ -326,14 +336,14 @@ function buildHistoryMessages(sessionId) {
   // same stale moment.
   const newestFirst = db
     .prepare("SELECT * FROM messages WHERE room_session_id = ? AND content_type = 'text' ORDER BY id DESC LIMIT ?")
-    .all(sessionId, HISTORY_LIMIT * 4);
+    .all(sessionId, MAX_HISTORY_ROWS);
 
   // Budget at the row level, before consecutive rows get merged into single
   // assistant entries below: a stretch with no user rows in it (repeated
   // "continue" submissions create none) would otherwise collapse into one
   // huge entry that no per-entry cap can trim.
   const rows = [];
-  let budget = HISTORY_CHAR_BUDGET;
+  let budget = charBudget;
   for (const row of newestFirst) {
     // Each row gains a "[NARRATION]: " or "[name]: … [EMOTION:tag]" wrapper
     // plus a newline when it's rendered below; charge for that too, or the
@@ -399,17 +409,67 @@ function buildHistoryMessages(sessionId) {
   }
   flushAssistantBuffer();
 
-  return messages.slice(-HISTORY_LIMIT);
+  return messages.slice(-MAX_HISTORY_ENTRIES);
+}
+
+// Same oldest-first drop, by character estimate. Only used when the exact
+// token count is unavailable.
+function trimToCharEstimate(messages, charBudget) {
+  let total = messages.reduce((n, m) => n + m.content.length, 0);
+  while (total > charBudget && messages.length > 2) {
+    total -= messages[1].content.length;
+    messages.splice(1, 1);
+  }
+}
+
+// Drops history oldest-first until the assembled prompt actually fits, using
+// the model's own tokenizer rather than a character estimate. Mutates
+// `messages` in place. The char pre-filter upstream means this usually
+// confirms on the first measurement; the loop is bounded so a pathological
+// case can't spin. If KoboldCpp is unreachable countTokens returns null and we
+// keep the pre-filtered history as-is — sizing must never block generation.
+// The system prompt (index 0) and the final turn are never dropped: the model
+// needs its instructions, and the last turn is what it's replying to.
+async function trimToTokenBudget(messages, tokenBudget) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const total = await countTokens(messages.map((m) => m.content).join('\n'));
+    if (total == null) {
+      // Couldn't measure. The upstream pre-filter is deliberately generous
+      // because this pass normally tightens it up, so fall back to a
+      // conservative character estimate rather than sending it as-is.
+      trimToCharEstimate(messages, tokenBudget * CHARS_PER_TOKEN);
+      return;
+    }
+    if (total <= tokenBudget) return;
+    if (messages.length <= 2) return;
+    // Overshoot ratio tells us roughly how much to drop, so a badly oversized
+    // history converges in a couple of measurements instead of one per entry.
+    const excess = total - tokenBudget;
+    const droppable = messages.length - 2;
+    const dropCount = Math.min(droppable, Math.max(1, Math.ceil((excess / total) * droppable)));
+    messages.splice(1, dropCount);
+  }
 }
 
 // Builds the messages array for a chat-completions call covering every active
 // participant in one shot (SPEC.md 3.8 — a single call generates all present
 // characters' lines in script format, rather than one call per character).
-export function buildMultiCharacterMessages(session, options = {}) {
+// How much history survives is decided here, against the context window the
+// running model actually reports — so raising --contextsize lengthens the
+// replayed history automatically, and lowering it trims rather than overflows.
+// options.responseTokenReserve: room to leave for the completion itself.
+export async function buildMultiCharacterMessages(session, options = {}) {
   if (!session.participants.length) return null;
 
+  // Ask the running instance rather than trusting our own launch setting: it
+  // may have been started outside the app, or with a different value. The
+  // setting is the fallback, and only then a fixed default.
+  const maxContext = (await getMaxContextLength()) ?? getLaunchSettings()?.context_size ?? DEFAULT_CONTEXT_TOKENS;
+  const responseReserve = options.responseTokenReserve ?? DEFAULT_RESPONSE_RESERVE_TOKENS;
+  const tokenBudget = Math.max(512, maxContext - responseReserve - SAFETY_MARGIN_TOKENS);
+
   const systemPrompt = buildSystemPrompt(session, session.participants, { isSurroundingsCheck: options.isSurroundingsCheck });
-  const history = buildHistoryMessages(session.id);
+  const history = buildHistoryMessages(session.id, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];
 
   // options.ephemeralUserTurn: appended to the array sent to the LLM only —
@@ -419,6 +479,8 @@ export function buildMultiCharacterMessages(session, options = {}) {
   if (options.ephemeralUserTurn) {
     messages.push({ role: 'user', content: options.ephemeralUserTurn });
   }
+
+  await trimToTokenBudget(messages, tokenBudget);
 
   return {
     messages,

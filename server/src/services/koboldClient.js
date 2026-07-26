@@ -97,6 +97,48 @@ export async function getModelStatus() {
   return res.json();
 }
 
+// Both helpers below return null instead of throwing when KoboldCpp can't be
+// reached: they exist to SIZE the prompt, and a sizing failure must never take
+// down generation itself — callers fall back to their own estimate.
+
+// The running instance's actual context window (its --contextsize). Asking the
+// server rather than trusting our own launch setting means this stays correct
+// even when KoboldCpp was started outside the app. Re-fetched on a short TTL
+// since it can be restarted with a different value mid-session.
+const CONTEXT_LENGTH_TTL_MS = 60_000;
+let contextLengthCache = { value: null, at: 0 };
+
+export async function getMaxContextLength() {
+  if (contextLengthCache.value != null && Date.now() - contextLengthCache.at < CONTEXT_LENGTH_TTL_MS) {
+    return contextLengthCache.value;
+  }
+  try {
+    const res = await fetch(`${config.koboldBaseUrl}/api/extra/true_max_context_length`);
+    if (!res.ok) return null;
+    const value = (await res.json())?.value;
+    if (!(value > 0)) return null;
+    contextLengthCache = { value, at: Date.now() };
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function countTokens(text) {
+  try {
+    const res = await fetch(`${config.koboldBaseUrl}/api/extra/tokencount`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: text }),
+    });
+    if (!res.ok) return null;
+    const value = (await res.json())?.value;
+    return typeof value === 'number' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 // Image generation always goes through img2img (not txt2img), since every
 // generation uses the reference-anchor inpainting technique (SPEC.md 3.7):
 // a wider canvas with protected reference-image regions plus a mask, so

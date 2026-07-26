@@ -13,11 +13,12 @@ export function updateLaunchSettings({
   sd_architecture,
   sd_vae_path,
   sd_clip1_path,
+  context_size,
 }) {
   db.prepare(
     `UPDATE koboldcpp_launch_settings
      SET sd_quant = ?, llm_model_path = ?, sd_model_path = ?, sd_lora_path = ?, sd_lora_multiplier = ?,
-         sd_architecture = ?, sd_vae_path = ?, sd_clip1_path = ?
+         sd_architecture = ?, sd_vae_path = ?, sd_clip1_path = ?, context_size = ?
      WHERE id = 1`,
   ).run(
     sd_quant,
@@ -28,6 +29,7 @@ export function updateLaunchSettings({
     sd_architecture || 'sd',
     sd_vae_path || null,
     sd_clip1_path || null,
+    context_size || 8192,
   );
   return getLaunchSettings();
 }

@@ -95,7 +95,7 @@ export function launchKoboldcpp() {
 
   const port = new URL(config.koboldBaseUrl).port || '5001';
 
-  const args = ['--model', llmModel, '--port', port, '--contextsize', '8192', '--gpulayers', '999'];
+  const args = ['--model', llmModel, '--port', port, '--contextsize', String(settings.context_size || 8192), '--gpulayers', '999'];
   if (sdModel) {
     args.push('--sdmodel', sdModel);
     if (isAnima) {

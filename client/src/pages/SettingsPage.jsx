@@ -630,6 +630,22 @@ function KoboldcppLaunchSettingsSection() {
   return (
     <div style={{ marginTop: 8 }}>
       <label style={{ display: 'block' }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>コンテキスト長（トークン）</span>
+        <input
+          type="number"
+          min="512"
+          step="1024"
+          style={{ width: 120 }}
+          value={form.context_size ?? 8192}
+          onChange={(e) => setForm({ ...form, context_size: Number(e.target.value) || 8192 })}
+        />
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          チャットで遡れる会話履歴の量がこの値に応じて自動調整されます。大きくするほど長い場面を覚えていられますが、その分VRAMを消費します。
+          アプリからKoboldCppを起動する場合の値で、外部で起動している場合は起動時の指定が優先されます（実際の値を自動で参照します）。
+        </p>
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
         <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード（fp8非対応のため代替）</span>
         <select value={form.sd_quant} onChange={(e) => setForm({ ...form, sd_quant: Number(e.target.value) })}>
           <option value={0}>オフ（フル精度）</option>
