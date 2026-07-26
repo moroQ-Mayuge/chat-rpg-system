@@ -16,6 +16,17 @@ import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 
 const HISTORY_LIMIT = 20;
 
+// HISTORY_LIMIT alone bounds the number of history ENTRIES, not their size —
+// and consecutive character/narration rows from one generation are merged into
+// a single assistant entry, so a long scene can collapse into a handful of
+// enormous messages that still blow past the model's context window. Measured
+// against the project's Gemma build, Japanese prose runs ~1.5 chars per token,
+// so this budget is roughly 4,000 tokens: enough to leave room for the system
+// prompt (~1,700–2,900 tokens for 2–6 participants) plus the response inside a
+// default 8,192-token context. Oldest entries are dropped first.
+const HISTORY_CHAR_BUDGET = 6000;
+const ROW_RENDER_OVERHEAD = 24;
+
 function getCharacterAndOutfit(participant) {
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(participant.character_id);
   const outfit = participant.current_outfit_id
@@ -308,9 +319,30 @@ function buildSystemPrompt(session, participants, options = {}) {
 // script-format assistant message, since that's how they were originally
 // generated together.
 function buildHistoryMessages(sessionId) {
-  const rows = db
-    .prepare("SELECT * FROM messages WHERE room_session_id = ? AND content_type = 'text' ORDER BY id ASC LIMIT ?")
+  // Newest rows, then flipped back to chronological order. This used to be
+  // ORDER BY id ASC, which took the OLDEST rows: past that window a session's
+  // replayed history froze at its opening scene forever, so the player's own
+  // latest message never reached the model and every turn re-continued the
+  // same stale moment.
+  const newestFirst = db
+    .prepare("SELECT * FROM messages WHERE room_session_id = ? AND content_type = 'text' ORDER BY id DESC LIMIT ?")
     .all(sessionId, HISTORY_LIMIT * 4);
+
+  // Budget at the row level, before consecutive rows get merged into single
+  // assistant entries below: a stretch with no user rows in it (repeated
+  // "continue" submissions create none) would otherwise collapse into one
+  // huge entry that no per-entry cap can trim.
+  const rows = [];
+  let budget = HISTORY_CHAR_BUDGET;
+  for (const row of newestFirst) {
+    // Each row gains a "[NARRATION]: " or "[name]: … [EMOTION:tag]" wrapper
+    // plus a newline when it's rendered below; charge for that too, or the
+    // assembled history overshoots the budget by ~12%.
+    budget -= row.content.length + ROW_RENDER_OVERHEAD;
+    if (budget < 0 && rows.length > 0) break;
+    rows.push(row);
+  }
+  rows.reverse();
 
   const characterNameCache = new Map();
   function nameFor(characterId) {
