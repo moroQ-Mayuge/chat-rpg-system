@@ -18,6 +18,14 @@ const REFUSAL_PHRASES = [
   '不適切な内容',
   '倫理的に',
   'コンテンツポリシー',
+  // Meta-replies complaining the user's turn was blank. The real fix is that
+  // continuation turns now carry an explicit instruction (roomSessions.js's
+  // CONTINUATION_TURN) rather than a bare space, but a model can still produce
+  // these unprompted -- and they're never something the player should see.
+  'メッセージが空欄',
+  '入力が空欄',
+  'メッセージが含まれていない',
+  '入力されていません',
   'content policy',
   "i'm sorry, but",
   'i cannot ',

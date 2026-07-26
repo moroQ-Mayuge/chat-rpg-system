@@ -39,6 +39,17 @@ import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
 
 export const roomSessionsRouter = Router();
 
+// Ephemeral user turns for "continue from here" submissions (empty input, or
+// input that's nothing but @mentions -- see isContentOnlyMentions). Never
+// persisted to the messages table and never shown in the chat UI; they exist
+// only so the completion call doesn't end on an assistant message. Written as
+// parenthesised stage directions so the model doesn't mistake them for the
+// player's own speech or action. See generateReply for why a blank turn
+// doesn't work.
+const CONTINUATION_TURN =
+  '（プレイヤーは特に発言も行動もしない。この場面の続きを、上記のキャラクターたちの言動と情景として描写してください。）';
+const SURROUNDINGS_TURN = '（プレイヤーは周囲を見回している。この場所の様子や、目に入るもの・人を描写してください。）';
+
 roomSessionsRouter.get('/:id', (req, res) => {
   const session = getRoomSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'not_found' });
@@ -269,17 +280,21 @@ async function generateReply(
   mentionedInstanceByCharacterId = new Map(),
 ) {
   const session = getRoomSession(sessionId);
-  // Verified empirically against this project's model: a messages array
-  // ending on role 'assistant' (i.e. no new user turn at all) reliably
-  // returns an EMPTY completion. A lone whitespace user turn reliably
-  // produces a well-formed continuation instead, without reading as an
-  // actual player action/line — this is the minimal content that still
-  // triggers generation.
+  // A messages array ending on role 'assistant' (i.e. no new user turn at
+  // all) reliably returns an EMPTY completion, so a continuation turn has to
+  // append SOMETHING. This used to be a lone space, which the project's
+  // original model happily continued from — but instruction-tuned models
+  // (Gemma etc.) correctly read a blank turn as "the user sent nothing" and
+  // answer with a meta-message asking for input instead of advancing the
+  // story. Spelling the intent out as a stage direction fixes that while
+  // still not reading as an actual player action/line.
   // "@周辺" triggers surroundings-check mode for this turn only (see
   // buildSystemPrompt): narrows ITEM_GRANT to the room's configured
-  // categories and surfaces its props/facilities as discoverable.
+  // categories and surfaces its props/facilities as discoverable — so it
+  // asks for a description of the place rather than for the scene to move on.
   const isSurroundingsCheck = typeof userMessageContent === 'string' && userMessageContent.includes('@周辺');
-  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn: isContinuation ? ' ' : null, isSurroundingsCheck });
+  const ephemeralUserTurn = isContinuation ? (isSurroundingsCheck ? SURROUNDINGS_TURN : CONTINUATION_TURN) : null;
+  const built = buildMultiCharacterMessages(session, { ephemeralUserTurn, isSurroundingsCheck });
   if (!built) return;
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
