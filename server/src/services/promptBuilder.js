@@ -320,6 +320,8 @@ function buildSystemPrompt(session, participants, options = {}) {
     statBlock ? '' : null,
     '❌ 誤った例（名前がブラケットの外に出ている）: 陽葵[困り顔]: 今日は暇だなあ',
     '✅ 正しい例: [陽葵]: 今日は暇だなあ [EMOTION:smile]',
+    '❌ 誤った例（タグの文字の間に記号が入っている）: [NARR_N_A_T_I_O_N]: 二人は黙って座っていた',
+    '✅ 正しい例: [NARRATION]: 二人は黙って座っていた',
   ].join('\n');
 }
 
