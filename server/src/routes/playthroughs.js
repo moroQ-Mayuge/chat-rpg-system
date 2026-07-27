@@ -56,6 +56,15 @@ playthroughsRouter.post('/:id/room-sessions', (req, res) => {
   if (!isRoomInWorld(playthrough.world_id, req.body.room_template_id)) {
     return res.status(400).json({ error: 'room_not_in_world' });
   }
+  // An already-active session wins, whatever room was asked for. Nothing used
+  // to stop a second one being created — a browser-back into the room picker,
+  // or a double-tap on a room card, left two active sessions behind, and
+  // resuming the route then landed on the wrong one. Returning the existing
+  // session instead of creating another keeps that from happening no matter
+  // which path got here, and never discards a session in progress: leaving a
+  // room deliberately still goes through 現在のシーンを閉じる or a move.
+  const activeSession = getActiveSessionForPlaythrough(req.params.id);
+  if (activeSession) return res.status(200).json(activeSession);
   res.status(201).json(createRoomSession(req.params.id, req.body.room_template_id));
 });
 

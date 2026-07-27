@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { playthroughsApi } from '../api/playthroughs.js';
@@ -13,8 +14,23 @@ export default function RoomPickerPage() {
   });
   const { data: templates, isLoading } = useRoomTemplates();
   const { createRoomSession } = usePlaythroughMutations();
+  const { data: activeSession } = useQuery({
+    queryKey: ['playthroughs', playthroughId, 'active-session'],
+    queryFn: () => playthroughsApi.getActiveSession(playthroughId),
+  });
+
+  // Reaching the picker while a session is still running means the player got
+  // here by accident (browser-back out of the chat, or a stale URL) — send
+  // them back rather than letting them start a second room. replace: true so
+  // Back doesn't bounce straight into the picker again.
+  useEffect(() => {
+    if (activeSession) navigate(`/room-sessions/${activeSession.id}/chat`, { replace: true });
+  }, [activeSession, navigate]);
 
   async function enterRoom(roomTemplateId) {
+    // A second tap while the first is in flight would otherwise fire another
+    // create (the server now de-dupes it, but this avoids the double nav too).
+    if (createRoomSession.isPending) return;
     const session = await createRoomSession.mutateAsync({ playthroughId, roomTemplateId });
     navigate(`/room-sessions/${session.id}/chat`);
   }

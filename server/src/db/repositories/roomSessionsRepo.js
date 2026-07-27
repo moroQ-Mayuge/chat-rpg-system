@@ -155,9 +155,14 @@ export function listSessionsForPlaythrough(playthroughId) {
     .all(playthroughId);
 }
 
+// A playthrough is only ever meant to have one active session, but nothing
+// enforced that historically, and without an explicit order SQLite hands back
+// the lowest rowid — i.e. the OLDEST. Resuming a route then dropped the player
+// into a stale room instead of the one they left off in. Ordering newest-first
+// both fixes that and repairs any duplicates already sitting in a save.
 export function getActiveSessionForPlaythrough(playthroughId) {
   const row = db
-    .prepare("SELECT * FROM room_sessions WHERE playthrough_id = ? AND status = 'active'")
+    .prepare("SELECT * FROM room_sessions WHERE playthrough_id = ? AND status = 'active' ORDER BY id DESC")
     .get(playthroughId);
   return attachParticipants(row);
 }
