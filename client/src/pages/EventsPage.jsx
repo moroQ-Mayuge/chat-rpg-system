@@ -84,6 +84,7 @@ const ACTION_TYPES = [
   { value: 'change_outfit', label: '衣装変更' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
+  { value: 'make_item_available', label: 'アイテムを拾える状態にする' },
   { value: 'grant_random_item', label: 'アイテム付与（重み付き抽選）' },
   { value: 'remove_item', label: 'アイテム削除' },
   { value: 'change_status', label: 'ステータス変更' },
@@ -149,6 +150,8 @@ function actionDefaults(type) {
       return { character_id: null, outfit_id: null };
     case 'advance_time':
       return { slots: 1 };
+    case 'make_item_available':
+      return { item_id: null };
     case 'grant_item':
     case 'remove_item':
       return { item_id: null, quantity: 1 };
@@ -1061,6 +1064,25 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <span style={label11}>個数</span>
             <input type="number" min="1" value={p.quantity ?? 1} onChange={(e) => setParams({ quantity: Number(e.target.value) })} />
           </label>
+        </div>
+      )}
+
+      {action.action_type === 'make_item_available' && (
+        <div>
+          <label style={{ display: 'block' }}>
+            <span style={label11}>アイテム</span>
+            <select value={p.item_id ?? ''} onChange={(e) => setParams({ item_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(items ?? []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            持ち物には直接入らず、現在の部屋で「拾う」から取れる状態になります。見つけた旨の文章は別途「セリフ・地の文を挿入」で書いてください。
+          </p>
         </div>
       )}
 

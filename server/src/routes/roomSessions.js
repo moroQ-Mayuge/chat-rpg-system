@@ -20,6 +20,8 @@ import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js'
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
 import { parseScriptLine } from '../services/responseParser.js';
 import { isRefusalText } from '../services/refusalDetection.js';
+import { discoverRoomItems, makeItemAvailable } from '../services/itemDiscovery.js';
+import { listActionCommandsForWorld } from '../db/repositories/actionCommandsRepo.js';
 import { generateChatCompletion, generateImage, generateTxt2Image } from '../services/koboldClient.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, suggestSceneTags } from '../services/imagePromptBuilder.js';
 import { renderPromptTemplate } from '../services/promptTemplate.js';
@@ -116,6 +118,27 @@ function isContentOnlyMentions(content, participants) {
   return stripped.trim().length === 0;
 }
 
+// 「待つ」 sits in the しらべる category but is the opposite of looking around,
+// so it must not stock the room. Matched on the command's own keyword_text
+// rather than its label, since that's what actually gets sent as chat text.
+const NON_EXPLORING_KEYWORD = '（そのまま何も言わず、今の状況が続くのを見守る）';
+
+// Does this player input count as looking around the room? @周辺 (the existing
+// surroundings-check mode) plus any しらべる-category command — those are the
+// two ways the UI offers to examine a place.
+function isExplorationInput(content, session) {
+  if (!content) return false;
+  if (content.includes('@周辺')) return true;
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id)?.world_id;
+  return listActionCommandsForWorld(worldId).some(
+    (cmd) =>
+      cmd.category === 'しらべる' &&
+      cmd.keyword_text &&
+      cmd.keyword_text !== NON_EXPLORING_KEYWORD &&
+      content.includes(cmd.keyword_text),
+  );
+}
+
 // Empty content is not rejected — it's an explicit "continue from here"
 // request (no user action/speech). No user message row is created for it,
 // so nothing shows up as a player turn; generateReply() below feeds the LLM
@@ -139,6 +162,16 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
     });
   }
   res.status(201).json(message ?? { continuation: true });
+
+  // Looking around is what stocks the 拾う list — a room nobody has explored
+  // yet offers nothing (0072). Runs before the reply so the "見つけた" lines
+  // land ahead of the model's narration.
+  if (isExplorationInput(content, session)) {
+    for (const item of discoverRoomItems(session.playthrough_id, session.room_template_id)) {
+      const found = createMessage(req.params.id, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
+      broadcast(req.params.id, { type: 'message_complete', message: found });
+    }
+  }
 
   generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId).catch((err) => {
     console.error('generateReply failed:', err);
@@ -443,8 +476,12 @@ async function generateReply(
         return;
       }
 
-      addItemToInventory(session.playthrough_id, item.id);
-      const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を手に入れた。` });
+      // Outside a shop this no longer hands the item over — it puts it within
+      // reach, and the player takes it with 拾う (0072). Shops above are
+      // unchanged: paying for something IS the hand-over.
+      const found = makeItemAvailable(session.playthrough_id, session.room_template_id, item.id);
+      if (!found) return; // 既にこの部屋で見つけてある
+      const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
       broadcast(sessionId, { type: 'message_complete', message });
       return;
     }

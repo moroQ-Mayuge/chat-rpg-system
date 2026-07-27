@@ -14,22 +14,22 @@ export function listAllItems() {
   return db.prepare('SELECT * FROM items ORDER BY world_id IS NULL DESC, name ASC').all();
 }
 
-// What the 拾う panel offers right now: items whose category the room says can
-// be found there (room_template_item_categories), minus anything already
-// picked up this session (0071). Deliberately NOT the World's whole item
-// master — that grows every time ITEM_GRANT invents something, so the list
-// used to accumulate across sessions and offer things that aren't there.
-// Same two-tier scoping as listItemsForWorld: common items plus this World's.
+// What the 拾う panel offers right now: whatever has actually been found in
+// this room (playthrough_room_available_items — stocked by exploring the room,
+// by ITEM_GRANT, or by an event), minus anything already picked up this
+// session (0071). A room nobody has explored yet offers nothing, which is the
+// point: the player has to look around first. The stock itself is permanent,
+// so picking something up only hides it until the next visit.
 export function listPickupItemsForSession(roomSessionId) {
   return db
     .prepare(
       `SELECT i.* FROM items i
        JOIN room_sessions rs ON rs.id = @sessionId
-       JOIN playthroughs p ON p.id = rs.playthrough_id
-       JOIN room_template_item_categories rtic
-         ON rtic.room_template_id = rs.room_template_id AND rtic.item_category_id = i.category_id
-       WHERE (i.world_id IS NULL OR i.world_id = p.world_id)
-         AND NOT EXISTS (
+       JOIN playthrough_room_available_items av
+         ON av.playthrough_id = rs.playthrough_id
+        AND av.room_template_id = rs.room_template_id
+        AND av.item_id = i.id
+       WHERE NOT EXISTS (
            SELECT 1 FROM room_session_picked_items pi
            WHERE pi.room_session_id = @sessionId AND pi.item_id = i.id
          )

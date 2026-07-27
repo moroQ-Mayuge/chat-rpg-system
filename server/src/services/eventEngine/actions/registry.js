@@ -15,6 +15,7 @@ import { executeSetSceneSituation } from './setSceneSituation.js';
 import { executeGrantRandomItem } from './grantRandomItem.js';
 import { executeSetCharacterImpression } from './setCharacterImpression.js';
 import { executeAddCharacterMemory } from './addCharacterMemory.js';
+import { executeMakeItemAvailable } from './makeItemAvailable.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -34,6 +35,7 @@ export const actionRegistry = {
   grant_random_item: executeGrantRandomItem,
   set_character_impression: executeSetCharacterImpression,
   add_character_memory: executeAddCharacterMemory,
+  make_item_available: executeMakeItemAvailable,
 };
 
 export async function executeAction(action, execCtx) {
