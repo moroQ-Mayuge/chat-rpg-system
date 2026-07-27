@@ -9,6 +9,7 @@ export const CHARACTER_TEXT_FIELDS = [
   'full_name_reading',
   'nickname',
   'occupation',
+  'gender',
   'age_real',
   'age_apparent',
   'race',
@@ -125,9 +126,16 @@ export function createCharacter(data) {
   const placeholders = CHARACTER_TEXT_FIELDS.map((f) => `@${f}`).join(', ');
   const result = db
     .prepare(
-      `INSERT INTO characters (${columns}, event_participation_weight, is_mob) VALUES (${placeholders}, @event_participation_weight, @is_mob)`,
+      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day)
+       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day)`,
     )
-    .run({ ...values, event_participation_weight: data.event_participation_weight ?? 1.0, is_mob: data.is_mob ? 1 : 0 });
+    .run({
+      ...values,
+      event_participation_weight: data.event_participation_weight ?? 1.0,
+      is_mob: data.is_mob ? 1 : 0,
+      cycle_enabled: data.cycle_enabled ? 1 : 0,
+      cycle_offset_day: data.cycle_offset_day ?? 0,
+    });
   const characterId = result.lastInsertRowid;
   replaceRelationshipDefaults(characterId, data.relationship_defaults);
   replaceImpressionDefaults(characterId, data.impression_defaults);
@@ -139,11 +147,14 @@ export function updateCharacter(id, data) {
   const values = buildFieldValues(data);
   const setClause = CHARACTER_TEXT_FIELDS.map((f) => `${f} = @${f}`).join(', ');
   db.prepare(
-    `UPDATE characters SET ${setClause}, event_participation_weight = @event_participation_weight, is_mob = @is_mob WHERE id = @id`,
+    `UPDATE characters SET ${setClause}, event_participation_weight = @event_participation_weight, is_mob = @is_mob,
+       cycle_enabled = @cycle_enabled, cycle_offset_day = @cycle_offset_day WHERE id = @id`,
   ).run({
     ...values,
     event_participation_weight: data.event_participation_weight ?? 1.0,
     is_mob: data.is_mob ? 1 : 0,
+    cycle_enabled: data.cycle_enabled ? 1 : 0,
+    cycle_offset_day: data.cycle_offset_day ?? 0,
     id,
   });
   replaceRelationshipDefaults(id, data.relationship_defaults);

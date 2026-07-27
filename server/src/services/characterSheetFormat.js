@@ -15,6 +15,8 @@ export function serializeCharacter(character, outfit, undressStateLines = [], im
     ['本名', character.full_name],
     ['あだ名', character.nickname],
     ['職業', character.occupation],
+    // 明示しないと性別を取り違えるモデルがあるため、暗黙の想定に頼らず出す。
+    ['性別', character.gender],
     [null, `年齢：${formatAge(character)}歳`],
     ['種族', character.race],
     ['属性', character.attribute],
@@ -55,6 +57,7 @@ const LABELED_FIELDS = [
   ['full_name', '本名'],
   ['nickname', 'あだ名'],
   ['occupation', '職業'],
+  ['gender', '性別'],
   ['race', '種族'],
   ['attribute', '属性'],
   ['appearance_features', '容姿特徴'],

@@ -85,6 +85,9 @@ const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
   is_mob: false,
+  gender: '女性',
+  cycle_enabled: false,
+  cycle_offset_day: 0,
   impression_defaults: DEFAULT_IMPRESSION_DEFAULTS,
 };
 
@@ -194,6 +197,9 @@ export default function CharactersPage() {
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
     fields.is_mob = Boolean(existing.is_mob);
+    fields.gender = existing.gender ?? '';
+    fields.cycle_enabled = Boolean(existing.cycle_enabled);
+    fields.cycle_offset_day = existing.cycle_offset_day ?? 0;
     setForm({
       ...fields,
       relationship_defaults: existing.relationship_defaults,
@@ -233,6 +239,9 @@ export default function CharactersPage() {
     payload.impression_defaults = form.impression_defaults;
     payload.attribute_tags = form.attribute_tags;
     payload.is_mob = form.is_mob;
+    payload.gender = form.gender;
+    payload.cycle_enabled = form.cycle_enabled;
+    payload.cycle_offset_day = form.cycle_offset_day;
     if (isNew) {
       const created = await create.mutateAsync(payload);
       if (pendingOutfitTags && created.outfits?.[0]) {
@@ -624,6 +633,49 @@ export default function CharactersPage() {
                     placeholder="例: 学生, 幼馴染"
                   />
                 </div>
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>性別</p>
+                  <select value={form.gender ?? ''} onChange={(e) => setField('gender', e.target.value)}>
+                    <option value="女性">女性</option>
+                    <option value="少女">少女</option>
+                    <option value="男性">男性</option>
+                    <option value="その他">その他</option>
+                  </select>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                    キャラ情報に明示的に載ります。モデルによっては書かないと性別を取り違えるため、暗黙の想定に頼らず指定してください。
+                  </p>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.cycle_enabled)}
+                      onChange={(e) => setField('cycle_enabled', e.target.checked)}
+                    />
+                    妊娠しやすさの周期を持たせる
+                  </label>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                    World設定側でも周期がONの時だけ有効になります。安全〜最危険の段階がキャラ情報に載り、イベント条件（flag_stateの
+                    <code>cycle_phase</code>）からも参照できます。
+                  </p>
+                  {form.cycle_enabled && (
+                    <div style={{ marginTop: 6 }}>
+                      <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>周期のずらし日数</p>
+                      <input
+                        type="number"
+                        min="0"
+                        style={{ width: 80 }}
+                        value={form.cycle_offset_day ?? 0}
+                        onChange={(e) => setField('cycle_offset_day', Number(e.target.value) || 0)}
+                      />
+                      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                        周期の開始日をずらす日数。全員が同じ日に同じ段階になるのを避けるためのもので、既定値はキャラごとに自動で散らしてあります。
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ marginTop: 10 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                     <input

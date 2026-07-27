@@ -52,6 +52,8 @@ const emptyForm = {
   memory_prompt_limit: 5,
   memory_auto_extract_enabled: false,
   memory_editing_visible: true,
+  cycle_enabled: false,
+  cycle_length_days: 28,
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -143,6 +145,8 @@ export default function WorldsPage() {
         memory_prompt_limit: world.memory_prompt_limit ?? 5,
         memory_auto_extract_enabled: Boolean(world.memory_auto_extract_enabled),
         memory_editing_visible: Boolean(world.memory_editing_visible),
+        cycle_enabled: Boolean(world.cycle_enabled),
+        cycle_length_days: world.cycle_length_days ?? 28,
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -631,6 +635,37 @@ export default function WorldsPage() {
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               制作中は記憶を直接編集できると便利ですが、遊ぶユーザーに見せたくない場合はOFFにしてください。OFFにしても記憶の蓄積とプロンプトへの反映は通常どおり動きます。
             </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠しやすさの周期</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              日数の経過で「安全 → やや安全 → やや危険 → 危険 → 最危険」と変化するゲーム上の指標です。排卵日に向けて徐々に上がり直後に急落する形で、体調不良などの描写は扱いません。
+              段階はキャラ情報に載り、イベント条件（flag_stateの<code>cycle_phase</code>）からも参照できます。適用するキャラはキャラ編集画面で個別に指定してください。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.cycle_enabled}
+                onChange={(e) => setForm({ ...form, cycle_enabled: e.target.checked })}
+              />
+              このWorldで周期を有効にする
+            </label>
+
+            {form.cycle_enabled && (
+              <label style={{ display: 'block', marginTop: 8 }}>
+                <span style={{ fontSize: 11, color: '#888' }}>周期の長さ（ゲーム内日数）</span>
+                <input
+                  type="number"
+                  min="2"
+                  style={{ width: 80, display: 'block' }}
+                  value={form.cycle_length_days}
+                  onChange={(e) => setForm({ ...form, cycle_length_days: Number(e.target.value) || 28 })}
+                />
+                <span style={{ fontSize: 11, color: '#888' }}>
+                  既定28日。段階は周期長に対する割合で決まるため、短くしても変化の形は保たれます。
+                </span>
+              </label>
+            )}
 
             <label style={{ display: 'block', marginTop: 10 }}>
               関係値の自動更新間隔（送信回数ごと、空欄で無効）

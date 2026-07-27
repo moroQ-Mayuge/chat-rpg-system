@@ -12,6 +12,7 @@ function parseWorld(row) {
     impression_auto_update_enabled: Boolean(row.impression_auto_update_enabled),
     memory_auto_extract_enabled: Boolean(row.memory_auto_extract_enabled),
     memory_editing_visible: Boolean(row.memory_editing_visible),
+    cycle_enabled: Boolean(row.cycle_enabled),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
@@ -94,6 +95,8 @@ export function createWorld({
   memory_prompt_limit = 5,
   memory_auto_extract_enabled = false,
   memory_editing_visible = true,
+  cycle_enabled = false,
+  cycle_length_days = 28,
 }) {
   const result = db
     .prepare(
@@ -103,8 +106,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, cycle_enabled, cycle_length_days)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -142,6 +145,8 @@ export function createWorld({
       memory_prompt_limit ?? 5,
       memory_auto_extract_enabled ? 1 : 0,
       memory_editing_visible ? 1 : 0,
+      cycle_enabled ? 1 : 0,
+      cycle_length_days ?? 28,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -184,6 +189,8 @@ export function updateWorld(
     memory_prompt_limit,
     memory_auto_extract_enabled,
     memory_editing_visible,
+    cycle_enabled,
+    cycle_length_days,
   },
 ) {
   db.prepare(
@@ -193,7 +200,8 @@ export function updateWorld(
          attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?,
          currency_enabled = ?, currency_unit = ?, initial_money = ?, self_stat_auto_update_enabled = ?, relationship_update_interval_turns = ?, mature_content_mode_enabled = ?,
          weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?,
-         memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?
+         memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?,
+         cycle_enabled = ?, cycle_length_days = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -231,6 +239,8 @@ export function updateWorld(
     memory_prompt_limit ?? 5,
     memory_auto_extract_enabled ? 1 : 0,
     memory_editing_visible ? 1 : 0,
+    cycle_enabled ? 1 : 0,
+    cycle_length_days ?? 28,
     id,
   );
   return getWorld(id);

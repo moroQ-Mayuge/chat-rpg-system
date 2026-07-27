@@ -5,6 +5,7 @@ import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
 import { listMemoriesForPrompt } from '../db/repositories/characterMemoriesRepo.js';
+import { cyclePhaseFor } from './fertilityCycle.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -156,6 +157,9 @@ function buildSystemPrompt(session, participants, options = {}) {
       const memoryLines = listMemoriesForPrompt(session.playthrough_id, character.id, world.memory_prompt_limit).map(
         (m) => (m.occurred_label ? `記憶（${m.occurred_label}）：${m.content}` : `記憶：${m.content}`),
       );
+      // 妊娠しやすさの周期(0070)。World・キャラ両方が有効な時だけ1行増える。
+      const cyclePhase = cyclePhaseFor(character, playthrough, world);
+      if (cyclePhase) memoryLines.push(`現在の妊娠しやすさ：${cyclePhase}`);
       return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines, memoryLines);
     })
     .join('\n');

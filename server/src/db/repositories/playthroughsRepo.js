@@ -4,6 +4,8 @@ import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
 import { adjustValue } from './relationshipStatesRepo.js';
 import { setFlag } from './sessionFlagsRepo.js';
 import { listHolidaysForWorld } from './worldCalendarHolidaysRepo.js';
+import { setCharacterFlag } from './characterFlagsRepo.js';
+import { cyclePhaseFor } from '../../services/fertilityCycle.js';
 
 // day is the playthrough's 1-based absolute day count (current_day).
 // dayOfYear wraps every days_per_season * season_labels.length days (an
@@ -63,6 +65,9 @@ export function createPlaythrough(worldId, name) {
   const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, 1);
   setFlag(result.lastInsertRowid, 'day_of_week', world.day_of_week_labels[dayOfWeekIndex] ?? '', null);
   setFlag(result.lastInsertRowid, 'is_holiday', isHoliday ? 'true' : 'false', null);
+  // Same reason, for the per-character 妊娠しやすさ phase: without this a
+  // cycle_phase condition wouldn't match until the first day rollover.
+  if (world.cycle_enabled) syncCyclePhaseFlags(result.lastInsertRowid, 1, world);
   return getPlaythrough(result.lastInsertRowid);
 }
 
@@ -98,6 +103,19 @@ function applySelfStatRegen(playthroughId, slots) {
     for (const characterId of characterIds) {
       adjustValue(playthroughId, characterId, axis.id, 'add', axis.regen_per_time_slot * slots);
     }
+  }
+}
+
+// Writes each cycle-enabled character's current 妊娠しやすさ phase into their
+// character_flags as "cycle_phase", so event authors can branch on it with a
+// plain flag_state condition (character_id: "mentioned" etc.) — the same
+// reason season/weather are mirrored into session flags above. Playthrough
+// scope, matching how long the phase itself stays meaningful.
+function syncCyclePhaseFlags(playthroughId, day, world) {
+  const characters = db.prepare('SELECT id, cycle_enabled, cycle_offset_day FROM characters WHERE cycle_enabled = 1').all();
+  for (const character of characters) {
+    const phase = cyclePhaseFor(character, { current_day: day }, world);
+    if (phase) setCharacterFlag(character.id, 'cycle_phase', 'playthrough', { playthroughId }, phase);
   }
 }
 
@@ -145,6 +163,14 @@ export function advanceTime(playthroughId, slots = 1) {
   }
   if (isHoliday !== previousCalendarInfo.isHoliday) {
     setFlag(playthroughId, 'is_holiday', isHoliday ? 'true' : 'false', null);
+  }
+
+  // 妊娠しやすさの段階(0070)を、周期有効なキャラのキャラフラグへ反映する。
+  // 段階は日付から導出できるのでここに持たせる必要はないが、イベント条件は
+  // flag_state しか参照経路が無いため、季節・天候と同じくフラグに写しておく。
+  // 日が変わらない時間帯送りでは段階も変わらないので、その時はスキップする。
+  if (day !== playthrough.current_day && world.cycle_enabled) {
+    syncCyclePhaseFlags(playthroughId, day, world);
   }
 
   applySelfStatRegen(playthroughId, slots);
