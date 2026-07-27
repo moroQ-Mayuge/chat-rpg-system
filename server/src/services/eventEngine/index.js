@@ -58,7 +58,7 @@ function findChildOutcomeNode(def, parentNodeId, branchKey) {
 // descended nodes): roomSessions.js's broadcastRelationshipChanges walks a
 // fired event's actionResults as a single flat list, so nesting must not
 // change that shape.
-async function resolveOutcomeLevel(def, nodeId, depth, outcomeLogic, baseCtx, buildExecCtx, actionResults) {
+async function resolveOutcomeLevel(def, nodeId, depth, outcomeLogic, baseCtx, buildExecCtx, actionResults, noteActionResult) {
   const ownConditions = def.conditions.filter(
     (c) => (c.outcome_node_id ?? null) === nodeId && (nodeId === null ? c.phase === 'outcome' : true),
   );
@@ -71,13 +71,14 @@ async function resolveOutcomeLevel(def, nodeId, depth, outcomeLogic, baseCtx, bu
   for (const action of ownActions) {
     if (action.outcome !== 'always' && action.outcome !== outcome) continue;
     const result = await executeAction(action, buildExecCtx());
+    noteActionResult?.(result);
     actionResults.push({ actionType: action.action_type, result });
   }
 
   if (depth < MAX_OUTCOME_NODE_DEPTH) {
     const child = findChildOutcomeNode(def, nodeId, outcome);
     if (child) {
-      await resolveOutcomeLevel(def, child.id, depth + 1, child.outcome_logic, baseCtx, buildExecCtx, actionResults);
+      await resolveOutcomeLevel(def, child.id, depth + 1, child.outcome_logic, baseCtx, buildExecCtx, actionResults, noteActionResult);
     }
   }
 
@@ -152,6 +153,17 @@ export async function runEventEngine({
   const firing = resolveExclusiveGroups(eligible);
   const fired = [];
 
+  // Who character_leave removed earlier in the event currently firing. Since
+  // buildExecCtx re-reads the session, a departed character is already gone
+  // from participants by the time a later action runs — so an action that
+  // wants to act on the one who just left (e.g. giving them a memory of why)
+  // has no way to name them, especially under random_from_present where the
+  // author can't know the id up front. Reset per event definition below.
+  let departedCharacterIds = [];
+  const noteActionResult = (result) => {
+    if (result?.left != null && !departedCharacterIds.includes(result.left)) departedCharacterIds.push(result.left);
+  };
+
   // Actions run sequentially and re-fetch session state as needed, so a
   // character_join earlier in this same event (root or nested) is visible to
   // a later change_relationship/generate_image action in the same firing.
@@ -163,6 +175,7 @@ export async function runEventEngine({
     turnNumber,
     mentionedCharacterIds,
     instanceHintByCharacterId,
+    departedCharacterIds,
   });
 
   for (const def of firing) {
@@ -173,11 +186,13 @@ export async function runEventEngine({
     // action unconditionally.
     let outcome = null;
     const actionResults = [];
+    departedCharacterIds = [];
     if (def.has_outcome_branch) {
-      outcome = await resolveOutcomeLevel(def, null, 0, def.outcome_logic, baseCtx, buildExecCtx, actionResults);
+      outcome = await resolveOutcomeLevel(def, null, 0, def.outcome_logic, baseCtx, buildExecCtx, actionResults, noteActionResult);
     } else {
       for (const action of def.actions) {
         const result = await executeAction(action, buildExecCtx());
+        noteActionResult(result);
         actionResults.push({ actionType: action.action_type, result });
       }
     }

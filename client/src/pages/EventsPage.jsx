@@ -1268,6 +1268,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="departed">このイベントで退出したキャラ</option>
               {charOptions}
             </select>
           </label>
