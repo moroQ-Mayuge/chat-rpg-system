@@ -9,6 +9,27 @@ export function useRoomSession(id) {
   });
 }
 
+// What's pickable in this room right now — scoped to the session, so it
+// resets when the player re-enters the room (0071).
+export function usePickupItems(sessionId) {
+  return useQuery({
+    queryKey: ['roomSessions', sessionId, 'pickup-items'],
+    queryFn: () => roomSessionsApi.listPickupItems(sessionId),
+    enabled: sessionId != null,
+  });
+}
+
+export function usePickupItemMutation(sessionId) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId) => roomSessionsApi.pickUpItem(sessionId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roomSessions', sessionId, 'pickup-items'] });
+      queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
+    },
+  });
+}
+
 export function useRoomSessionMutations(id) {
   const queryClient = useQueryClient();
   const invalidate = () => {

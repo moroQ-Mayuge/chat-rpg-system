@@ -33,6 +33,17 @@ function buildRecentTranscript(sessionId, limit) {
     .join('\n');
 }
 
+// The prompt asks for「なし」when there's nothing worth recording, but models
+// routinely wrap that in the line format anyway ("キャラ名|なし"), which used
+// to sail through the parser and get stored as a memory — 7 of the 70
+// auto-recorded entries in a real save were junk like this.
+const EMPTY_MEMORY_PATTERN = /^(なし|無し|特になし|変化なし|該当なし)[。.！!]*$/;
+
+function isMeaningfulMemory(content) {
+  const trimmed = (content ?? '').trim();
+  return trimmed.length > 0 && !EMPTY_MEMORY_PATTERN.test(trimmed);
+}
+
 export async function maybeRunMemoryAutoExtract(session, world) {
   if (!world.memory_auto_extract_enabled) return;
   if (!session.participants?.length) return;
@@ -66,8 +77,14 @@ export async function maybeRunMemoryAutoExtract(session, world) {
     '',
     '該当する出来事があれば、1行につき1件、以下の形式で出力してください（最大2件）：',
     'キャラ名|記憶内容',
+    '',
+    '記憶内容には次の2つを必ず含めてください：',
+    '1. 誰が誰に何をしたのか。主語を省略せず、必ず書いてください。プレイヤーを指す場合は必ず「あなた」と書きます。',
+    '2. その結果、そのキャラクターが「あなた」をどう思うようになったか（気持ちや関係の変化）。',
+    '例：あなたに無理やり唇を奪われ、逆らえない相手だと怯えるようになった',
+    '',
     '記憶内容は一文程度の短い日本語の地の文とし、改行や「|」は含めないでください。',
-    '日常的なやり取りや些細な会話は記録不要です。重要な出来事が無ければ「なし」とだけ出力してください。',
+    '日常的なやり取りや些細な会話は記録不要です。重要な出来事が無ければ、行を1つも出力せず「なし」とだけ出力してください。',
   ].join('\n');
 
   try {
@@ -85,7 +102,7 @@ export async function maybeRunMemoryAutoExtract(session, world) {
       if (!m) continue;
       const [, charName, content] = m;
       const found = eligible.find((p) => p.display_name === charName.trim());
-      if (!found || !content.trim()) continue;
+      if (!found || !isMeaningfulMemory(content)) continue;
 
       addMemory({
         playthrough_id: session.playthrough_id,

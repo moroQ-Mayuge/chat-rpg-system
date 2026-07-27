@@ -11,7 +11,7 @@ import {
 } from '../db/repositories/roomSessionsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
-import { findOrCreateWorldItem, getItem } from '../db/repositories/itemsRepo.js';
+import { findOrCreateWorldItem, getItem, listPickupItemsForSession, markItemPickedUp } from '../db/repositories/itemsRepo.js';
 import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
 import { addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
@@ -144,6 +144,34 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
+});
+
+// What's pickable in this room right now (0071). Scoped to the session rather
+// than the World's item master so the list doesn't accumulate — see
+// listPickupItemsForSession.
+roomSessionsRouter.get('/:id/pickup-items', (req, res) => {
+  if (!getRoomSession(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  res.json(listPickupItemsForSession(req.params.id));
+});
+
+// Adds a pickable item to the inventory and records it as taken for this
+// session. Done server-side in one place so the inventory row and the
+// "already picked" record can't drift apart.
+roomSessionsRouter.post('/:id/pickup', (req, res) => {
+  const itemId = req.body.item_id;
+  if (!itemId) return res.status(400).json({ error: 'item_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  // Must still be on offer here — guards against a stale panel picking
+  // something already taken, or an item that doesn't belong to this room.
+  const available = listPickupItemsForSession(req.params.id).some((i) => i.id === Number(itemId));
+  if (!available) return res.status(400).json({ error: 'not_available_here' });
+
+  addItemToInventory(session.playthrough_id, itemId, 1);
+  markItemPickedUp(req.params.id, itemId);
+  res.status(201).json({ item: getItem(itemId), remaining: listPickupItemsForSession(req.params.id) });
 });
 
 // Sells one of the player's held items for money, only inside an is_shop

@@ -8,4 +8,6 @@ export const roomSessionsApi = {
   setAccompanying: (id, characterId, isAccompanying) =>
     api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, { is_accompanying: isAccompanying }),
   sellItem: (id, itemId) => api.post(`/room-sessions/${id}/sell-item`, { item_id: itemId }),
+  listPickupItems: (id) => api.get(`/room-sessions/${id}/pickup-items`),
+  pickUpItem: (id, itemId) => api.post(`/room-sessions/${id}/pickup`, { item_id: itemId }),
 };

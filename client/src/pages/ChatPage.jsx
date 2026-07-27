@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useRoomSession, useRoomSessionMutations } from '../hooks/useRoomSession.js';
+import { useRoomSession, useRoomSessionMutations, usePickupItems, usePickupItemMutation } from '../hooks/useRoomSession.js';
 import { useRoomConnections } from '../hooks/useRoomTemplates.js';
 import { useChatStream } from '../hooks/useChatStream.js';
 import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
-import { useItemsForWorld } from '../hooks/useItems.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 
@@ -315,12 +314,16 @@ function ItemCheckPanel({ playthroughId, onClose, isShop, currencyUnit, onSell }
   );
 }
 
-function ItemPickupPanel({ worldId, playthroughId, onClose, onAcquired }) {
-  const { data: items } = useItemsForWorld(worldId);
-  const { addItem } = useInventoryMutations(playthroughId);
+// Offers only what this room can turn up, minus anything already taken this
+// session (0071) — it used to list the World's entire item master, which grows
+// with every ITEM_GRANT and so kept offering things that weren't there.
+function ItemPickupPanel({ sessionId, onClose, onAcquired }) {
+  const { data: items } = usePickupItems(sessionId);
+  const pickUpItem = usePickupItemMutation(sessionId);
 
   async function pickUp(item) {
-    await addItem.mutateAsync({ itemId: item.id, quantity: 1 });
+    if (pickUpItem.isPending) return;
+    await pickUpItem.mutateAsync(item.id);
     onAcquired(`『${item.name}』を手に入れた。`);
     onClose();
   }
@@ -339,7 +342,7 @@ function ItemPickupPanel({ worldId, playthroughId, onClose, onAcquired }) {
             {item.name}
           </button>
         ))}
-        {items?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>このWorldにはアイテムが登録されていません</p>}
+        {items?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>この場所で拾えそうな物はもう無いようだ</p>}
       </div>
     </div>
   );
@@ -802,12 +805,7 @@ export default function ChatPage() {
         />
       )}
       {itemPanel?.command_type === 'item_pickup' && (
-        <ItemPickupPanel
-          worldId={playthrough.world_id}
-          playthroughId={session.playthrough_id}
-          onClose={() => setItemPanel(null)}
-          onAcquired={sendText}
-        />
+        <ItemPickupPanel sessionId={id} onClose={() => setItemPanel(null)} onAcquired={sendText} />
       )}
       {itemPanel?.command_type === 'item_use' && (
         <ItemActionPanel
