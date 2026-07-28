@@ -95,7 +95,23 @@ export function launchKoboldcpp() {
 
   const port = new URL(config.koboldBaseUrl).port || '5001';
 
-  const args = ['--model', llmModel, '--port', port, '--contextsize', String(settings.context_size || 8192), '--gpulayers', '999'];
+  // --gpulayers used to be hardcoded at 999 (full offload); the default is
+  // still 999 so an untouched install launches exactly as before, but it's
+  // now the main lever for capping LLM VRAM use.
+  const args = [
+    '--model',
+    llmModel,
+    '--port',
+    port,
+    '--contextsize',
+    String(settings.context_size || 8192),
+    '--gpulayers',
+    String(settings.gpu_layers ?? 999),
+  ];
+  // LLM-side VRAM savers. Both are omitted unless explicitly set, since each
+  // trades speed for memory.
+  if (settings.low_vram) args.push('--lowvram');
+  if (settings.quant_kv) args.push('--quantkv', settings.quant_kv);
   if (sdModel) {
     args.push('--sdmodel', sdModel);
     if (isAnima) {
@@ -107,6 +123,11 @@ export function launchKoboldcpp() {
     // Lets a speed-up LoRA (e.g. an SDXL-Lightning-style checkpoint) be
     // applied to SD models that don't already bake one in.
     if (sd_lora_path) args.push('--sdlora', sd_lora_path, '--sdloramult', String(sd_lora_multiplier));
+    // Image-side VRAM controls, independent of the LLM ones above:
+    // --sdvramlimit is a hard MB cap on image generation, --sdoffloadcpu keeps
+    // the weights in RAM and swaps them in only when generating.
+    if (settings.sd_vram_limit_mb) args.push('--sdvramlimit', String(settings.sd_vram_limit_mb));
+    if (settings.sd_offload_cpu) args.push('--sdoffloadcpu');
   }
 
   fs.mkdirSync(path.dirname(config.koboldcppLogPath), { recursive: true });

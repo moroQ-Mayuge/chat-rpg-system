@@ -20,6 +20,33 @@ const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'underwear
 // isDisturbanceCommandVisible) -- reuses getActiveOutfitStatusModifiers
 // (outfitTagCategories.js) rather than re-deriving the same suppression/
 // disturbance rules on the client.
+const EXPRESSION_IMAGES_FOR_OUTFIT = `
+  SELECT et.llm_tag_key, oei.image_path
+  FROM outfit_expression_images oei
+  JOIN expression_types et ON et.id = oei.expression_type_id
+  WHERE oei.outfit_id = ?`;
+
+// Expressions are authored per outfit, but in practice only the default outfit
+// tends to have a full set — changing into a 私服/水着 outfit used to blank
+// every portrait in the chat, since a missing image renders as a grey square.
+// Fill the gaps from the character's default outfit, keeping whatever the
+// current outfit does have. Still empty if neither has that expression.
+function listExpressionImagesWithFallback(outfitId, characterId) {
+  if (!outfitId) return [];
+  const byTag = new Map();
+  for (const row of db.prepare(EXPRESSION_IMAGES_FOR_OUTFIT).all(outfitId)) {
+    byTag.set(row.llm_tag_key, row);
+  }
+
+  const defaultOutfit = db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId);
+  if (defaultOutfit && defaultOutfit.id !== outfitId) {
+    for (const row of db.prepare(EXPRESSION_IMAGES_FOR_OUTFIT).all(defaultOutfit.id)) {
+      if (!byTag.has(row.llm_tag_key)) byTag.set(row.llm_tag_key, row);
+    }
+  }
+  return [...byTag.values()];
+}
+
 function buildOutfitDisturbance(participant, session) {
   if (!participant.current_outfit_id) return null;
   const outfit = getOutfit(participant.current_outfit_id);
@@ -108,16 +135,10 @@ function attachParticipants(session) {
     .all(session.id);
 
   for (const participant of allParticipants) {
-    participant.expression_images = participant.current_outfit_id
-      ? db
-          .prepare(
-            `SELECT et.llm_tag_key, oei.image_path
-             FROM outfit_expression_images oei
-             JOIN expression_types et ON et.id = oei.expression_type_id
-             WHERE oei.outfit_id = ?`,
-          )
-          .all(participant.current_outfit_id)
-      : [];
+    participant.expression_images = listExpressionImagesWithFallback(
+      participant.current_outfit_id,
+      participant.character_id,
+    );
     participant.status = buildStatusSnapshot(session.playthrough_id, participant.character_id, {
       roomSessionId: session.id,
       roomSessionCharacterId: participant.id,

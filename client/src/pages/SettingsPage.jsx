@@ -645,17 +645,84 @@ function KoboldcppLaunchSettingsSection() {
         </p>
       </label>
 
-      <label style={{ display: 'block', marginTop: 8 }}>
-        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード（fp8非対応のため代替）</span>
+      <h4 style={{ margin: '12px 0 4px', fontSize: 13 }}>VRAM・量子化（画像生成側）</h4>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        量子化は画像側とLLM側で別のオプションなので、それぞれ個別に指定できます。なおKoboldCppに fp8/fp6/fp4 という指定は存在せず、画像側で選べるのは下記のq8/q4のみです。
+      </p>
+
+      <label style={{ display: 'block' }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成モデルの量子化ロード</span>
         <select value={form.sd_quant} onChange={(e) => setForm({ ...form, sd_quant: Number(e.target.value) })}>
           <option value={0}>オフ（フル精度）</option>
           <option value={1}>q8（軽量化）</option>
           <option value={2}>q4（さらに軽量化）</option>
         </select>
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像生成のVRAM上限（MB・空欄で無制限）</span>
+        <input
+          type="number"
+          min="0"
+          style={{ width: 120 }}
+          value={form.sd_vram_limit_mb ?? ''}
+          onChange={(e) => setForm({ ...form, sd_vram_limit_mb: e.target.value === '' ? null : Number(e.target.value) })}
+        />
         <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-          KoboldCppにfp8ロードは無く、対応しているのはこのq8/q4量子化のみです。
+          画像生成が使うVRAMをこのMB数までに抑えます（--sdvramlimit）。LLM側とVRAMを取り合う場合に有効です。
         </p>
       </label>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(form.sd_offload_cpu)}
+          onChange={(e) => setForm({ ...form, sd_offload_cpu: e.target.checked })}
+        />
+        画像モデルをRAMに置き、生成時だけVRAMへ読み込む
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        常時VRAMを占有しなくなりますが、生成のたびに読み込みが入るぶん遅くなります（--sdoffloadcpu）。
+      </p>
+
+      <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>VRAM・量子化（LLM側）</h4>
+
+      <label style={{ display: 'block' }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>GPUに載せるレイヤー数</span>
+        <input
+          type="number"
+          min="0"
+          style={{ width: 120 }}
+          value={form.gpu_layers ?? 999}
+          onChange={(e) => setForm({ ...form, gpu_layers: Number(e.target.value) || 0 })}
+        />
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          既定999は「全部GPUに載せる」の意味です。減らすとVRAM使用量が下がる代わりにCPU処理が増えて遅くなります（--gpulayers）。
+        </p>
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>KVキャッシュの量子化</span>
+        <select value={form.quant_kv ?? ''} onChange={(e) => setForm({ ...form, quant_kv: e.target.value })}>
+          <option value="">指定なし</option>
+          <option value="f16">f16</option>
+          <option value="bf16">bf16</option>
+          <option value="q8_0">q8_0（軽量化）</option>
+          <option value="q5_1">q5_1</option>
+          <option value="q4_0">q4_0（さらに軽量化）</option>
+        </select>
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          コンテキストを長くするほどKVキャッシュがVRAMを食うため、長文脈で効きます（--quantkv）。
+        </p>
+      </label>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input type="checkbox" checked={Boolean(form.low_vram)} onChange={(e) => setForm({ ...form, low_vram: e.target.checked })} />
+        KVキャッシュをGPUに載せない（lowvram）
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        VRAMは空きますがかなり遅くなるため、他で足りない場合の最終手段です（--lowvram）。
+      </p>
 
       <label style={{ display: 'block', marginTop: 8 }}>
         <span style={{ fontSize: 11, color: '#888', display: 'block' }}>テキストモデル（任意・koboldcpp/models/llm/ 内から選択）</span>

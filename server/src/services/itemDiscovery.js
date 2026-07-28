@@ -19,7 +19,8 @@ export function isRoomDiscovered(playthroughId, roomTemplateId) {
 
 // その部屋で拾える状態にする。既にavailableなら何もしない(nullを返す)ので、
 // 呼び出し側は戻り値が非nullの時だけ「見つけた」を出せばよい。
-export function makeItemAvailable(playthroughId, roomTemplateId, itemId) {
+// revealed=1 は即公開(ITEM_GRANT・イベント経由)、0 は探索で1つずつ出す抽選分。
+export function makeItemAvailable(playthroughId, roomTemplateId, itemId, revealed = true) {
   const existing = db
     .prepare(
       'SELECT 1 FROM playthrough_room_available_items WHERE playthrough_id = ? AND room_template_id = ? AND item_id = ?',
@@ -27,15 +28,36 @@ export function makeItemAvailable(playthroughId, roomTemplateId, itemId) {
     .get(playthroughId, roomTemplateId, itemId);
   if (existing) return null;
   db.prepare(
-    'INSERT INTO playthrough_room_available_items (playthrough_id, room_template_id, item_id) VALUES (?, ?, ?)',
-  ).run(playthroughId, roomTemplateId, itemId);
+    'INSERT INTO playthrough_room_available_items (playthrough_id, room_template_id, item_id, revealed) VALUES (?, ?, ?, ?)',
+  ).run(playthroughId, roomTemplateId, itemId, revealed ? 1 : 0);
   return getItem(itemId);
 }
 
-// 部屋を初めて探索した時の抽選。以降その顔ぶれが常設されるので、2回目以降の
-// 探索では引き直さない(「あの部屋にはあれがある」と覚えられるようにするため)。
-// 戻り値は新たに見つかったアイテム — 呼び出し側がその件数ぶん「見つけた」を出す。
-export function discoverRoomItems(playthroughId, roomTemplateId) {
+// 探索1回につき見つかるのは1つだけ。初回の探索でその部屋の顔ぶれ(3〜5件)を
+// 抽選して未公開で仕込み、以降は調べるたびに1件ずつ公開していく。抽選自体は
+// 1度きりなので、「あの部屋にはあれがある」は変わらない。
+// 戻り値は今回見つかったアイテム(0件か1件) — 呼び出し側がそのぶん「見つけた」を出す。
+export function exploreRoom(playthroughId, roomTemplateId) {
+  stockRoomIfUndiscovered(playthroughId, roomTemplateId);
+
+  const next = db
+    .prepare(
+      `SELECT item_id FROM playthrough_room_available_items
+       WHERE playthrough_id = ? AND room_template_id = ? AND revealed = 0
+       ORDER BY id ASC LIMIT 1`,
+    )
+    .get(playthroughId, roomTemplateId);
+  if (!next) return [];
+
+  db.prepare(
+    'UPDATE playthrough_room_available_items SET revealed = 1 WHERE playthrough_id = ? AND room_template_id = ? AND item_id = ?',
+  ).run(playthroughId, roomTemplateId, next.item_id);
+  return [getItem(next.item_id)];
+}
+
+// 部屋の顔ぶれの抽選。未公開(revealed=0)で入れておき、exploreRoomが1つずつ
+// 公開する。既に探索済みの部屋では何もしない。
+function stockRoomIfUndiscovered(playthroughId, roomTemplateId) {
   if (isRoomDiscovered(playthroughId, roomTemplateId)) return [];
 
   db.prepare('INSERT INTO playthrough_room_discoveries (playthrough_id, room_template_id) VALUES (?, ?)').run(
@@ -61,5 +83,5 @@ export function discoverRoomItems(playthroughId, roomTemplateId) {
   const target = MIN_DISCOVERED + Math.floor(Math.random() * (MAX_DISCOVERED - MIN_DISCOVERED + 1));
   const chosen = shuffled.slice(0, Math.min(target, shuffled.length));
 
-  return chosen.map((item) => makeItemAvailable(playthroughId, roomTemplateId, item.id)).filter(Boolean);
+  return chosen.map((item) => makeItemAvailable(playthroughId, roomTemplateId, item.id, false)).filter(Boolean);
 }

@@ -174,6 +174,7 @@ export default function CharactersPage() {
   const [generatingImageTarget, setGeneratingImageTarget] = useState(null);
   const [imageGenError, setImageGenError] = useState(null);
   const [expressionGenMode, setExpressionGenMode] = useState('');
+  const [batchExpressionProgress, setBatchExpressionProgress] = useState(null);
 
   useEffect(() => {
     setPendingOutfitTags('');
@@ -428,6 +429,39 @@ export default function CharactersPage() {
     } finally {
       setGeneratingImageTarget(null);
     }
+  }
+
+  // Fills in whatever this outfit is still missing, one at a time — image
+  // generation is serialised server-side anyway (imageQueue.js), and going
+  // one-by-one means a failure part way through leaves the successful ones in
+  // place and re-running simply picks up where it stopped. Existing images are
+  // never touched.
+  async function handleGenerateMissingExpressions() {
+    if (!activeOutfit || !confirmIfNoTags()) return;
+    const missing = expressionTypes.filter(
+      (et) => !activeOutfit.expression_images?.some((img) => img.expression_type_id === et.id),
+    );
+    if (missing.length === 0) return;
+
+    setImageGenError(null);
+    for (const [index, et] of missing.entries()) {
+      setBatchExpressionProgress({ done: index, total: missing.length });
+      setGeneratingImageTarget(et.id);
+      try {
+        await outfitMutations.generateExpressionImage.mutateAsync({
+          id: activeOutfit.id,
+          expressionTypeId: et.id,
+          mode: expressionGenMode || undefined,
+          tags: currentOutfitTags(),
+        });
+      } catch (err) {
+        setImageGenError(`${et.name}の生成で失敗したため中断しました: ${err.message}`);
+        break;
+      } finally {
+        setGeneratingImageTarget(null);
+      }
+    }
+    setBatchExpressionProgress(null);
   }
 
   async function handleExportCharacter(id) {
@@ -855,6 +889,26 @@ export default function CharactersPage() {
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <p style={{ fontSize: 12, margin: 0 }}>表情差分画像（この衣装の顔差分）</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {(() => {
+                                const missingCount = expressionTypes.filter(
+                                  (et) => !activeOutfit.expression_images?.some((img) => img.expression_type_id === et.id),
+                                ).length;
+                                const running = batchExpressionProgress != null;
+                                return (
+                                  <button
+                                    type="button"
+                                    style={{ fontSize: 10 }}
+                                    onClick={handleGenerateMissingExpressions}
+                                    disabled={running || missingCount === 0 || generatingImageTarget != null}
+                                    title="この衣装でまだ画像が無い表情だけを順に生成します（既存画像は上書きしません）"
+                                  >
+                                    {running
+                                      ? `生成中... ${batchExpressionProgress.done + 1}/${batchExpressionProgress.total}`
+                                      : `未作成をまとめて生成（${missingCount}）`}
+                                  </button>
+                                );
+                              })()}
                             <label style={{ fontSize: 10, color: '#888' }}>
                               生成方式:{' '}
                               <select
@@ -867,6 +921,7 @@ export default function CharactersPage() {
                                 <option value="prompt_only">プロンプトのみ</option>
                               </select>
                             </label>
+                            </div>
                           </div>
                           <div className="expression-grid">
                             {expressionTypes.map((et) => {

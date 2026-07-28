@@ -20,7 +20,7 @@ import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js'
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
 import { parseScriptLine } from '../services/responseParser.js';
 import { isRefusalText } from '../services/refusalDetection.js';
-import { discoverRoomItems, makeItemAvailable } from '../services/itemDiscovery.js';
+import { exploreRoom, makeItemAvailable } from '../services/itemDiscovery.js';
 import { listActionCommandsForWorld } from '../db/repositories/actionCommandsRepo.js';
 import { generateChatCompletion, generateImage, generateTxt2Image } from '../services/koboldClient.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, suggestSceneTags } from '../services/imagePromptBuilder.js';
@@ -164,10 +164,11 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
   res.status(201).json(message ?? { continuation: true });
 
   // Looking around is what stocks the 拾う list — a room nobody has explored
-  // yet offers nothing (0072). Runs before the reply so the "見つけた" lines
-  // land ahead of the model's narration.
+  // yet offers nothing (0072), and each look turns up one thing at a time
+  // (0073). Runs before the reply so the "見つけた" line lands ahead of the
+  // model's narration.
   if (isExplorationInput(content, session)) {
-    for (const item of discoverRoomItems(session.playthrough_id, session.room_template_id)) {
+    for (const item of exploreRoom(session.playthrough_id, session.room_template_id)) {
       const found = createMessage(req.params.id, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
       broadcast(req.params.id, { type: 'message_complete', message: found });
     }

@@ -191,6 +191,13 @@ export function adjustMoney(playthroughId, delta) {
   return getMoney(playthroughId);
 }
 
+// Absolute assignment, for the spend_money action's "set" operation —
+// adjustMoney above only ever applies a delta.
+export function setMoney(playthroughId, amount) {
+  db.prepare(`UPDATE playthroughs SET money = ?, updated_at = datetime('now') WHERE id = ?`).run(amount, playthroughId);
+  return getMoney(playthroughId);
+}
+
 export function touchPlaythrough(id) {
   db.prepare(`UPDATE playthroughs SET updated_at = datetime('now') WHERE id = ?`).run(id);
 }

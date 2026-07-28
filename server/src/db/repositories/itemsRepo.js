@@ -29,6 +29,7 @@ export function listPickupItemsForSession(roomSessionId) {
          ON av.playthrough_id = rs.playthrough_id
         AND av.room_template_id = rs.room_template_id
         AND av.item_id = i.id
+        AND av.revealed = 1
        WHERE NOT EXISTS (
            SELECT 1 FROM room_session_picked_items pi
            WHERE pi.room_session_id = @sessionId AND pi.item_id = i.id

@@ -89,7 +89,7 @@ const ACTION_TYPES = [
   { value: 'remove_item', label: 'アイテム削除' },
   { value: 'change_status', label: 'ステータス変更' },
   { value: 'set_address', label: '呼び方変更' },
-  { value: 'spend_money', label: '所持金消費' },
+  { value: 'spend_money', label: '所持金を変更' },
   { value: 'set_scene_situation', label: '場面状況を設定' },
   { value: 'set_character_impression', label: 'あなたとの関係印象を変更' },
   { value: 'add_character_memory', label: '記憶を追加（ルートに永続）' },
@@ -166,7 +166,7 @@ function actionDefaults(type) {
     case 'add_character_memory':
       return { character_id: null, content: '', is_pinned: false };
     case 'spend_money':
-      return { amount: 1000 };
+      return { amount: 1000, operation: 'subtract' };
     case 'set_scene_situation':
       return { text: '' };
     default:
@@ -1026,10 +1026,20 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
       )}
 
       {action.action_type === 'spend_money' && (
-        <label>
-          <span style={label11}>消費する所持金</span>
-          <input type="number" min="1" value={p.amount ?? 1} onChange={(e) => setParams({ amount: Number(e.target.value) })} />
-        </label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>操作</span>
+            <select value={p.operation ?? 'subtract'} onChange={(e) => setParams({ operation: e.target.value })}>
+              <option value="subtract">減らす</option>
+              <option value="add">増やす</option>
+              <option value="set">この値にする</option>
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>金額</span>
+            <input type="number" min="0" value={p.amount ?? 0} onChange={(e) => setParams({ amount: Number(e.target.value) })} />
+          </label>
+        </div>
       )}
 
       {action.action_type === 'set_scene_situation' && (
