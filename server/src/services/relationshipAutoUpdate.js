@@ -4,6 +4,7 @@ import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxe
 import { getValue, adjustValue } from '../db/repositories/relationshipStatesRepo.js';
 import { setRelationshipUpdateCheckpoint } from '../db/repositories/roomSessionsRepo.js';
 import { withDisambiguatedNames } from './participantNaming.js';
+import { clampLlmDelta } from './llmValueDelta.js';
 import { generateChatCompletion } from './koboldClient.js';
 import { broadcast } from '../ws/rooms.js';
 
@@ -107,7 +108,7 @@ export async function maybeRunRelationshipAutoUpdate(session, world, { force = f
         participant.character_id,
         axis.id,
         'add',
-        parseInt(deltaStr, 10),
+        clampLlmDelta(parseInt(deltaStr, 10), world.llm_value_delta_cap),
         session.id,
         participant.id,
       );

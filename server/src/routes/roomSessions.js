@@ -36,6 +36,7 @@ import { broadcast } from '../ws/rooms.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { adjustValue, getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpdate.js';
+import { clampLlmDelta } from '../services/llmValueDelta.js';
 import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
 
@@ -502,7 +503,15 @@ async function generateReply(
       // simply not acted on.
       if (!participant || !axis) return;
       const previousValue = getValue(session.playthrough_id, participant.character_id, axis.id, sessionId, participant.id);
-      const newValue = adjustValue(session.playthrough_id, participant.character_id, axis.id, 'add', parsed.delta, sessionId, participant.id);
+      const newValue = adjustValue(
+        session.playthrough_id,
+        participant.character_id,
+        axis.id,
+        'add',
+        clampLlmDelta(parsed.delta, world.llm_value_delta_cap),
+        sessionId,
+        participant.id,
+      );
       if (world.notify_relationship_changes && newValue !== previousValue) {
         const direction = newValue > previousValue ? '上がった' : '下がった';
         broadcast(sessionId, {

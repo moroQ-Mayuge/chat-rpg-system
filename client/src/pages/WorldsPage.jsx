@@ -44,6 +44,7 @@ const emptyForm = {
   initial_money: 0,
   self_stat_auto_update_enabled: false,
   relationship_update_interval_turns: '',
+  llm_value_delta_cap: '',
   mature_content_mode_enabled: false,
   refusal_detection_enabled: false,
   weather_tag_map: {},
@@ -140,6 +141,7 @@ export default function WorldsPage() {
         initial_money: world.initial_money ?? 0,
         self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
         relationship_update_interval_turns: world.relationship_update_interval_turns ?? '',
+        llm_value_delta_cap: world.llm_value_delta_cap ?? '',
         mature_content_mode_enabled: Boolean(world.mature_content_mode_enabled),
         refusal_detection_enabled: Boolean(world.refusal_detection_enabled),
         memory_prompt_limit: world.memory_prompt_limit ?? 5,
@@ -174,6 +176,7 @@ export default function WorldsPage() {
       max_response_tokens: form.max_response_tokens === '' ? null : Number(form.max_response_tokens),
       relationship_update_interval_turns:
         form.relationship_update_interval_turns === '' ? null : Number(form.relationship_update_interval_turns),
+      llm_value_delta_cap: form.llm_value_delta_cap === '' ? null : Number(form.llm_value_delta_cap),
     };
     if (editingId === 'new') {
       await create.mutateAsync(payload);
@@ -680,6 +683,23 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               設定した送信回数ごと、またはセッション終了時（部屋移動・退出時）にLLMが関係値の増減を判断します。
+            </p>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              LLMによる1回あたりの値の変動上限（空欄で無制限）
+              <input
+                type="number"
+                min="1"
+                style={{ display: 'block', width: 200 }}
+                value={form.llm_value_delta_cap}
+                onChange={(e) => setForm({ ...form, llm_value_delta_cap: e.target.value })}
+                placeholder="空欄で無制限"
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              関係値・状態値をLLMが自動更新するとき、1回の増減をこの幅に収めます。無制限だと、
+              一度の無茶な指示で好感度が振り切れることがあります。イベントで明示的に指定した増減には適用されません。
+              自動更新の間隔が長いWorldでは、幅を狭めすぎると関係が進まなくなる点に注意してください。
             </p>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
