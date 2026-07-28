@@ -678,6 +678,24 @@ export default function ChatPage() {
         </details>
       )}
 
+      {/* 妊娠しやすさの段階は日付から導出しているだけで画面のどこにも出ないため、
+          確認用にここへ出す。周期が有効なキャラが1人もいなければ欄ごと出ない。 */}
+      {session.participants.some((p) => p.cycle_debug) && (
+        <details style={{ marginBottom: 6, flexShrink: 0 }}>
+          <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>デバッグ情報</summary>
+          <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 6, marginTop: 4, background: '#fafafa' }}>
+            {session.participants
+              .filter((p) => p.cycle_debug)
+              .map((p) => (
+                <p key={p.id} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
+                  {p.name}：妊娠しやすさ <strong>{p.cycle_debug.phase}</strong>（周期
+                  {p.cycle_debug.dayInCycle}/{p.cycle_debug.cycleLength}日目）
+                </p>
+              ))}
+          </div>
+        </details>
+      )}
+
       <div style={{ marginBottom: 6, flexShrink: 0 }}>
         <button onClick={() => setScenePanelOpen((v) => !v)} style={{ fontSize: 11 }}>
           {scenePanelOpen ? '現在のシーンを閉じる' : '現在のシーンを表示'}

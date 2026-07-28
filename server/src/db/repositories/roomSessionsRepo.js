@@ -8,6 +8,8 @@ import { isMobCharacter } from './charactersRepo.js';
 import { ensureImpressionStatesSeeded } from './characterImpressionStatesRepo.js';
 import { getOutfit } from './outfitsRepo.js';
 import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
+import { getWorld } from './worldsRepo.js';
+import { cyclePhaseFor, cycleDayFor } from '../../services/fertilityCycle.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -45,6 +47,18 @@ function listExpressionImagesWithFallback(outfitId, characterId) {
     }
   }
   return [...byTag.values()];
+}
+
+// The 妊娠しやすさ phase is derived, never stored, so there's otherwise no way
+// to see what it currently is while playing. Surfaced for the chat screen's
+// debug panel only; null whenever the World or the character has the cycle
+// switched off, so nothing shows up in a normal playthrough.
+function buildCycleDebug(participant, playthrough, world) {
+  const character = db.prepare('SELECT cycle_enabled, cycle_offset_day FROM characters WHERE id = ?').get(participant.character_id);
+  const phase = cyclePhaseFor(character, playthrough, world);
+  if (!phase) return null;
+  const cycleLength = world.cycle_length_days > 0 ? world.cycle_length_days : 28;
+  return { phase, dayInCycle: cycleDayFor(playthrough.current_day, character.cycle_offset_day, cycleLength), cycleLength };
 }
 
 function buildOutfitDisturbance(participant, session) {
@@ -134,6 +148,11 @@ function attachParticipants(session) {
     )
     .all(session.id);
 
+  // Shared by every participant's cycle_debug below — looked up once rather
+  // than per participant.
+  const cyclePlaythrough = getPlaythrough(session.playthrough_id);
+  const cycleWorld = getWorld(cyclePlaythrough.world_id);
+
   for (const participant of allParticipants) {
     participant.expression_images = listExpressionImagesWithFallback(
       participant.current_outfit_id,
@@ -144,6 +163,7 @@ function attachParticipants(session) {
       roomSessionCharacterId: participant.id,
     });
     participant.outfit_disturbance = buildOutfitDisturbance(participant, session);
+    participant.cycle_debug = buildCycleDebug(participant, cyclePlaythrough, cycleWorld);
   }
 
   const participants = allParticipants.filter((p) => p.is_active);
