@@ -10,6 +10,8 @@ import { getOutfit } from './outfitsRepo.js';
 import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
 import { getWorld } from './worldsRepo.js';
 import { cyclePhaseFor, cycleDayFor } from '../../services/fertilityCycle.js';
+import { getActivePregnancy } from './characterPregnanciesRepo.js';
+import { pregnancyStateFor } from '../../services/pregnancy.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -49,11 +51,23 @@ function listExpressionImagesWithFallback(outfitId, characterId) {
   return [...byTag.values()];
 }
 
-// The 妊娠しやすさ phase is derived, never stored, so there's otherwise no way
-// to see what it currently is while playing. Surfaced for the chat screen's
-// debug panel only; null whenever the World or the character has the cycle
-// switched off, so nothing shows up in a normal playthrough.
+// Both the 妊娠しやすさ phase and the pregnancy stage are derived, never
+// stored, so there's otherwise no way to see what they currently are while
+// playing. Surfaced for the chat screen's debug panel only; null whenever the
+// World/character has both switched off, so nothing shows up in a normal
+// playthrough.
+//
+// A pregnant character reports the pregnancy instead of the cycle -- saying
+// 「最危険」 about someone already pregnant is just wrong.
 function buildCycleDebug(participant, playthrough, world) {
+  const pregnancy = world.pregnancy_enabled ? getActivePregnancy(playthrough.id, participant.character_id) : null;
+  const pregnancyState = pregnancyStateFor(pregnancy, playthrough, world);
+  if (pregnancyState) {
+    return {
+      phase: '妊娠中',
+      pregnancy: { stage: pregnancyState.stage, day: pregnancyState.dayInPregnancy, gestationDays: pregnancyState.gestationDays, known: pregnancyState.known },
+    };
+  }
   const character = db.prepare('SELECT cycle_enabled, cycle_offset_day FROM characters WHERE id = ?').get(participant.character_id);
   const phase = cyclePhaseFor(character, playthrough, world);
   if (!phase) return null;

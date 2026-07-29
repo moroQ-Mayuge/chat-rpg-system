@@ -688,8 +688,18 @@ export default function ChatPage() {
               .filter((p) => p.cycle_debug)
               .map((p) => (
                 <p key={p.id} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
-                  {p.name}：妊娠しやすさ <strong>{p.cycle_debug.phase}</strong>（周期
-                  {p.cycle_debug.dayInCycle}/{p.cycle_debug.cycleLength}日目）
+                  {p.cycle_debug.pregnancy ? (
+                    <>
+                      {p.name}：<strong>妊娠中・{p.cycle_debug.pregnancy.stage}</strong>（
+                      {p.cycle_debug.pregnancy.day}/{p.cycle_debug.pregnancy.gestationDays}日目
+                      {p.cycle_debug.pregnancy.known ? '' : '・本人は気づいていない'}）
+                    </>
+                  ) : (
+                    <>
+                      {p.name}：妊娠しやすさ <strong>{p.cycle_debug.phase}</strong>（周期
+                      {p.cycle_debug.dayInCycle}/{p.cycle_debug.cycleLength}日目）
+                    </>
+                  )}
                 </p>
               ))}
           </div>
