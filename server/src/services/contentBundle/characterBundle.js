@@ -16,6 +16,12 @@ export function collectCharacterEntry(characterId, imageCollector) {
       clothing_description: outfit.clothing_description,
       equipment_description: outfit.equipment_description,
       ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, outfit[f]])),
+      // Not part of OUTFIT_TAG_FIELDS -- that's the list of tag-string columns,
+      // while this is a JSON object (garment name -> allowed disturbance
+      // styles, already parsed by outfitsRepo.js's parseGarmentOperations).
+      // Missing it here didn't just lose the setting on export: createOutfit
+      // writes `?? {}` unconditionally, so a round-trip silently wiped it.
+      garment_operations: outfit.garment_operations ?? {},
       is_default: Boolean(outfit.is_default),
       standing_image: imageCollector.add(outfit.standing_image_path, 'char-standing'),
       expression_images: outfit.expression_images.map((img) => ({
