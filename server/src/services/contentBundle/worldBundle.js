@@ -52,9 +52,14 @@ export function collectCharacterIdsForRoomTemplates(roomTemplateIds, worldId) {
   const placeholders = roomTemplateIds.map(() => '?').join(',');
   const rows = db
     .prepare(
+      // character_id IS NULL is a real row, not missing data: a slot row set to
+      // random assignment (0043) picks its occupant at room entry, so there's
+      // no specific character to bundle. Without this filter the NULL came
+      // back as an id and getCharacter(null) returned undefined, crashing the
+      // whole World export as soon as any room had a random row.
       `SELECT DISTINCT wrsa.character_id FROM world_room_slot_assignments wrsa
        JOIN room_template_participant_slots s ON s.id = wrsa.slot_id
-       WHERE wrsa.world_id = ? AND s.room_template_id IN (${placeholders})`,
+       WHERE wrsa.world_id = ? AND wrsa.character_id IS NOT NULL AND s.room_template_id IN (${placeholders})`,
     )
     .all(worldId, ...roomTemplateIds);
   return rows.map((r) => r.character_id);
