@@ -6,6 +6,8 @@ import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo
 import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
 import { listMemoriesForPrompt } from '../db/repositories/characterMemoriesRepo.js';
 import { cyclePhaseFor } from './fertilityCycle.js';
+import { pregnancyStateFor } from './pregnancy.js';
+import { getActivePregnancy } from '../db/repositories/characterPregnanciesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -86,6 +88,40 @@ function buildProtagonistBlock(protagonist) {
   return lines.join('\n');
 }
 
+// 妊娠(0076)をキャラカードに載せる。返すのは { pregnant, line } で、pregnant が
+// false のときだけ呼び出し側が周期の行を出す——妊娠しているキャラに「今日は
+// 危険日」と言わせても意味がないため。
+//
+// 肝は「本人が知っている範囲でしか渡さない」こと。発覚前は妊娠という語を一切
+// 出さず、体調の変化だけを渡す。モデルに「妊娠しているが本人は知らない」と
+// 書いてしまうと、その場で口走らせる材料を与えることになる(拾えるアイテムを
+// 「発見して初めて」一覧に出すようにしたのと同じ考え方)。
+function buildPregnancyLine(playthroughId, characterId, playthrough, world) {
+  if (!world.pregnancy_enabled) return { pregnant: false };
+  const pregnancy = getActivePregnancy(playthroughId, characterId);
+  const state = pregnancyStateFor(pregnancy, playthrough, world);
+  if (!state) return { pregnant: false };
+
+  if (state.known) {
+    // 段階名の前半(未発覚/兆候/発覚可能)は「まだ気づかれていないか」の観点で
+    // 付いた名前なので、本人が知っている相手にそのまま出すと
+    // 「妊娠を知っている（未発覚）」という矛盾した文になる。知っている側には
+    // 経過の呼び名だけを渡す。
+    const knownStage = ['未発覚', '兆候', '発覚可能'].includes(state.stage) ? '初期' : state.stage;
+    return {
+      pregnant: true,
+      line: `現在の状態：${pregnancy.partner}との子を妊娠していることを知っている（${knownStage}・妊娠${state.dayInPregnancy}日目／${state.gestationDays}日）`,
+    };
+  }
+  // 週数ではなく段階で渡す。gestation_days が世界観ごとに違うので「n週目」は
+  // 意味を持たない。
+  if (state.stage === '未発覚') return { pregnant: true, line: null };
+  return {
+    pregnant: true,
+    line: '現在の状態：ここ最近、原因の分からないだるさや吐き気、食欲の変化を感じている。理由には思い当たっていない',
+  };
+}
+
 function buildSystemPrompt(session, participants, options = {}) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
   // getPlaythrough() (not a raw world_id lookup) so its attachLabels() gives
@@ -96,6 +132,7 @@ function buildSystemPrompt(session, participants, options = {}) {
   const playthrough = getPlaythrough(session.playthrough_id);
   const worldId = playthrough.world_id;
   const world = getWorld(worldId);
+
 
   // Shopping mode: is_shop room + World currency_enabled. Reuses the same
   // room_template_item_categories candidate list as surroundings-check mode
@@ -157,9 +194,16 @@ function buildSystemPrompt(session, participants, options = {}) {
       const memoryLines = listMemoriesForPrompt(session.playthrough_id, character.id, world.memory_prompt_limit).map(
         (m) => (m.occurred_label ? `記憶（${m.occurred_label}）：${m.content}` : `記憶：${m.content}`),
       );
-      // 妊娠しやすさの周期(0070)。World・キャラ両方が有効な時だけ1行増える。
-      const cyclePhase = cyclePhaseFor(character, playthrough, world);
-      if (cyclePhase) memoryLines.push(`現在の妊娠しやすさ：${cyclePhase}`);
+      // 妊娠(0076)と妊娠しやすさの周期(0070)。どちらもWorld・キャラ両方が有効な
+      // 時だけ行が増える。妊娠中は周期を出さない——既に妊娠している相手に
+      // 「今日は危険日」と言わせても意味がない。
+      const pregnancy = buildPregnancyLine(session.playthrough_id, character.id, playthrough, world);
+      if (pregnancy.pregnant) {
+        if (pregnancy.line) memoryLines.push(pregnancy.line);
+      } else {
+        const cyclePhase = cyclePhaseFor(character, playthrough, world);
+        if (cyclePhase) memoryLines.push(`現在の妊娠しやすさ：${cyclePhase}`);
+      }
       return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines, memoryLines);
     })
     .join('\n');
