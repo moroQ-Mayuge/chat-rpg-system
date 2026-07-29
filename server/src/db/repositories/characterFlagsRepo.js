@@ -8,6 +8,27 @@ function scopeColumns(scope, playthroughId, roomSessionId) {
   return { playthrough_id: null, room_session_id: roomSessionId };
 }
 
+// Removes the row rather than blanking it: flag_state's "exists"/"not_exists"
+// comparisons look at the row, so an emptied value would still read as set.
+// Used for flags mirrored from derived state (pregnancy_stage), which have to
+// disappear once the thing they describe is over.
+export function clearCharacterFlag(characterId, flagKey, scope, ctx) {
+  const { playthrough_id, room_session_id } = scopeColumns(scope, ctx.playthroughId, ctx.roomSessionId);
+  db.prepare(
+    'DELETE FROM character_flags WHERE character_id = ? AND flag_key = ? AND playthrough_id IS ? AND room_session_id IS ?',
+  ).run(characterId, flagKey, playthrough_id, room_session_id);
+}
+
+export function listCharacterIdsWithFlag(flagKey, scope, ctx) {
+  const { playthrough_id, room_session_id } = scopeColumns(scope, ctx.playthroughId, ctx.roomSessionId);
+  return db
+    .prepare(
+      'SELECT character_id FROM character_flags WHERE flag_key = ? AND playthrough_id IS ? AND room_session_id IS ?',
+    )
+    .all(flagKey, playthrough_id, room_session_id)
+    .map((r) => r.character_id);
+}
+
 export function getCharacterFlag(characterId, flagKey, scope, ctx) {
   const { playthrough_id, room_session_id } = scopeColumns(scope, ctx.playthroughId, ctx.roomSessionId);
   return db

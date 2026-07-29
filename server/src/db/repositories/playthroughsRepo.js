@@ -4,7 +4,7 @@ import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
 import { adjustValue } from './relationshipStatesRepo.js';
 import { setFlag } from './sessionFlagsRepo.js';
 import { listHolidaysForWorld } from './worldCalendarHolidaysRepo.js';
-import { setCharacterFlag } from './characterFlagsRepo.js';
+import { setCharacterFlag, clearCharacterFlag, listCharacterIdsWithFlag } from './characterFlagsRepo.js';
 import { listActivePregnancies } from './characterPregnanciesRepo.js';
 import { cyclePhaseFor } from '../../services/fertilityCycle.js';
 import { pregnancyStateFor } from '../../services/pregnancy.js';
@@ -131,6 +131,14 @@ export function syncDerivedCharacterFlags(playthroughId, day, world) {
   for (const pregnancy of pregnancies.values()) {
     const state = pregnancyStateFor(pregnancy, { current_day: day }, world);
     if (state) setCharacterFlag(pregnancy.character_id, 'pregnancy_stage', 'playthrough', { playthroughId }, state.stage);
+  }
+  // 出産・流産で終わったキャラのフラグは消す。値を空にするだけでは
+  // flag_state の exists 判定に引っかかり続け、「臨月」を条件にしたイベントが
+  // 出産後もずっと発火可能なままになる。
+  for (const characterId of listCharacterIdsWithFlag('pregnancy_stage', 'playthrough', { playthroughId })) {
+    if (!pregnancies.has(characterId)) {
+      clearCharacterFlag(characterId, 'pregnancy_stage', 'playthrough', { playthroughId });
+    }
   }
 
   if (!world.cycle_enabled) return;

@@ -16,6 +16,8 @@ import { executeGrantRandomItem } from './grantRandomItem.js';
 import { executeSetCharacterImpression } from './setCharacterImpression.js';
 import { executeAddCharacterMemory } from './addCharacterMemory.js';
 import { executeMakeItemAvailable } from './makeItemAvailable.js';
+import { executeConceive } from './conceive.js';
+import { executeEndPregnancy } from './endPregnancy.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -36,6 +38,8 @@ export const actionRegistry = {
   set_character_impression: executeSetCharacterImpression,
   add_character_memory: executeAddCharacterMemory,
   make_item_available: executeMakeItemAvailable,
+  conceive: executeConceive,
+  end_pregnancy: executeEndPregnancy,
 };
 
 export async function executeAction(action, execCtx) {

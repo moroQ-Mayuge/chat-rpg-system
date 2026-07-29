@@ -93,6 +93,8 @@ const ACTION_TYPES = [
   { value: 'set_scene_situation', label: '場面状況を設定' },
   { value: 'set_character_impression', label: 'あなたとの関係印象を変更' },
   { value: 'add_character_memory', label: '記憶を追加（ルートに永続）' },
+  { value: 'conceive', label: '受胎判定' },
+  { value: 'end_pregnancy', label: '妊娠の発覚・終了' },
 ];
 
 function conditionDefaults(type) {
@@ -165,6 +167,10 @@ function actionDefaults(type) {
       return { character_id: null, field_key: '', value: '' };
     case 'add_character_memory':
       return { character_id: null, content: '', is_pinned: false };
+    case 'conceive':
+      return { character_id: null };
+    case 'end_pregnancy':
+      return { character_id: null, operation: 'end', outcome: '出産', child_name: '', child_gender: '' };
     case 'spend_money':
       return { amount: 1000, operation: 'subtract' };
     case 'set_scene_situation':
@@ -1295,6 +1301,105 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <input type="checkbox" checked={Boolean(p.is_pinned)} onChange={(e) => setParams({ is_pinned: e.target.checked })} />
             ピン留めする（件数上限の枠外で常にプロンプトに載る）
           </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
+        </div>
+      )}
+
+      {action.action_type === 'conceive' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {charOptions}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>確率（空欄で周期から自動）</span>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              placeholder="空欄で自動"
+              value={p.chance ?? ''}
+              onChange={(e) => setParams({ chance: e.target.value === '' ? undefined : Number(e.target.value) })}
+            />
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', width: '100%' }}>
+            空欄なら、その日の妊娠しやすさから確率を決めます（最危険50% / 危険35% / やや危険20% / やや安全8% /
+            安全2%、世界観の倍率が掛かります）。1を指定すれば必ず妊娠します（この場合は倍率が掛かりません）。
+            避妊は「ステータス所持」「所持アイテム」などの条件でイベント側を弾いてください。
+            世界観で妊娠が無効の場合、ナレーター視点のルートの場合、モブキャラ、既に妊娠中の場合は何も起きません。
+          </p>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
+        </div>
+      )}
+
+      {action.action_type === 'end_pregnancy' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {charOptions}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>操作</span>
+            <select value={p.operation ?? 'end'} onChange={(e) => setParams({ operation: e.target.value })}>
+              <option value="reveal">本人が妊娠に気づく</option>
+              <option value="end">妊娠を終了する</option>
+            </select>
+          </label>
+          {(p.operation ?? 'end') === 'end' && (
+            <>
+              <label style={{ flex: 1 }}>
+                <span style={label11}>結果</span>
+                <select value={p.outcome ?? '出産'} onChange={(e) => setParams({ outcome: e.target.value })}>
+                  <option value="出産">出産</option>
+                  <option value="流産">流産</option>
+                  <option value="中絶">中絶</option>
+                </select>
+              </label>
+              <label style={{ flex: 1 }}>
+                <span style={label11}>子の名前</span>
+                <input value={p.child_name ?? ''} onChange={(e) => setParams({ child_name: e.target.value })} />
+              </label>
+              <label style={{ flex: 1 }}>
+                <span style={label11}>子の性別</span>
+                <input
+                  placeholder="例：女児"
+                  value={p.child_gender ?? ''}
+                  onChange={(e) => setParams({ child_gender: e.target.value })}
+                />
+              </label>
+            </>
+          )}
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', width: '100%' }}>
+            出産は自動では起きません。「フラグ状態」条件で <code>pregnancy_stage</code> が「臨月」になったことを見て、
+            出産イベントを作ってください。発覚（検査・保健室・指摘など）も同じく、イベントを書いて初めて本人が気づきます。
+          </p>
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}

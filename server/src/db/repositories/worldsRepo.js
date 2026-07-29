@@ -101,6 +101,7 @@ export function createWorld({
   llm_value_delta_cap = null,
   pregnancy_enabled = false,
   gestation_days = 84,
+  conception_rate_multiplier = 1,
 }) {
   const result = db
     .prepare(
@@ -110,8 +111,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -154,6 +155,7 @@ export function createWorld({
       llm_value_delta_cap ?? null,
       pregnancy_enabled ? 1 : 0,
       gestation_days ?? 84,
+      conception_rate_multiplier ?? 1,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -201,6 +203,7 @@ export function updateWorld(
     llm_value_delta_cap,
     pregnancy_enabled,
     gestation_days,
+    conception_rate_multiplier,
   },
 ) {
   db.prepare(
@@ -211,7 +214,7 @@ export function updateWorld(
          currency_enabled = ?, currency_unit = ?, initial_money = ?, self_stat_auto_update_enabled = ?, relationship_update_interval_turns = ?, mature_content_mode_enabled = ?,
          weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?,
          memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?,
-         cycle_enabled = ?, cycle_length_days = ?, llm_value_delta_cap = ?, pregnancy_enabled = ?, gestation_days = ?
+         cycle_enabled = ?, cycle_length_days = ?, llm_value_delta_cap = ?, pregnancy_enabled = ?, gestation_days = ?, conception_rate_multiplier = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -254,6 +257,7 @@ export function updateWorld(
     llm_value_delta_cap ?? null,
     pregnancy_enabled ? 1 : 0,
     gestation_days ?? 84,
+    conception_rate_multiplier ?? 1,
     id,
   );
   return getWorld(id);
