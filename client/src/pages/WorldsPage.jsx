@@ -55,6 +55,15 @@ const emptyForm = {
   memory_editing_visible: true,
   cycle_enabled: false,
   cycle_length_days: 28,
+  pregnancy_enabled: false,
+  gestation_days: 84,
+  conception_rate_multiplier: 1,
+  character_aging: 'normal',
+  child_appearance: 'none',
+  child_maturation_days: 30,
+  child_age_min: 4,
+  child_age_max: 6,
+  birth_lore: '',
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -149,6 +158,15 @@ export default function WorldsPage() {
         memory_editing_visible: Boolean(world.memory_editing_visible),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
+        pregnancy_enabled: world.pregnancy_enabled ?? false,
+        gestation_days: world.gestation_days ?? 84,
+        conception_rate_multiplier: world.conception_rate_multiplier ?? 1,
+        character_aging: world.character_aging ?? 'normal',
+        child_appearance: world.child_appearance ?? 'none',
+        child_maturation_days: world.child_maturation_days ?? 30,
+        child_age_min: world.child_age_min ?? 4,
+        child_age_max: world.child_age_max ?? 6,
+        birth_lore: world.birth_lore ?? '',
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -668,6 +686,137 @@ export default function WorldsPage() {
                   既定28日。段階は周期長に対する割合で決まるため、短くしても変化の形は保たれます。
                 </span>
               </label>
+            )}
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠・出産</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              受胎はイベントアクション「受胎判定」で起こします。段階は
+              <code>pregnancy_stage</code>（未発覚／兆候／発覚可能／安定期／後期／臨月）としてイベント条件から参照でき、妊娠中は
+              <code>cycle_phase</code>が「妊娠中」になります。出産は自動では起きません——臨月を条件にした出産イベントを作り、その結末で「妊娠の発覚・終了」を呼んでください。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.pregnancy_enabled}
+                onChange={(e) => setForm({ ...form, pregnancy_enabled: e.target.checked })}
+              />
+              このWorldで妊娠を有効にする
+            </label>
+
+            {form.pregnancy_enabled && (
+              <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: '2px solid #eee' }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>妊娠期間（ゲーム内日数）</span>
+                  <input
+                    type="number"
+                    min="2"
+                    style={{ width: 80, display: 'block' }}
+                    value={form.gestation_days}
+                    onChange={(e) => setForm({ ...form, gestation_days: Number(e.target.value) || 84 })}
+                  />
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    段階は期間に対する割合で決まるため、短くしても進み方の形は保たれます。実際のプレイでは1日進むのに
+                    100通以上のやりとりが必要になるので、現実準拠の280日は出産まで到達しません。
+                  </span>
+                </label>
+
+                <label style={{ display: 'block', marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>受胎率の倍率</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    style={{ width: 80, display: 'block' }}
+                    value={form.conception_rate_multiplier}
+                    onChange={(e) => setForm({ ...form, conception_rate_multiplier: Number(e.target.value) })}
+                  />
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    妊娠しやすさの段階から決まる確率（最危険50%〜安全2%）に掛かります。0で受胎しなくなります。
+                    イベント側で確率を明示した場合は掛かりません。
+                  </span>
+                </label>
+
+                <label style={{ display: 'block', marginTop: 10 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>キャラの加齢</span>
+                  <select
+                    style={{ display: 'block' }}
+                    value={form.character_aging}
+                    onChange={(e) => setForm({ ...form, character_aging: e.target.value })}
+                  >
+                    <option value="normal">通常（n年後の跳躍を許可する）</option>
+                    <option value="static">静止（サザエさん空間・年齢が上がらない）</option>
+                  </select>
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    現時点では跳躍そのものが未実装のため、この設定に挙動の差はありません。
+                  </span>
+                </label>
+
+                <label style={{ display: 'block', marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>子の登場</span>
+                  <select
+                    style={{ display: 'block' }}
+                    value={form.child_appearance}
+                    onChange={(e) => setForm({ ...form, child_appearance: e.target.value })}
+                  >
+                    <option value="none">登場しない（記録と会話の話題としてのみ存在）</option>
+                    <option value="early">早熟（出産から一定日数で登場する）</option>
+                    <option value="on_time_skip">跳躍時に登場する</option>
+                  </select>
+                </label>
+
+                {form.child_appearance === 'early' && (
+                  <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: '2px solid #eee' }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>登場までの日数（出産から）</span>
+                      <input
+                        type="number"
+                        min="0"
+                        style={{ width: 80, display: 'block' }}
+                        value={form.child_maturation_days}
+                        onChange={(e) => setForm({ ...form, child_maturation_days: Number(e.target.value) || 0 })}
+                      />
+                    </label>
+                    <label style={{ display: 'block', marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>登場時の年齢（下限・上限）</span>
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          style={{ width: 70 }}
+                          value={form.child_age_min}
+                          onChange={(e) => setForm({ ...form, child_age_min: Number(e.target.value) || 0 })}
+                        />
+                        〜
+                        <input
+                          type="number"
+                          min="0"
+                          style={{ width: 70 }}
+                          value={form.child_age_max}
+                          onChange={(e) => setForm({ ...form, child_age_max: Number(e.target.value) || 0 })}
+                        />
+                      </span>
+                      <span style={{ fontSize: 11, color: '#888' }}>
+                        母親の年齢未満にも制限されます。学園ものでは就学前（4〜6歳）に留めておくと、在学・学籍の設定と衝突しません。
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <label style={{ display: 'block', marginTop: 10 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>出産と成長の理（世界観の説明）</span>
+                  <textarea
+                    rows={3}
+                    style={{ width: '100%', display: 'block' }}
+                    placeholder="例：生まれた子は一度「向こう側」に預けられ、しばらくして育った姿で戻ってくる。誰もが通る当たり前の習わし。"
+                    value={form.birth_lore}
+                    onChange={(e) => setForm({ ...form, birth_lore: e.target.value })}
+                  />
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    世界観本文とは別に持ち、妊娠・出産・子が絡む場面でだけプロンプトに載せます。無関係なセッションでコンテキストを消費しません。
+                  </span>
+                </label>
+              </div>
             )}
 
             <label style={{ display: 'block', marginTop: 10 }}>

@@ -168,6 +168,10 @@ function buildSystemPrompt(session, participants, options = {}) {
     .all(session.id)
     .map((r) => r.name);
 
+  // 「出産と成長の理」(birth_lore)を載せるかの判定。世界観本文と別に持っている
+  // のは、妊娠が絡まない大多数のセッションでローカルLLMのコンテキストを
+  // 食わないため。
+  let anyPregnant = false;
   const characterCards = disambiguated
     .map((p) => {
       const { character, outfit } = getCharacterAndOutfit(p);
@@ -199,6 +203,7 @@ function buildSystemPrompt(session, participants, options = {}) {
       // 「今日は危険日」と言わせても意味がない。
       const pregnancy = buildPregnancyLine(session.playthrough_id, character.id, playthrough, world);
       if (pregnancy.pregnant) {
+        anyPregnant = true;
         if (pregnancy.line) memoryLines.push(pregnancy.line);
       } else {
         const cyclePhase = cyclePhaseFor(character, playthrough, world);
@@ -331,6 +336,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     sceneSituationLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,
+    anyPregnant && world.birth_lore.trim() ? `[この世界の出産と成長について]\n${world.birth_lore.trim()}` : null,
     characterCards,
     '「秘密」の項目は関係性や状況に応じて慎重に扱い、安易に暴露しないでください。',
     '',
