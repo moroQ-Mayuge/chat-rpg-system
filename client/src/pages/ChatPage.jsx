@@ -678,12 +678,42 @@ export default function ChatPage() {
         </details>
       )}
 
+      {/* 出産済みで登場を待っている子。頃合いが来ても機構は勝手にキャラを作らず、
+          知らせるところまでで止める（実際に起こすかはプレイヤーが決める）。 */}
+      {(session.pending_children ?? []).some((c) => c.ready) && (
+        <div
+          style={{
+            marginBottom: 6,
+            flexShrink: 0,
+            border: '1px solid #d8c7a0',
+            background: '#fdf8ec',
+            borderRadius: 6,
+            padding: '6px 8px',
+          }}
+        >
+          {session.pending_children
+            .filter((c) => c.ready)
+            .map((c) => (
+              <p key={c.pregnancy_id} style={{ fontSize: 12, color: '#6b5a2e', margin: 0 }}>
+                {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}が戻る頃合いになりました。
+              </p>
+            ))}
+        </div>
+      )}
+
       {/* 妊娠しやすさの段階は日付から導出しているだけで画面のどこにも出ないため、
           確認用にここへ出す。周期が有効なキャラが1人もいなければ欄ごと出ない。 */}
-      {session.participants.some((p) => p.cycle_debug) && (
+      {(session.participants.some((p) => p.cycle_debug) || (session.pending_children ?? []).length > 0) && (
         <details style={{ marginBottom: 6, flexShrink: 0 }}>
           <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>デバッグ情報</summary>
           <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 6, marginTop: 4, background: '#fafafa' }}>
+            {(session.pending_children ?? []).map((c) => (
+              <p key={`child-${c.pregnancy_id}`} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
+                {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}：
+                <strong>{c.ready ? '登場可能' : `あと${c.daysRemaining}日`}</strong>（出産から{c.daysSinceBirth}/
+                {c.maturationDays}日）
+              </p>
+            ))}
             {session.participants
               .filter((p) => p.cycle_debug)
               .map((p) => (

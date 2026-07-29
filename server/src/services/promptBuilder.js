@@ -6,8 +6,8 @@ import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo
 import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
 import { listMemoriesForPrompt } from '../db/repositories/characterMemoriesRepo.js';
 import { cyclePhaseFor } from './fertilityCycle.js';
-import { pregnancyStateFor } from './pregnancy.js';
-import { getActivePregnancy } from '../db/repositories/characterPregnanciesRepo.js';
+import { pregnancyStateFor, childGrowthStateFor } from './pregnancy.js';
+import { getActivePregnancy, listAwaitingChildAppearance } from '../db/repositories/characterPregnanciesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -100,7 +100,20 @@ function buildPregnancyLine(playthroughId, characterId, playthrough, world) {
   if (!world.pregnancy_enabled) return { pregnant: false };
   const pregnancy = getActivePregnancy(playthroughId, characterId);
   const state = pregnancyStateFor(pregnancy, playthrough, world);
-  if (!state) return { pregnant: false };
+  if (!state) {
+    // 出産済みで、子がまだ戻ってきていない期間。妊娠は終わっているので周期の
+    // 行は通常どおり出したうえで、子を待っていることだけ足す。
+    const awaiting = listAwaitingChildAppearance(playthroughId).find((p) => p.character_id === characterId);
+    const growth = childGrowthStateFor(awaiting, playthrough, world);
+    if (!growth) return { pregnant: false };
+    const named = awaiting.child_name ? `子（${awaiting.child_name}）` : '子';
+    return {
+      pregnant: false,
+      childLine: growth.ready
+        ? `現在の状態：あなたとの${named}が戻ってくる頃合いになっている`
+        : `現在の状態：あなたとの${named}を産み、今は預けている。戻ってくるのはまだ先`,
+    };
+  }
 
   if (state.known) {
     // 段階名の前半(未発覚/兆候/発覚可能)は「まだ気づかれていないか」の観点で
@@ -206,6 +219,10 @@ function buildSystemPrompt(session, participants, options = {}) {
         anyPregnant = true;
         if (pregnancy.line) memoryLines.push(pregnancy.line);
       } else {
+        if (pregnancy.childLine) {
+          anyPregnant = true; // 子が絡む場面なので「出産と成長の理」も載せる
+          memoryLines.push(pregnancy.childLine);
+        }
         const cyclePhase = cyclePhaseFor(character, playthrough, world);
         if (cyclePhase) memoryLines.push(`現在の妊娠しやすさ：${cyclePhase}`);
       }

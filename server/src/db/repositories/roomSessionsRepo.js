@@ -10,8 +10,8 @@ import { getOutfit } from './outfitsRepo.js';
 import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
 import { getWorld } from './worldsRepo.js';
 import { cyclePhaseFor, cycleDayFor } from '../../services/fertilityCycle.js';
-import { getActivePregnancy } from './characterPregnanciesRepo.js';
-import { pregnancyStateFor } from '../../services/pregnancy.js';
+import { getActivePregnancy, listAwaitingChildAppearance } from './characterPregnanciesRepo.js';
+import { pregnancyStateFor, childGrowthStateFor } from '../../services/pregnancy.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -189,7 +189,36 @@ function attachParticipants(session) {
   const playerPrefs = getStatusDisplayPreferences();
   const status_display_visibility = computeStatusDisplayVisibility(worldSettings, playerPrefs);
 
-  return { ...session, participants, all_participants: allParticipants, status_display_visibility };
+  return {
+    ...session,
+    participants,
+    all_participants: allParticipants,
+    status_display_visibility,
+    pending_children: buildPendingChildren(cyclePlaythrough, cycleWorld),
+  };
+}
+
+// 出産済みでまだ登場していない子の一覧。エンジンは臨月を見て勝手に出産させも
+// しないし、成育日数が過ぎたからといって勝手にキャラを作りもしない——
+// 「そろそろ戻る頃合いだ」と知らせるところまでが機構の仕事で、実際にキャラを
+// 起こすのは次の塊(P7)でプレイヤーが確定させる。
+function buildPendingChildren(playthrough, world) {
+  if (!world.pregnancy_enabled || world.child_appearance !== 'early') return [];
+  return listAwaitingChildAppearance(playthrough.id)
+    .map((pregnancy) => {
+      const growth = childGrowthStateFor(pregnancy, playthrough, world);
+      if (!growth) return null;
+      const mother = db.prepare('SELECT name FROM characters WHERE id = ?').get(pregnancy.character_id);
+      return {
+        pregnancy_id: pregnancy.id,
+        mother_character_id: pregnancy.character_id,
+        mother_name: mother?.name ?? '???',
+        child_name: pregnancy.child_name,
+        child_gender: pregnancy.child_gender,
+        ...growth,
+      };
+    })
+    .filter(Boolean);
 }
 
 // Lists every session (active or ended) a playthrough has ever had, newest

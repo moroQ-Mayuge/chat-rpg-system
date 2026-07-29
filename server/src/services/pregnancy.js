@@ -30,6 +30,39 @@ export function pregnancyDayFor(currentDay, conceivedDay) {
   return Math.max(1, currentDay - conceivedDay + 1);
 }
 
+// 出産後、子が登場できるようになるまでの状態。妊娠と同じく ended_day からの
+// 差分で毎回導出するだけで、可変状態はどこにも持たない。
+//
+// 早熟(child_appearance = 'early')でのみ日数で進む。'none' は永久に登場せず、
+// 'on_time_skip' は跳躍の実装待ちなので、どちらもここでは null を返す。
+export function childGrowthStateFor(pregnancy, playthrough, world) {
+  if (!world?.pregnancy_enabled) return null;
+  if (pregnancy?.outcome !== '出産' || pregnancy.ended_day == null) return null;
+  if (world.child_appearance !== 'early') return null;
+  // 既にキャラとして登場済みなら、もう「待っている」状態ではない。
+  if (pregnancy.child_character_id != null) return null;
+
+  const maturationDays = world.child_maturation_days >= 0 ? world.child_maturation_days : 30;
+  const daysSinceBirth = Math.max(0, playthrough.current_day - pregnancy.ended_day);
+  return {
+    daysSinceBirth,
+    maturationDays,
+    daysRemaining: Math.max(0, maturationDays - daysSinceBirth),
+    ready: daysSinceBirth >= maturationDays,
+  };
+}
+
+// 登場時の年齢。World設定の下限〜上限に収めたうえで、母親より年下に制限する。
+// 母の age_real が空・数値でない場合は上限をそのまま使う——プレイヤー側には
+// 年齢の項目自体が無いので、判定に使えるのは母の年齢だけ。
+export function childAppearanceAge(world, motherAgeReal) {
+  const min = world.child_age_min ?? 0;
+  const max = Math.max(min, world.child_age_max ?? min);
+  const motherAge = Number.parseInt(motherAgeReal, 10);
+  if (!Number.isFinite(motherAge) || motherAge <= 0) return max;
+  return Math.max(min, Math.min(max, motherAge - 1));
+}
+
 // Worldが妊娠を無効にしている・妊娠が無い・既に終了している場合は null を返し、
 // 呼び出し側は行を一切出力しない(cyclePhaseFor と同じ呼び出し規約)。
 export function pregnancyStateFor(pregnancy, playthrough, world) {

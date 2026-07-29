@@ -26,6 +26,18 @@ export function listPregnanciesForPlaythrough(playthroughId) {
     .all(playthroughId);
 }
 
+// 出産済みで、まだ子がキャラとして登場していないもの。成育段階の導出
+// (services/pregnancy.js の childGrowthStateFor)に渡す元データ。
+export function listAwaitingChildAppearance(playthroughId) {
+  return db
+    .prepare(
+      `SELECT * FROM character_pregnancies
+       WHERE playthrough_id = ? AND outcome = '出産' AND ended_day IS NOT NULL AND child_character_id IS NULL
+       ORDER BY ended_day, id`,
+    )
+    .all(playthroughId);
+}
+
 export function getPregnancy(id) {
   return db.prepare('SELECT * FROM character_pregnancies WHERE id = ?').get(id);
 }
