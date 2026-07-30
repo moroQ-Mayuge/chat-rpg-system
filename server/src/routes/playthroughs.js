@@ -16,6 +16,7 @@ import {
   deleteMemory,
   formatOccurredLabel,
 } from '../db/repositories/characterMemoriesRepo.js';
+import { materializeChild } from '../services/childCharacter.js';
 
 export const playthroughsRouter = Router();
 
@@ -102,6 +103,17 @@ playthroughsRouter.post('/:id/inventory/transfer', (req, res) => {
 // Worlds and routes, so there's no meaningful character-level listing.
 playthroughsRouter.get('/:id/memories', (req, res) => {
   res.json(listMemoriesForPlaythrough(req.params.id));
+});
+
+// 「戻る頃合い」になった子をキャラとして起こす。プレイヤーがボタンを押した
+// ときだけ動く(materializeChild のコメント参照)。
+playthroughsRouter.post('/:id/pregnancies/:pregnancyId/child', (req, res) => {
+  const result = materializeChild(Number(req.params.pregnancyId));
+  if (result.error) {
+    const status = result.error === 'pregnancy_not_found' || result.error === 'mother_not_found' ? 404 : 400;
+    return res.status(status).json(result);
+  }
+  res.status(201).json(result);
 });
 
 playthroughsRouter.post('/:id/memories', (req, res) => {

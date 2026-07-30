@@ -64,6 +64,7 @@ const emptyForm = {
   child_age_min: 4,
   child_age_max: 6,
   birth_lore: '',
+  child_attribute_tags: '',
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -167,6 +168,7 @@ export default function WorldsPage() {
         child_age_min: world.child_age_min ?? 4,
         child_age_max: world.child_age_max ?? 6,
         birth_lore: world.birth_lore ?? '',
+        child_attribute_tags: world.child_attribute_tags ?? '',
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -798,6 +800,19 @@ export default function WorldsPage() {
                       </span>
                       <span style={{ fontSize: 11, color: '#888' }}>
                         母親の年齢未満にも制限されます。学園ものでは就学前（4〜6歳）に留めておくと、在学・学籍の設定と衝突しません。
+                      </span>
+                    </label>
+                    <label style={{ display: 'block', marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>子に付ける属性キー</span>
+                      <input
+                        style={{ width: '100%', display: 'block' }}
+                        placeholder="例：家族"
+                        value={form.child_attribute_tags}
+                        onChange={(e) => setForm({ ...form, child_attribute_tags: e.target.value })}
+                      />
+                      <span style={{ fontSize: 11, color: '#888' }}>
+                        子キャラを作るときに付ける属性キーです。母親のキーは引き継ぎません（母が「生徒」だと幼児が教室に出てしまうため）。
+                        空欄にすると、どの部屋にも自動では出てこなくなります。
                       </span>
                     </label>
                   </div>

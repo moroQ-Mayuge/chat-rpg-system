@@ -18,4 +18,5 @@ export const playthroughsApi = {
   addMemory: (id, data) => api.post(`/playthroughs/${id}/memories`, data),
   updateMemory: (id, memoryId, data) => api.put(`/playthroughs/${id}/memories/${memoryId}`, data),
   removeMemory: (id, memoryId) => api.del(`/playthroughs/${id}/memories/${memoryId}`),
+  materializeChild: (id, pregnancyId) => api.post(`/playthroughs/${id}/pregnancies/${pregnancyId}/child`, {}),
 };

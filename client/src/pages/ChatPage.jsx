@@ -505,6 +505,27 @@ export default function ChatPage() {
   useEffect(() => {
     setDraft('');
   }, [id]);
+  const [materializingId, setMaterializingId] = useState(null);
+  const [materializeError, setMaterializeError] = useState(null);
+
+  // 子をキャラとして起こすのはここだけ。機構は「戻る頃合いだ」と知らせるまでで
+  // 止めてあり、実際に作るかはプレイヤーが決める（立ち絵も表情もこれから作る
+  // 必要があり、勝手に始まっていて欲しい作業ではないため）。
+  async function handleMaterializeChild(pregnancyId) {
+    setMaterializingId(pregnancyId);
+    setMaterializeError(null);
+    try {
+      const result = await playthroughsApi.materializeChild(session.playthrough_id, pregnancyId);
+      queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+      alert(`「${result.child.name}」をキャラクターとして作成しました。立ち絵と表情はキャラクター画面から作成してください。`);
+    } catch (err) {
+      setMaterializeError(`子キャラの作成に失敗しました：${err.message}`);
+    } finally {
+      setMaterializingId(null);
+    }
+  }
+
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
   const [itemPanel, setItemPanel] = useState(null);
   const { data: chatInputSettings } = useChatInputSettings();
@@ -694,10 +715,22 @@ export default function ChatPage() {
           {session.pending_children
             .filter((c) => c.ready)
             .map((c) => (
-              <p key={c.pregnancy_id} style={{ fontSize: 12, color: '#6b5a2e', margin: 0 }}>
-                {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}が戻る頃合いになりました。
-              </p>
+              <div key={c.pregnancy_id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <p style={{ fontSize: 12, color: '#6b5a2e', margin: 0, flex: 1 }}>
+                  {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}が戻る頃合いになりました。
+                </p>
+                <button
+                  style={{ fontSize: 11 }}
+                  disabled={materializingId === c.pregnancy_id}
+                  onClick={() => handleMaterializeChild(c.pregnancy_id)}
+                >
+                  {materializingId === c.pregnancy_id ? '作成中...' : 'キャラクターとして迎える'}
+                </button>
+              </div>
             ))}
+          {materializeError && (
+            <p style={{ fontSize: 11, color: '#b00', margin: '4px 0 0' }}>{materializeError}</p>
+          )}
         </div>
       )}
 
