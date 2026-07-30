@@ -22,6 +22,40 @@ const CHILD_RELATIONSHIP_DEFAULTS = {
   淫乱度: 0,
 };
 
+// 子に付ける属性キーを3系統から組み立てる(0082)。
+//
+//   固定   … child_attribute_tags を全部そのまま
+//   ランダム … child_random_attribute_tags から child_random_tag_count 個を抽選
+//   継承   … 母のキーを1つずつ1/2で引き継ぐ(既定OFF)
+//
+// 継承が既定OFFなのは、母の「生徒」がそのまま付くと幼児が教室に湧くため。
+// 3系統は足し合わせで、同じキーが複数系統から来ても1つに畳む。
+function buildChildAttributeTags(world, mother) {
+  const tags = new Set(parseTagList(world.child_attribute_tags));
+
+  const pool = parseTagList(world.child_random_attribute_tags);
+  const count = Math.max(0, Math.min(world.child_random_tag_count ?? 0, pool.length));
+  // 重複なしで count 個。pool を破壊しないようコピーしてから引く。
+  const remaining = [...pool];
+  for (let i = 0; i < count; i += 1) {
+    tags.add(remaining.splice(Math.floor(Math.random() * remaining.length), 1)[0]);
+  }
+
+  if (world.child_inherit_parent_tags) {
+    for (const tag of parseTagList(mother.attribute_tags)) {
+      if (Math.random() < 0.5) tags.add(tag);
+    }
+  }
+  return [...tags].join(', ');
+}
+
+function parseTagList(raw) {
+  return `${raw ?? ''}`
+    .split(/[,、]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 function callUserAsFor(playthrough) {
   const gender = `${playthrough.protagonist_gender ?? ''}`;
   if (/女|母|ママ/.test(gender)) return 'ママ';
@@ -65,9 +99,9 @@ export function materializeChild(pregnancyId) {
     gender: pregnancy.child_gender || '',
     age_real: String(age),
     age_apparent: String(age),
-    // どこに居る子なのかは世界観ごとに違うので World 設定から取る。空なら
-    // どの部屋にも自動では出てこない。
-    attribute_tags: world.child_attribute_tags ?? '',
+    // どこに居る子なのかは世界観ごとに違うので World 設定から組み立てる。
+    // 3系統すべて空なら、どの部屋にも自動では出てこない。
+    attribute_tags: buildChildAttributeTags(world, mother),
     call_user_as: callUserAsFor(playthrough),
     notes: `${mother.name}と${pregnancy.partner}の子。`,
     origin_playthrough_id: pregnancy.playthrough_id,
