@@ -29,7 +29,11 @@ export default function RoomWorldConfigPage() {
   const navigate = useNavigate();
   const worldIdNum = Number(worldId);
   const { data: worlds } = useWorlds();
-  const { data: characters } = useCharacters();
+  const { data: allCharacters } = useCharacters();
+  // イベント定義と同じ理由で、特定ルートに紐づいたキャラ(0079)はスロット割当の
+  // 選択肢に出さない。スロット割当は World 単位の設定なので、特定ルートの子を
+  // 置くと他のルートにも出てしまう。
+  const characters = allCharacters?.filter((c) => c.origin_playthrough_id == null);
   const { data: allProps } = useProps();
   const { data: config, isLoading } = useRoomWorldConfig(id, worldIdNum);
   const { save } = useRoomWorldConfigMutations(id, worldIdNum);

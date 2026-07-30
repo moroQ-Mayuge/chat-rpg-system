@@ -1629,7 +1629,11 @@ function OverridesSection({ eventDefinitionId }) {
 export default function EventsPage() {
   const queryClient = useQueryClient();
   const { data: definitions, isLoading } = useEventDefinitions();
-  const { data: characters } = useCharacters();
+  const { data: allCharacters } = useCharacters();
+  // 特定ルートに紐づいたキャラ(0079)はイベント定義から参照させない。そのルートを
+  // 消した瞬間に壊れた参照になるため。ルートが消えて浮いた自動作成キャラ
+  // (origin_playthrough_id が NULL)は、ただの再利用可能な素材なので選べる。
+  const characters = (allCharacters ?? []).filter((c) => c.origin_playthrough_id == null);
   const { data: axes } = useRelationshipAxes();
   const { data: expressionTypes } = useExpressionTypes();
   const { data: roomTemplates } = useRoomTemplates();
@@ -1652,7 +1656,7 @@ export default function EventsPage() {
     }
   }, [selectedId, definitions]);
 
-  if (isLoading || !draft || !characters || !axes || !expressionTypes || !worlds) return <p>読み込み中...</p>;
+  if (isLoading || !draft || !allCharacters || !axes || !expressionTypes || !worlds) return <p>読み込み中...</p>;
 
   function selectEvent(id) {
     setSelectedId(id);

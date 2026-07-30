@@ -56,8 +56,19 @@ function attachAssociations(character) {
   return { ...character, relationship_defaults: relationshipDefaults, impression_defaults: impressionDefaults, outfits };
 }
 
+// origin_playthrough_name: ルート固有キャラ(0079)がどのルートのものかを一覧で
+// 見せるため。World 所属の導出(world_ids)は絞っていない——自動作成キャラも実際に
+// その World のキャラなので、World で絞り込んだときに見えなくなる方が不便。
+// 区別はクライアント側のバッジと絞り込みトグルで付ける。
 export function listCharacters() {
-  const rows = db.prepare('SELECT * FROM characters ORDER BY name ASC').all();
+  const rows = db
+    .prepare(
+      `SELECT c.*, p.name AS origin_playthrough_name
+       FROM characters c
+       LEFT JOIN playthroughs p ON p.id = c.origin_playthrough_id
+       ORDER BY c.name ASC`,
+    )
+    .all();
   // Computed once for the whole list (not per character) -- see its own
   // comment in worldRoomSlotAssignmentsRepo.js for why that matters.
   const tagDerivedWorldIds = listTagDerivedWorldIdsByCharacter();
@@ -126,8 +137,8 @@ export function createCharacter(data) {
   const placeholders = CHARACTER_TEXT_FIELDS.map((f) => `@${f}`).join(', ');
   const result = db
     .prepare(
-      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day)
-       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day)`,
+      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day, origin_playthrough_id, is_auto_created)
+       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day, @origin_playthrough_id, @is_auto_created)`,
     )
     .run({
       ...values,
@@ -135,6 +146,11 @@ export function createCharacter(data) {
       is_mob: data.is_mob ? 1 : 0,
       cycle_enabled: data.cycle_enabled ? 1 : 0,
       cycle_offset_day: data.cycle_offset_day ?? 0,
+      // 既定は「作者が手で作った通常キャラ」。ルート固有キャラを作れるのは
+      // これを明示的に渡す経路(P7の子キャラ生成)だけで、バンドルの取り込みや
+      // 画面からの作成は常に通常キャラになる。
+      origin_playthrough_id: data.origin_playthrough_id ?? null,
+      is_auto_created: data.is_auto_created ? 1 : 0,
     });
   const characterId = result.lastInsertRowid;
   replaceRelationshipDefaults(characterId, data.relationship_defaults);

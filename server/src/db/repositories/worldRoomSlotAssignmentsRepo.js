@@ -1,6 +1,7 @@
 import { db } from '../connection.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../services/attributeTagMatching.js';
 import { getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
+import { isEligibleInRoute } from '../../services/routeScopedCharacters.js';
 
 // World level: which concrete character(s) fill a given room-master slot,
 // for this World's instance of that room. A slot with no rows here is
@@ -212,12 +213,13 @@ function pickWeightedWithoutReplacement(candidateIds, count) {
 // weighting as the row-level random mechanism) is chosen instead of
 // everyone (2026-07-20) -- below/at the cap, or with no cap set, everyone
 // still matches as before.
-function tagMatchedCharacterIds(worldId, roomTemplateId) {
+function tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId) {
   const contextTags = getContextTags(worldId, roomTemplateId);
   if (contextTags.length === 0) return [];
   const matched = db
-    .prepare('SELECT id, attribute_tags FROM characters')
+    .prepare('SELECT id, attribute_tags, is_auto_created, origin_playthrough_id FROM characters')
     .all()
+    .filter((c) => isEligibleInRoute(c, playthroughId))
     .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
     .map((c) => c.id);
 
@@ -239,9 +241,12 @@ function tagMatchedCharacterIds(worldId, roomTemplateId) {
 // per-character uniqueness, see 0043) -- non-mob characters are added to
 // `taken` once picked so they can't also be picked by a later row. Returns a
 // raw array (NOT deduplicated) since mob duplicates are intentional.
-function resolveRandomRows(eligibleRandomRows, taken) {
+function resolveRandomRows(eligibleRandomRows, taken, playthroughId) {
   if (eligibleRandomRows.length === 0) return [];
-  const allCharacters = db.prepare('SELECT id, attribute_tags, is_mob FROM characters').all();
+  const allCharacters = db
+    .prepare('SELECT id, attribute_tags, is_mob, is_auto_created, origin_playthrough_id FROM characters')
+    .all()
+    .filter((c) => isEligibleInRoute(c, playthroughId));
   const picked = [];
   for (const row of eligibleRandomRows) {
     if (row.random_fill_mode === 'probability' && Math.random() > row.random_probability) continue;
@@ -268,7 +273,10 @@ function resolveRandomRows(eligibleRandomRows, taken) {
 // (createRoomSession) just inserts one room_session_characters row per
 // element, which is safe now that character_id is no longer part of that
 // table's primary key.
-export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemplateId, currentTimeSlotIndex) {
+// playthroughId は、そのルートの子(0079)だけを候補に含めるためのもの。明示的な
+// スロット割当(fixedIds)には効かせない——作者が名指しで置いたものは名指しの
+// とおり出すのが筋で、絞るのは「全件から自動で拾う」経路だけでよい。
+export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemplateId, currentTimeSlotIndex, playthroughId) {
   const rows = db
     .prepare(
       `SELECT wrsa.character_id, wrsa.time_slot_indices, wrsa.random_fill_mode, wrsa.random_probability,
@@ -287,10 +295,10 @@ export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemp
   const fixedIds = eligibleRows.filter((r) => r.character_id != null).map((r) => r.character_id);
   const randomRows = eligibleRows.filter((r) => r.character_id == null);
 
-  const tagMatchedIds = tagMatchedCharacterIds(worldId, roomTemplateId);
+  const tagMatchedIds = tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId);
   const baseIds = [...new Set([...fixedIds, ...tagMatchedIds])];
 
-  const randomPickedIds = resolveRandomRows(randomRows, new Set(baseIds));
+  const randomPickedIds = resolveRandomRows(randomRows, new Set(baseIds), playthroughId);
 
   return [...baseIds, ...randomPickedIds];
 }

@@ -309,7 +309,12 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // ever be present, no tag-matched/random NPC can interrupt.
   const defaultParticipantIds = template.suppress_auto_population
     ? []
-    : listDefaultParticipantCharacterIdsForWorldRoom(playthrough.world_id, roomTemplateId, playthrough.current_time_slot_index);
+    : listDefaultParticipantCharacterIdsForWorldRoom(
+        playthrough.world_id,
+        roomTemplateId,
+        playthrough.current_time_slot_index,
+        playthroughId,
+      );
   for (const characterId of defaultParticipantIds) {
     const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db

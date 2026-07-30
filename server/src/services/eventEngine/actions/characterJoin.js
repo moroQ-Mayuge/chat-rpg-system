@@ -4,6 +4,7 @@ import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../attributeTagMatching.js';
 import { resolveMentionedSingle } from '../mentionResolution.js';
+import { isEligibleInRoute } from '../../routeScopedCharacters.js';
 
 function pickWeighted(candidateIds) {
   const weights = candidateIds.map(
@@ -45,8 +46,11 @@ function tagMatchCandidates(roomTemplateId, playthroughId) {
   if (contextTags.length === 0) return [];
 
   return db
-    .prepare('SELECT id, attribute_tags FROM characters')
+    .prepare('SELECT id, attribute_tags, is_auto_created, origin_playthrough_id FROM characters')
     .all()
+    // 他ルートで生まれた子を拾わないこと(0079)。tag_match は全件走査なので、
+    // タグさえ一致すれば誰のルートの子でも候補に入ってしまう。
+    .filter((c) => isEligibleInRoute(c, playthroughId))
     .filter((c) => tagsOverlapOrWildcard(parseAttributeTags(c.attribute_tags), contextTags))
     .map((c) => c.id);
 }

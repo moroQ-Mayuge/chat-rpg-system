@@ -15,6 +15,7 @@ import TagChips from '../components/ui/TagChips.jsx';
 import GroupedList from '../components/ui/GroupedList.jsx';
 import { groupByKeys } from '../utils/grouping.js';
 import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
+import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
 import { charactersApi } from '../api/characters.js';
 import { outfitsApi } from '../api/outfits.js';
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
@@ -153,6 +154,7 @@ export default function CharactersPage() {
   const { data: expressionTypes } = useExpressionTypes();
   const { data: worlds } = useWorlds();
   const [groupAxis, setGroupAxis] = useState('world');
+  const [hideRouteScoped, setHideRouteScoped] = useLocalStorageState('characters:hideRouteScoped', false);
   const { mobileListOpen, openList, closeList } = useMobileListToggle();
   const [selectedId, setSelectedId] = useState(null);
   const isNew = selectedId === 'new';
@@ -487,15 +489,21 @@ export default function CharactersPage() {
 
   if (loadingList || !expressionTypes || !worlds) return <p>読み込み中...</p>;
 
+  // ルート固有キャラ(0079)は繰り返し遊ぶほど溜まるので、隠せるようにしておく。
+  // World での絞り込みからは外していない（実際にその World のキャラではあるので、
+  // World で絞ったときだけ消えるのは分かりにくい）。
+  const visibleCharacters = hideRouteScoped ? characters.filter((c) => c.origin_playthrough_id == null) : characters;
+  const routeScopedCount = characters.filter((c) => c.origin_playthrough_id != null).length;
+
   const characterGroups =
     groupAxis === 'world'
       ? groupByKeys(
-          characters,
+          visibleCharacters,
           (c) => c.world_ids,
           (worldId) => worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`,
           '未所属',
         )
-      : groupByKeys(characters, (c) => parseAttributeTags(c.attribute_tags), (tag) => tag, '未指定');
+      : groupByKeys(visibleCharacters, (c) => parseAttributeTags(c.attribute_tags), (tag) => tag, '未指定');
 
   function renderCharacterRow(c) {
     return (
@@ -514,7 +522,25 @@ export default function CharactersPage() {
       >
         <span>
           {c.name}
-          {c.is_mob && (
+          {c.origin_playthrough_id != null && (
+            <span
+              title="このルートでのみ登場します"
+              style={{ marginLeft: 6, fontSize: 10, color: '#8a6d3b', border: '1px solid #d8c7a0', background: '#fdf8ec', borderRadius: 4, padding: '0 4px' }}
+            >
+              {c.origin_playthrough_name ?? 'ルート'}限定
+            </span>
+          )}
+          {Boolean(c.is_auto_created) && c.origin_playthrough_id == null && (
+            <span
+              title="元になったルートが削除されたため、どの部屋にも自動では出てきません"
+              style={{ marginLeft: 6, fontSize: 10, color: '#888', border: '1px solid #ccc', borderRadius: 4, padding: '0 4px' }}
+            >
+              ルート削除済み
+            </span>
+          )}
+          {/* Boolean() は必須。is_mob は 0/1 の数値で来るので `c.is_mob && ...` は
+              モブでないキャラの行に "0" をそのまま描いてしまう(実際に出ていた)。 */}
+          {Boolean(c.is_mob) && (
             <span style={{ marginLeft: 6, fontSize: 10, color: '#888', border: '1px solid #ccc', borderRadius: 4, padding: '0 4px' }}>
               モブ
             </span>
@@ -555,6 +581,12 @@ export default function CharactersPage() {
             </label>
           ))}
         </div>
+        {routeScopedCount > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={hideRouteScoped} onChange={(e) => setHideRouteScoped(e.target.checked)} />
+            ルート限定キャラを隠す（{routeScopedCount}体）
+          </label>
+        )}
         <GroupedList groups={characterGroups} storageKey="characters" renderGroupItems={(group) => group.items.map(renderCharacterRow)} />
         <button onClick={startNew}>+ 新規キャラ</button>
         <label style={{ fontSize: 12, cursor: 'pointer' }}>
