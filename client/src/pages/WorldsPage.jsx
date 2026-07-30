@@ -65,6 +65,15 @@ const emptyForm = {
   child_age_max: 6,
   birth_lore: '',
   child_attribute_tags: '',
+  warp_world_rules: true,
+  warp_situation: true,
+  warp_others_mind: true,
+  deviation_handling: 'accept',
+  policy_notice: '',
+  warp_lore: '',
+  child_inherit_parent_tags: false,
+  child_random_attribute_tags: '',
+  child_random_tag_count: 1,
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -169,6 +178,15 @@ export default function WorldsPage() {
         child_age_max: world.child_age_max ?? 6,
         birth_lore: world.birth_lore ?? '',
         child_attribute_tags: world.child_attribute_tags ?? '',
+        warp_world_rules: world.warp_world_rules ?? true,
+        warp_situation: world.warp_situation ?? true,
+        warp_others_mind: world.warp_others_mind ?? true,
+        deviation_handling: world.deviation_handling ?? 'accept',
+        policy_notice: world.policy_notice ?? '',
+        warp_lore: world.warp_lore ?? '',
+        child_inherit_parent_tags: world.child_inherit_parent_tags ?? false,
+        child_random_attribute_tags: world.child_random_attribute_tags ?? '',
+        child_random_tag_count: world.child_random_tag_count ?? 1,
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -690,6 +708,73 @@ export default function WorldsPage() {
               </label>
             )}
 
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>ユーザー指示の扱い</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              世界観や状況から外れた指示を、どこまで通すかの設定です。チェックを外した対象についてだけ「これは変えられない」という説明がプロンプトに追加されます。
+              3つともONなら何も追加されません（＝これまでどおりの挙動）。
+            </p>
+
+            {[
+              ['warp_world_rules', '世界法則・設定を変えられる'],
+              ['warp_situation', '状況・物の在り処・居合わせる人物を変えられる'],
+              ['warp_others_mind', '他者の感情・好意・記憶・意思を変えられる'],
+            ].map(([key, label]) => (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />
+                {label}
+              </label>
+            ))}
+            {!form.warp_others_mind && (
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                プロンプトに書くだけでは、LLMが極端な増減を返したときに素通りします。上の「LLMによる1回あたりの値の変動上限」も併せて設定してください。
+              </p>
+            )}
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>世界観から外れた指示の扱い</span>
+              <select
+                style={{ display: 'block' }}
+                value={form.deviation_handling}
+                onChange={(e) => setForm({ ...form, deviation_handling: e.target.value })}
+              >
+                <option value="accept">受容（辻褄を後付けして通す）</option>
+                <option value="reinterpret">読み替え（世界に合う形に丸めて反映する）</option>
+                <option value="push_back">押し返し（反映せず、人物が現実的に反応する）</option>
+              </select>
+              <span style={{ fontSize: 11, color: '#888' }}>
+                現時点では「受容」以外を選んでも挙動は変わりません（設定だけ先に保存できます）。
+              </span>
+            </label>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>改変能力などの設定文（世界観の説明）</span>
+              <textarea
+                rows={2}
+                style={{ width: '100%', display: 'block' }}
+                placeholder="例：主人公は無自覚な世界改変能力を持ち、望んだとおりに世界の理が歪むことがある。"
+                value={form.warp_lore}
+                onChange={(e) => setForm({ ...form, warp_lore: e.target.value })}
+              />
+              <span style={{ fontSize: 11, color: '#888' }}>
+                上のチェックと同じ枠でプロンプトに載ります。<strong>能力の説明だけを書くと逆効果です</strong>
+                — 何が変えられないのかを併せて示さないと、LLMはその説明を「無茶を通してよい」という許可として読みます。
+              </span>
+            </label>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>プレイ方針の宣言（ルート開始時に一度だけ表示）</span>
+              <textarea
+                rows={2}
+                style={{ width: '100%', display: 'block' }}
+                placeholder="例：このWorldは、キャラの気持ちを積み重ねで動かすことを想定しています。"
+                value={form.policy_notice}
+                onChange={(e) => setForm({ ...form, policy_notice: e.target.value })}
+              />
+              <span style={{ fontSize: 11, color: '#888' }}>
+                プレイヤーへの表示のみで、LLMには渡しません。機構としては何も止めません。空欄なら表示されません。
+              </span>
+            </label>
+
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠・出産</h4>
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
               受胎はイベントアクション「受胎判定」で起こします。段階は
@@ -803,7 +888,7 @@ export default function WorldsPage() {
                       </span>
                     </label>
                     <label style={{ display: 'block', marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: '#888' }}>子に付ける属性キー</span>
+                      <span style={{ fontSize: 11, color: '#888' }}>子に必ず付ける属性キー（固定枠）</span>
                       <input
                         style={{ width: '100%', display: 'block' }}
                         placeholder="例：家族"
@@ -811,10 +896,49 @@ export default function WorldsPage() {
                         onChange={(e) => setForm({ ...form, child_attribute_tags: e.target.value })}
                       />
                       <span style={{ fontSize: 11, color: '#888' }}>
-                        子キャラを作るときに付ける属性キーです。母親のキーは引き継ぎません（母が「生徒」だと幼児が教室に出てしまうため）。
-                        空欄にすると、どの部屋にも自動では出てこなくなります。
+                        カンマ区切り。ここに書いたキーは必ず付きます。下の3系統は足し合わされ、重複は1つにまとめられます。
                       </span>
                     </label>
+
+                    <label style={{ display: 'block', marginTop: 8 }}>
+                      <span style={{ fontSize: 11, color: '#888' }}>ランダムで付く属性キーの候補</span>
+                      <input
+                        style={{ width: '100%', display: 'block' }}
+                        placeholder="例：活発, 人見知り, 甘えん坊"
+                        value={form.child_random_attribute_tags}
+                        onChange={(e) => setForm({ ...form, child_random_attribute_tags: e.target.value })}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 11, color: '#888' }}>この中から</span>
+                        <input
+                          type="number"
+                          min="0"
+                          style={{ width: 60 }}
+                          value={form.child_random_tag_count}
+                          onChange={(e) => setForm({ ...form, child_random_tag_count: Number(e.target.value) || 0 })}
+                        />
+                        <span style={{ fontSize: 11, color: '#888' }}>個を重複なしで抽選</span>
+                      </span>
+                      <span style={{ fontSize: 11, color: '#888' }}>
+                        同じ設定から生まれた兄弟でも、少しずつ違う子になります。
+                      </span>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.child_inherit_parent_tags}
+                        onChange={(e) => setForm({ ...form, child_inherit_parent_tags: e.target.checked })}
+                      />
+                      母親の属性キーをランダムに引き継ぐ
+                    </label>
+                    <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+                      母のキーを1つずつ1/2の確率で引き継ぎます。<strong>既定はOFF</strong>
+                      です — 母が「生徒」だと、それを継いだ幼児が教室に出てしまうため。継いで問題ないキー構成の世界観でだけONにしてください。
+                    </p>
+                    <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+                      3系統すべてが空（かつ継承OFF）なら、子はどの部屋にも自動では出てこなくなります。
+                    </p>
                   </div>
                 )}
 

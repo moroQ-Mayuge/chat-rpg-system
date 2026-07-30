@@ -8,6 +8,8 @@ import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
+import { useWorlds } from '../hooks/useWorlds.js';
+import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -505,6 +507,20 @@ export default function ChatPage() {
   useEffect(() => {
     setDraft('');
   }, [id]);
+  const { data: worlds } = useWorlds();
+  const world = worlds?.find((w) => w.id === playthrough?.world_id);
+  // ルート単位で覚える。同じWorldの別ルートを始めれば、方針はもう一度出る。
+  //
+  // キーにルートIDを埋め込まないのは、useLocalStorageState が初期化時に一度しか
+  // 読まないため。session はマウント直後 undefined なので、キーを動的にすると
+  // 「まだ分からない」ときのキーで読み込み、後からキーだけ変わって値が付いてこない
+  // (実際に、閉じたはずの宣言が再読み込みで戻ってきた)。1つのキーにIDの一覧を
+  // 持つ形にすれば、キーは常に固定になる。
+  const [dismissedPolicyRoutes, setDismissedPolicyRoutes] = useLocalStorageState('policyNotice:dismissedRoutes', []);
+  const policyNoticeDismissed = session != null && dismissedPolicyRoutes.includes(session.playthrough_id);
+  const dismissPolicyNotice = () =>
+    setDismissedPolicyRoutes((prev) => [...new Set([...prev, session.playthrough_id])]);
+
   const [materializingId, setMaterializingId] = useState(null);
   const [materializeError, setMaterializeError] = useState(null);
 
@@ -697,6 +713,30 @@ export default function ChatPage() {
             ))}
           </div>
         </details>
+      )}
+
+      {/* 作者からプレイヤーへのプレイ方針(0081)。ルートごとに一度だけ出して、
+          閉じたら二度と出ない。LLMには渡さないし、何も止めない——「良心に任せる」
+          をそのまま実装したもの。 */}
+      {world?.policy_notice?.trim() && !policyNoticeDismissed && (
+        <div
+          style={{
+            marginBottom: 6,
+            flexShrink: 0,
+            border: '1px solid #c9d6e8',
+            background: '#f4f8fd',
+            borderRadius: 6,
+            padding: '6px 8px',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'flex-start',
+          }}
+        >
+          <p style={{ fontSize: 12, color: '#3c5a80', margin: 0, flex: 1, whiteSpace: 'pre-wrap' }}>{world.policy_notice}</p>
+          <button style={{ fontSize: 11 }} onClick={dismissPolicyNotice}>
+            閉じる
+          </button>
+        </div>
       )}
 
       {/* 出産済みで登場を待っている子。頃合いが来ても機構は勝手にキャラを作らず、

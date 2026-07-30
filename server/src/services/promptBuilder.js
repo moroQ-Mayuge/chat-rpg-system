@@ -135,6 +135,33 @@ function buildPregnancyLine(playthroughId, characterId, playthrough, world) {
   };
 }
 
+// ユーザーの無茶な指示をどこまで通すか(0081)。
+//
+// 制限を「足す」方向にしか働かない。3つとも既定のONなら1行も出力せず、
+// 既存Worldのプロンプトは1文字も変わらない。
+//
+// warp_lore を単独で出さないのが肝。「主人公は無自覚に世界法則を歪める」とだけ
+// 書けば、LLMはそれを許可と読んで今より無茶を通すようになる——設定を載せるなら
+// 何が歪まないのかを同じ場所で必ず言う。
+function buildWarpConstraintBlock(world) {
+  const limits = [];
+  if (!world.warp_world_rules) {
+    limits.push('・この世界の法則や設定そのものは、ユーザーがそう言っただけでは変わりません。');
+  }
+  if (!world.warp_situation) {
+    limits.push('・その場の状況や物の在り処、居合わせる人物は、ユーザーの宣言だけでは変わりません。');
+  }
+  if (!world.warp_others_mind) {
+    limits.push(
+      '・キャラクターの感情・好意・記憶・意思は、ユーザーがそう言っただけでは変わりません。関係が変わるのは、実際のやりとりの積み重ねによってのみです。',
+    );
+  }
+  const lore = world.warp_lore?.trim();
+  if (limits.length === 0 && !lore) return null;
+
+  return ['[この世界で変えられるもの・変えられないもの]', ...(lore ? [lore] : []), ...limits].join('\n');
+}
+
 function buildSystemPrompt(session, participants, options = {}) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
   // getPlaythrough() (not a raw world_id lookup) so its attachLabels() gives
@@ -350,6 +377,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     `雰囲気：${session.current_atmosphere_text}`,
     timeWeatherLine,
     matureContentBlock,
+    buildWarpConstraintBlock(world),
     sceneSituationLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,

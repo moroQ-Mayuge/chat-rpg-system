@@ -14,6 +14,10 @@ function parseWorld(row) {
     memory_editing_visible: Boolean(row.memory_editing_visible),
     cycle_enabled: Boolean(row.cycle_enabled),
     pregnancy_enabled: Boolean(row.pregnancy_enabled),
+    warp_world_rules: Boolean(row.warp_world_rules),
+    warp_situation: Boolean(row.warp_situation),
+    warp_others_mind: Boolean(row.warp_others_mind),
+    child_inherit_parent_tags: Boolean(row.child_inherit_parent_tags),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
@@ -109,6 +113,15 @@ export function createWorld({
   child_age_max = 6,
   birth_lore = '',
   child_attribute_tags = '',
+  warp_world_rules = true,
+  warp_situation = true,
+  warp_others_mind = true,
+  deviation_handling = 'accept',
+  policy_notice = '',
+  warp_lore = '',
+  child_inherit_parent_tags = false,
+  child_random_attribute_tags = '',
+  child_random_tag_count = 1,
 }) {
   const result = db
     .prepare(
@@ -118,8 +131,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -170,6 +183,15 @@ export function createWorld({
       child_age_max ?? 6,
       birth_lore ?? '',
       child_attribute_tags ?? '',
+      warp_world_rules ? 1 : 0,
+      warp_situation ? 1 : 0,
+      warp_others_mind ? 1 : 0,
+      deviation_handling ?? 'accept',
+      policy_notice ?? '',
+      warp_lore ?? '',
+      child_inherit_parent_tags ? 1 : 0,
+      child_random_attribute_tags ?? '',
+      child_random_tag_count ?? 1,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -225,6 +247,15 @@ export function updateWorld(
     child_age_max,
     birth_lore,
     child_attribute_tags,
+    warp_world_rules,
+    warp_situation,
+    warp_others_mind,
+    deviation_handling,
+    policy_notice,
+    warp_lore,
+    child_inherit_parent_tags,
+    child_random_attribute_tags,
+    child_random_tag_count,
   },
 ) {
   db.prepare(
@@ -236,7 +267,9 @@ export function updateWorld(
          weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?,
          memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?,
          cycle_enabled = ?, cycle_length_days = ?, llm_value_delta_cap = ?, pregnancy_enabled = ?, gestation_days = ?, conception_rate_multiplier = ?,
-         character_aging = ?, child_appearance = ?, child_maturation_days = ?, child_age_min = ?, child_age_max = ?, birth_lore = ?, child_attribute_tags = ?
+         character_aging = ?, child_appearance = ?, child_maturation_days = ?, child_age_min = ?, child_age_max = ?, birth_lore = ?, child_attribute_tags = ?,
+         warp_world_rules = ?, warp_situation = ?, warp_others_mind = ?, deviation_handling = ?, policy_notice = ?, warp_lore = ?,
+         child_inherit_parent_tags = ?, child_random_attribute_tags = ?, child_random_tag_count = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -287,6 +320,15 @@ export function updateWorld(
     child_age_max ?? 6,
     birth_lore ?? '',
     child_attribute_tags ?? '',
+    warp_world_rules ? 1 : 0,
+    warp_situation ? 1 : 0,
+    warp_others_mind ? 1 : 0,
+    deviation_handling ?? 'accept',
+    policy_notice ?? '',
+    warp_lore ?? '',
+    child_inherit_parent_tags ? 1 : 0,
+    child_random_attribute_tags ?? '',
+    child_random_tag_count ?? 1,
     id,
   );
   return getWorld(id);
