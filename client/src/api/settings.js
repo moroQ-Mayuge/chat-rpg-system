@@ -28,4 +28,8 @@ export const settingsApi = {
   testGenerateImage: (data) => api.post('/settings/test-generate-image', data),
   getStatusDisplayPreferences: () => api.get('/settings/status-display-preferences'),
   updateStatusDisplayPreferences: (data) => api.put('/settings/status-display-preferences', data),
+  findOrphanImages: (minAgeMinutes) =>
+    api.get(`/settings/orphan-images${minAgeMinutes != null ? `?min_age_minutes=${minAgeMinutes}` : ''}`),
+  quarantineOrphanImages: (minAgeMinutes) =>
+    api.post('/settings/orphan-images/quarantine', { min_age_minutes: minAgeMinutes }),
 };

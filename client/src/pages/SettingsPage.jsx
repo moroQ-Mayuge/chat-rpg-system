@@ -1059,6 +1059,125 @@ function StopKoboldcppButton({ onStopped }) {
   );
 }
 
+function formatMB(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// どこからも参照されていない画像の整理。キャラや部屋を消してもファイルは残るので、
+// 遊ぶほど溜まっていく（実測では947件中519件・約500MBが未参照だった）。
+//
+// 調査と実行を別のボタンに分けてある。500MBぶんのファイルを動かす操作を、
+// 押した瞬間に始めてよいものにはしたくない。
+function OrphanImagesSection() {
+  const [scan, setScan] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  async function handleScan() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setScan(await settingsApi.findOrphanImages());
+    } catch (err) {
+      setError(`調査に失敗しました：${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleQuarantine() {
+    if (!window.confirm(`未参照の画像 ${scan.count} 件（${formatMB(scan.total_bytes)}）を隔離フォルダへ移動します。\n削除はしません。よろしいですか？`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await settingsApi.quarantineOrphanImages();
+      setResult(res);
+      setScan(null);
+    } catch (err) {
+      setError(`隔離に失敗しました：${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>未参照画像の整理</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        キャラクターや部屋を削除しても、画像ファイルはディスクに残り続けます。どこからも参照されていないものを探し、
+        <strong>削除せずに</strong> <code>storage/orphan-images/</code> へフォルダ構造ごと移動します。
+        戻したいときは、そのフォルダから元の場所へコピーし直してください。
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button onClick={handleScan} disabled={busy}>
+          {busy && !scan ? '調査中...' : '未参照の画像を調べる'}
+        </button>
+        {scan && scan.count > 0 && (
+          <button onClick={handleQuarantine} disabled={busy}>
+            {busy ? '移動中...' : `${scan.count}件を隔離フォルダへ移動`}
+          </button>
+        )}
+      </div>
+
+      {error && <p style={{ fontSize: 11, color: '#b00', margin: '8px 0 0' }}>{error}</p>}
+
+      {scan && (
+        <div style={{ marginTop: 10, fontSize: 12 }}>
+          {scan.count === 0 ? (
+            <p style={{ margin: 0, color: '#666' }}>未参照の画像はありませんでした。</p>
+          ) : (
+            <>
+              <p style={{ margin: '0 0 4px' }}>
+                未参照 <strong>{scan.count}件</strong>（{formatMB(scan.total_bytes)}） ／ 参照中 {scan.referenced_count}件
+              </p>
+              <p style={{ margin: '0 0 4px', color: '#666' }}>
+                内訳：{Object.entries(scan.by_dir).map(([d, n]) => `${d} ${n}件`).join(' / ')}
+              </p>
+              {scan.skipped_recent > 0 && (
+                <p style={{ margin: '0 0 4px', color: '#666' }}>
+                  直近1時間以内に作られた {scan.skipped_recent} 件は、生成中の可能性があるため対象から外しています。
+                </p>
+              )}
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer', color: '#888', fontSize: 11 }}>
+                  対象ファイル{scan.files_truncated ? `（大きい順に${scan.files.length}件まで）` : ''}
+                </summary>
+                <div style={{ maxHeight: 160, overflowY: 'auto', marginTop: 4, fontSize: 11, color: '#666' }}>
+                  {scan.files.map((f) => (
+                    <div key={f.relative}>
+                      {f.relative}（{formatMB(f.size)}）
+                    </div>
+                  ))}
+                </div>
+              </details>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#888' }}>
+                参照の有無は、データベースの全テーブルを走査して判定しています（今回：{scan.columns_scanned.join(' / ')}）。
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 10, fontSize: 12 }}>
+          <p style={{ margin: '0 0 4px' }}>
+            <strong>{result.moved_count}件</strong>（{formatMB(result.moved_bytes)}）を移動しました。
+          </p>
+          <p style={{ margin: 0, fontSize: 11, color: '#666', wordBreak: 'break-all' }}>移動先: {result.batch_path}</p>
+          {result.failed.length > 0 && (
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#b00' }}>
+              {result.failed.length}件は移動できませんでした（{result.failed[0].message}）
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { data: status, isLoading, refetch, isFetching } = useSettingsStatus();
 
@@ -1166,6 +1285,7 @@ export default function SettingsPage() {
           <ImageFormatSection />
           <ImageGenerationSettingsSection />
           <StatusDisplayPreferencesSection />
+          <OrphanImagesSection />
           <TestGenerateSection />
         </div>
       )}

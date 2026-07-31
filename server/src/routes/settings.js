@@ -18,6 +18,7 @@ import { launchKoboldcpp, stopKoboldcpp } from '../services/koboldcppLauncher.js
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { listModelFiles } from '../services/koboldcppModelFiles.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
+import { findOrphanImages, quarantineOrphanImages } from '../services/orphanImages.js';
 import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
 import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 import { getChatInputSettings, updateChatInputSettings } from '../db/repositories/chatInputSettingsRepo.js';
@@ -162,6 +163,23 @@ settingsRouter.get('/outfit-exposure-tag-settings', (req, res) => {
 
 settingsRouter.put('/outfit-exposure-tag-settings', (req, res) => {
   res.json(updateOutfitExposureTagSettings(req.body));
+});
+
+// 調査のみ。ファイルには一切触れない。
+settingsRouter.get('/orphan-images', (req, res) => {
+  const minAgeMinutes = req.query.min_age_minutes != null ? Number(req.query.min_age_minutes) : undefined;
+  const result = findOrphanImages({ minAgeMinutes });
+  // 一覧は大きくなりうる(実測519件)ので、画面に出す分だけ返す。
+  res.json({ ...result, files: result.files.slice(0, 50), files_truncated: result.files.length > 50 });
+});
+
+// 隔離の実行。削除はしない——storage/images の外へフォルダ構造ごと移すだけ。
+settingsRouter.post('/orphan-images/quarantine', (req, res) => {
+  try {
+    res.json(quarantineOrphanImages({ minAgeMinutes: req.body?.min_age_minutes }));
+  } catch (err) {
+    res.status(500).json({ error: 'quarantine_failed', message: err.message });
+  }
 });
 
 settingsRouter.post('/start-koboldcpp', (req, res) => {
