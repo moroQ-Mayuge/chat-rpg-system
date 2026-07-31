@@ -95,6 +95,8 @@ const ACTION_TYPES = [
   { value: 'add_character_memory', label: '記憶を追加（ルートに永続）' },
   { value: 'conceive', label: '受胎判定' },
   { value: 'end_pregnancy', label: '妊娠の発覚・終了' },
+  { value: 'set_timer', label: 'タイマーを張る（n日後）' },
+  { value: 'clear_timer', label: 'タイマーを取り消す' },
 ];
 
 function conditionDefaults(type) {
@@ -167,6 +169,10 @@ function actionDefaults(type) {
       return { character_id: null, field_key: '', value: '' };
     case 'add_character_memory':
       return { character_id: null, content: '', is_pinned: false };
+    case 'set_timer':
+      return { key: '', days: 30, character_id: null, note: '' };
+    case 'clear_timer':
+      return { key: '', character_id: null };
     case 'conceive':
       return { character_id: null };
     case 'end_pregnancy':
@@ -1301,6 +1307,61 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             <input type="checkbox" checked={Boolean(p.is_pinned)} onChange={(e) => setParams({ is_pinned: e.target.checked })} />
             ピン留めする（件数上限の枠外で常にプロンプトに載る）
           </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
+        </div>
+      )}
+
+      {(action.action_type === 'set_timer' || action.action_type === 'clear_timer') && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>タイマー名</span>
+            <input
+              placeholder="例：揺り籠"
+              value={p.key ?? ''}
+              onChange={(e) => setParams({ key: e.target.value })}
+            />
+          </label>
+          {action.action_type === 'set_timer' && (
+            <label style={{ flex: 1 }}>
+              <span style={label11}>何日後</span>
+              <input
+                type="number"
+                min="0"
+                value={p.days ?? 30}
+                onChange={(e) => setParams({ days: Number(e.target.value) || 0 })}
+              />
+            </label>
+          )}
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ（空欄でルート全体）</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === '' ? null : v === 'all_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">ルート全体</option>
+              <option value="all_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {charOptions}
+            </select>
+          </label>
+          {action.action_type === 'set_timer' && (
+            <label style={{ flex: 2, minWidth: '100%' }}>
+              <span style={label11}>メモ（任意・判定には使いません）</span>
+              <input style={{ width: '100%' }} value={p.note ?? ''} onChange={(e) => setParams({ note: e.target.value })} />
+            </label>
+          )}
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', width: '100%' }}>
+            期日が来たかは「フラグ状態」条件で <code>timer:タイマー名</code> を見てください（<code>pending</code> /{' '}
+            <code>due</code>）。対象キャラを指定した場合はキャラのフラグ、空欄ならルート全体のフラグに入ります。
+            同じ名前・同じ対象に張り直すと期日が更新されます（約束を先送りする、など）。
+            <strong>期日が来たタイマーは取り消すまで due のまま</strong>なので、一度きりにしたいイベントでは
+            「タイマーを取り消す」を併せて実行してください。
+          </p>
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}

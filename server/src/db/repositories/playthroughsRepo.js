@@ -2,9 +2,15 @@ import { db } from '../connection.js';
 import { getWorld } from './worldsRepo.js';
 import { listRegeneratingSelfStatAxes } from './relationshipAxesRepo.js';
 import { adjustValue } from './relationshipStatesRepo.js';
-import { setFlag } from './sessionFlagsRepo.js';
+import { setFlag, clearFlag, listFlagKeysWithPrefix } from './sessionFlagsRepo.js';
+import { listTimers, timerStateFor, timerFlagKey } from './playthroughTimersRepo.js';
 import { listHolidaysForWorld } from './worldCalendarHolidaysRepo.js';
-import { setCharacterFlag, clearCharacterFlag, listCharacterIdsWithFlag } from './characterFlagsRepo.js';
+import {
+  setCharacterFlag,
+  clearCharacterFlag,
+  listCharacterIdsWithFlag,
+  listCharacterFlagsWithPrefix,
+} from './characterFlagsRepo.js';
 import { listActivePregnancies } from './characterPregnanciesRepo.js';
 import { cyclePhaseFor } from '../../services/fertilityCycle.js';
 import { pregnancyStateFor } from '../../services/pregnancy.js';
@@ -122,7 +128,43 @@ function applySelfStatRegen(playthroughId, slots) {
 // Exported so the conceive / end_pregnancy actions can refresh the flags the
 // moment they change state — without that, a flag_state condition wouldn't
 // match until the next day rollover.
+// 汎用タイマー(0083)を flag_state から読めるように写す。キーは timer:<key> で、
+// 値は pending / due。キャラ指定のあるものはキャラフラグ、無いものはセッション
+// フラグに入る。
+//
+// 消えたタイマーのフラグは行ごと落とす。値を空にするだけでは flag_state の
+// exists 判定に残り続け、期日の来ないイベントが発火可能なままになる
+// (pregnancy_stage で同じ問題を踏んでいる)。
+export function syncTimerFlags(playthroughId, day) {
+  const timers = listTimers(playthroughId);
+  const liveCharacterKeys = new Set();
+  const liveSessionKeys = new Set();
+
+  for (const timer of timers) {
+    const key = timerFlagKey(timer.timer_key);
+    const state = timerStateFor(timer, day);
+    if (timer.character_id != null) {
+      liveCharacterKeys.add(`${timer.character_id}:${key}`);
+      setCharacterFlag(timer.character_id, key, 'playthrough', { playthroughId }, state);
+    } else {
+      liveSessionKeys.add(key);
+      setFlag(playthroughId, key, state, null);
+    }
+  }
+
+  for (const row of listCharacterFlagsWithPrefix('timer:', 'playthrough', { playthroughId })) {
+    if (!liveCharacterKeys.has(`${row.character_id}:${row.flag_key}`)) {
+      clearCharacterFlag(row.character_id, row.flag_key, 'playthrough', { playthroughId });
+    }
+  }
+  for (const flagKey of listFlagKeysWithPrefix(playthroughId, 'timer:')) {
+    if (!liveSessionKeys.has(flagKey)) clearFlag(playthroughId, flagKey);
+  }
+}
+
 export function syncDerivedCharacterFlags(playthroughId, day, world) {
+  syncTimerFlags(playthroughId, day);
+
   // 妊娠は1回のクエリでまとめて引く。キャラごとに撃つと参加者の数だけ増える。
   const pregnancies = world.pregnancy_enabled
     ? new Map(listActivePregnancies(playthroughId).map((p) => [p.character_id, p]))

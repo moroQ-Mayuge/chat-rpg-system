@@ -18,6 +18,8 @@ import { executeAddCharacterMemory } from './addCharacterMemory.js';
 import { executeMakeItemAvailable } from './makeItemAvailable.js';
 import { executeConceive } from './conceive.js';
 import { executeEndPregnancy } from './endPregnancy.js';
+import { executeSetTimer } from './setTimer.js';
+import { executeClearTimer } from './clearTimer.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -40,6 +42,8 @@ export const actionRegistry = {
   make_item_available: executeMakeItemAvailable,
   conceive: executeConceive,
   end_pregnancy: executeEndPregnancy,
+  set_timer: executeSetTimer,
+  clear_timer: executeClearTimer,
 };
 
 export async function executeAction(action, execCtx) {

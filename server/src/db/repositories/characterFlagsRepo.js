@@ -19,6 +19,16 @@ export function clearCharacterFlag(characterId, flagKey, scope, ctx) {
   ).run(characterId, flagKey, playthrough_id, room_session_id);
 }
 
+// タイマー(0083)のように、キーが動的に増えるフラグの掃除に使う。
+export function listCharacterFlagsWithPrefix(prefix, scope, ctx) {
+  const { playthrough_id, room_session_id } = scopeColumns(scope, ctx.playthroughId, ctx.roomSessionId);
+  return db
+    .prepare(
+      'SELECT character_id, flag_key FROM character_flags WHERE flag_key LIKE ? AND playthrough_id IS ? AND room_session_id IS ?',
+    )
+    .all(`${prefix}%`, playthrough_id, room_session_id);
+}
+
 export function listCharacterIdsWithFlag(flagKey, scope, ctx) {
   const { playthrough_id, room_session_id } = scopeColumns(scope, ctx.playthroughId, ctx.roomSessionId);
   return db
