@@ -97,6 +97,7 @@ const ACTION_TYPES = [
   { value: 'end_pregnancy', label: '妊娠の発覚・終了' },
   { value: 'set_timer', label: 'タイマーを張る（n日後）' },
   { value: 'clear_timer', label: 'タイマーを取り消す' },
+  { value: 'time_skip', label: '時間跳躍（n日後・n年後）' },
 ];
 
 function conditionDefaults(type) {
@@ -173,6 +174,8 @@ function actionDefaults(type) {
       return { key: '', days: 30, character_id: null, note: '' };
     case 'clear_timer':
       return { key: '', character_id: null };
+    case 'time_skip':
+      return { days: 30, summarize: true };
     case 'conceive':
       return { character_id: null };
     case 'end_pregnancy':
@@ -1310,6 +1313,37 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}
+        </div>
+      )}
+
+      {action.action_type === 'time_skip' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>何日進めるか</span>
+            <input
+              type="number"
+              min="1"
+              value={p.days ?? 30}
+              onChange={(e) => setParams({ days: Number(e.target.value) || 1 })}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, flex: 2 }}>
+            <input
+              type="checkbox"
+              checked={p.summarize !== false}
+              onChange={(e) => setParams({ summarize: e.target.checked })}
+            />
+            その期間に何があったかをLLMに書かせ、記憶として残す
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0', width: '100%' }}>
+            天候・季節・曜日・妊娠の段階・タイマーの期日は、日付が進むぶんだけまとめて更新されます。
+            世界観の「キャラの加齢」が<strong>通常</strong>なら、1年ぶんを跨ぐごとに登場済みキャラの年齢が上がります
+            （<strong>静止</strong>なら変わりません）。
+            <br />
+            要約をONにするとLLM呼び出しが1回増えます。<strong>跳んだ後の会話が浮かないための肝はこの記憶</strong>で、
+            共有された過去が無いまま再会すると、関係値だけが残った他人同士の会話になります。
+            koboldcppが止まっていても跳躍自体は成功し、要約だけが行われません。
+          </p>
         </div>
       )}
 

@@ -20,6 +20,7 @@ import { executeConceive } from './conceive.js';
 import { executeEndPregnancy } from './endPregnancy.js';
 import { executeSetTimer } from './setTimer.js';
 import { executeClearTimer } from './clearTimer.js';
+import { executeTimeSkip } from './timeSkip.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -44,6 +45,7 @@ export const actionRegistry = {
   end_pregnancy: executeEndPregnancy,
   set_timer: executeSetTimer,
   clear_timer: executeClearTimer,
+  time_skip: executeTimeSkip,
 };
 
 export async function executeAction(action, execCtx) {
