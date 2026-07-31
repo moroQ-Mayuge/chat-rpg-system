@@ -74,6 +74,7 @@ const emptyForm = {
   child_inherit_parent_tags: false,
   child_random_attribute_tags: '',
   child_random_tag_count: 1,
+  child_name_style: '和名',
 };
 
 // Per-label danbooru tag input for weather_options/time_slot_labels, so
@@ -187,6 +188,7 @@ export default function WorldsPage() {
         child_inherit_parent_tags: world.child_inherit_parent_tags ?? false,
         child_random_attribute_tags: world.child_random_attribute_tags ?? '',
         child_random_tag_count: world.child_random_tag_count ?? 1,
+        child_name_style: world.child_name_style ?? '和名',
         weather_tag_map: world.weather_tag_map ?? {},
         time_slot_tag_map: world.time_slot_tag_map ?? {},
         impression_auto_update_enabled: Boolean(world.impression_auto_update_enabled),
@@ -836,6 +838,22 @@ export default function WorldsPage() {
                   </select>
                   <span style={{ fontSize: 11, color: '#888' }}>
                     現時点では跳躍そのものが未実装のため、この設定に挙動の差はありません。
+                  </span>
+                </label>
+
+                <label style={{ display: 'block', marginTop: 10 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>子の名前の様式</span>
+                  <select
+                    style={{ display: 'block' }}
+                    value={form.child_name_style}
+                    onChange={(e) => setForm({ ...form, child_name_style: e.target.value })}
+                  >
+                    <option value="和名">和名（姓名を続けて書く：桜井さくら）</option>
+                    <option value="洋名">洋名（名 姓 の順：Emma Shiraishi）</option>
+                  </select>
+                  <span style={{ fontSize: 11, color: '#888' }}>
+                    出産イベントで「子の名前」を空欄にしたときだけ使います。姓は母の「フルネーム」欄を空白で区切った先頭を引き継ぎ、
+                    区切りが無い（または空の）母の子は名前だけになります。名前を明示した場合はそちらが優先です。
                   </span>
                 </label>
 

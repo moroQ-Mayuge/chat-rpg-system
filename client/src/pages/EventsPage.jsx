@@ -1482,11 +1482,12 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
                 <input value={p.child_name ?? ''} onChange={(e) => setParams({ child_name: e.target.value })} />
               </label>
               <label style={{ flex: 1 }}>
-                <span style={label11}>子の性別</span>
+                <span style={label11}>子の性別（現在未使用）</span>
                 <input
-                  placeholder="例：女児"
-                  value={p.child_gender ?? ''}
-                  onChange={(e) => setParams({ child_gender: e.target.value })}
+                  disabled
+                  placeholder="少女で固定"
+                  value=""
+                  readOnly
                 />
               </label>
             </>

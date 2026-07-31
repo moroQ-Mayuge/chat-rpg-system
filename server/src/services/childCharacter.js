@@ -5,6 +5,13 @@ import { getPregnancy, setChildCharacter } from '../db/repositories/characterPre
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { childGrowthStateFor, childAppearanceAge } from './pregnancy.js';
+import { generateChildName } from './childName.js';
+
+// 当面は少女で固定。可変にするのは「子を次代の主人公にする」を実装する時期で、
+// それまで性別で分岐する処理を増やさないための固定
+// (PLAN_2026-07-28_pregnancy_children_deviation.md の 5 章)。
+// 「妊娠の発覚・終了」アクションの child_gender 欄はこの間使われない。
+const CHILD_GENDER = '少女';
 
 // 母から引き継ぐ見た目。血のつながりが顔に出るのはむしろ好都合なので、
 // 目・髪・種族・属性はそのまま持ってくる。体型や胸まわりは年齢が違えば
@@ -95,8 +102,10 @@ export function materializeChild(pregnancyId) {
 
   const child = createCharacter({
     ...inherited,
-    name: pregnancy.child_name?.trim() || `${mother.name}の子`,
-    gender: pregnancy.child_gender || '',
+    // 明示された名前が最優先。空欄なら母の姓 + World の様式から抽選した名。
+    // 姓が取れない母(full_name が空/区切り無し)の子は名だけになる。
+    name: pregnancy.child_name?.trim() || generateChildName(mother, world),
+    gender: CHILD_GENDER,
     age_real: String(age),
     age_apparent: String(age),
     // どこに居る子なのかは世界観ごとに違うので World 設定から組み立てる。
