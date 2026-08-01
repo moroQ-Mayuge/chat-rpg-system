@@ -783,8 +783,14 @@ export default function ChatPage() {
             {(session.pending_children ?? []).map((c) => (
               <p key={`child-${c.pregnancy_id}`} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
                 {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}：
-                <strong>{c.ready ? '登場可能' : `あと${c.daysRemaining}日`}</strong>（出産から{c.daysSinceBirth}/
-                {c.maturationDays}日）
+                {c.waitingForTimeSkip ? (
+                  <strong>{c.ready ? '登場可能（時間跳躍済み）' : '次の時間跳躍で登場'}</strong>
+                ) : (
+                  <>
+                    <strong>{c.ready ? '登場可能' : `あと${c.daysRemaining}日`}</strong>（出産から{c.daysSinceBirth}/
+                    {c.maturationDays}日）
+                  </>
+                )}
               </p>
             ))}
             {session.participants

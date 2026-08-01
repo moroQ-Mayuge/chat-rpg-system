@@ -33,14 +33,24 @@ export function pregnancyDayFor(currentDay, conceivedDay) {
 // 出産後、子が登場できるようになるまでの状態。妊娠と同じく ended_day からの
 // 差分で毎回導出するだけで、可変状態はどこにも持たない。
 //
-// 早熟(child_appearance = 'early')でのみ日数で進む。'none' は永久に登場せず、
-// 'on_time_skip' は跳躍の実装待ちなので、どちらもここでは null を返す。
+// 'none' は永久に登場せず null を返す。'early' は出産からの経過日数で進む。
+// 'on_time_skip' は「時間跳躍という行為が起きたこと」自体が条件で、日数の
+// 差分だけでは導出できない——出産日より後に time_skip アクションが一度でも
+// 実行されていれば登場可能、という比較に playthroughs.last_time_skip_day
+// (0087) を使う。跳躍の大小は問わない。
 export function childGrowthStateFor(pregnancy, playthrough, world) {
   if (!world?.pregnancy_enabled) return null;
   if (pregnancy?.outcome !== '出産' || pregnancy.ended_day == null) return null;
-  if (world.child_appearance !== 'early') return null;
   // 既にキャラとして登場済みなら、もう「待っている」状態ではない。
   if (pregnancy.child_character_id != null) return null;
+
+  if (world.child_appearance === 'on_time_skip') {
+    return {
+      waitingForTimeSkip: true,
+      ready: playthrough.last_time_skip_day != null && playthrough.last_time_skip_day > pregnancy.ended_day,
+    };
+  }
+  if (world.child_appearance !== 'early') return null;
 
   const maturationDays = world.child_maturation_days >= 0 ? world.child_maturation_days : 30;
   const daysSinceBirth = Math.max(0, playthrough.current_day - pregnancy.ended_day);

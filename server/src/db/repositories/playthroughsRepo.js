@@ -276,6 +276,14 @@ export function touchPlaythrough(id) {
   db.prepare(`UPDATE playthroughs SET updated_at = datetime('now') WHERE id = ?`).run(id);
 }
 
+// World設定「子の登場」= on_time_skip の判定材料(0087)。time_skip アクションが
+// 完了するたびにその時点の current_day を覚えておくだけで、跳躍の大小は問わない
+// ——出産日より後に一度でも跳躍していれば子は登場可能になる(pregnancy.js の
+// childGrowthStateFor 参照)。
+export function recordTimeSkip(id, day) {
+  db.prepare('UPDATE playthroughs SET last_time_skip_day = ? WHERE id = ?').run(day, id);
+}
+
 // Adds a room-connection's movement_cost to the playthrough's running
 // sub-count. When the sub-count reaches the World's configured budget for one
 // time-slot, the time-slot advances (via the shared advanceTime) and the

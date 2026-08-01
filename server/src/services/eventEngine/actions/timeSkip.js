@@ -1,4 +1,4 @@
-import { advanceTime, getPlaythrough } from '../../../db/repositories/playthroughsRepo.js';
+import { advanceTime, getPlaythrough, recordTimeSkip } from '../../../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../../../db/repositories/worldsRepo.js';
 import { applyTimeSkipEffects, formatSkipLabel } from '../../timeSkip.js';
 
@@ -25,6 +25,9 @@ export async function executeTimeSkip(params, execCtx) {
   const effects = await applyTimeSkipEffects(execCtx.playthroughId, world, dayCount, label, { summarize });
 
   const after = getPlaythrough(execCtx.playthroughId);
+  // World設定「子の登場」= on_time_skip の判定材料。跳躍の大小を問わないので、
+  // ここで実行された事実だけを記録する(pregnancy.js 参照)。
+  recordTimeSkip(execCtx.playthroughId, after.current_day);
   return {
     label,
     from_day: before.current_day,

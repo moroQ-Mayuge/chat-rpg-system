@@ -203,7 +203,7 @@ function attachParticipants(session) {
 // 「そろそろ戻る頃合いだ」と知らせるところまでが機構の仕事で、実際にキャラを
 // 起こすのは次の塊(P7)でプレイヤーが確定させる。
 function buildPendingChildren(playthrough, world) {
-  if (!world.pregnancy_enabled || world.child_appearance !== 'early') return [];
+  if (!world.pregnancy_enabled || !['early', 'on_time_skip'].includes(world.child_appearance)) return [];
   return listAwaitingChildAppearance(playthrough.id)
     .map((pregnancy) => {
       const growth = childGrowthStateFor(pregnancy, playthrough, world);
