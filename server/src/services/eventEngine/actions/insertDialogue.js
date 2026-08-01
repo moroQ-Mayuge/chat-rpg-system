@@ -12,6 +12,18 @@ function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
 }
 
+// Present participants, named, for grounding a generated line -- without
+// this the LLM has no idea who's actually in the room and invents generic
+// stand-ins ("ママ"/"パパ"/random names from its own training) instead of
+// the real characters. Empty when nobody (besides the speaker, if any) is
+// present, in which case the line below it is simply omitted.
+function presentParticipantsLine(execCtx, excludeCharacterId = null) {
+  const names = execCtx.session.participants
+    .filter((p) => p.character_id !== excludeCharacterId)
+    .map((p) => p.name);
+  return names.length > 0 ? `この場にいる人物：${names.join('、')}` : '';
+}
+
 async function generateCharacterLine(characterId, promptHint, execCtx) {
   const character = db.prepare('SELECT * FROM characters WHERE id = ?').get(characterId);
   const participant = execCtx.session.participants.find((p) => p.character_id === characterId);
@@ -22,11 +34,18 @@ async function generateCharacterLine(characterId, promptHint, execCtx) {
 
   const systemPrompt = [
     serializeCharacter(character, outfit, undressStateLines),
+    presentParticipantsLine(execCtx, characterId),
     '',
     'あなたは上記のキャラクターになりきって、日本語で一言だけセリフを発してください。',
     '地の文・タグ・鉤括弧は不要で、セリフ本文のみを出力してください。',
-    `指示：${promptHint ?? ''}`,
-  ].join('\n');
+    // ${target1}/${キャラ名} resolve to real participant names here too, same
+    // as fixed-mode text -- a hint author can write "${target1}をからかう
+    // 一言" and have it mean the actual co-present character, not a token
+    // the model has never seen.
+    `指示：${resolvePlaceholderNames(promptHint, execCtx) ?? ''}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const rawText = await generateChatCompletion({
     messages: [{ role: 'system', content: systemPrompt }],
@@ -36,11 +55,15 @@ async function generateCharacterLine(characterId, promptHint, execCtx) {
   return rawText.trim();
 }
 
-async function generateNarrationLine(promptHint) {
+async function generateNarrationLine(promptHint, execCtx) {
   const systemPrompt = [
     '以下の指示に基づいて、短い地の文（ナレーション）を日本語で1文だけ出力してください。タグや見出しは不要です。',
-    `指示：${promptHint ?? ''}`,
-  ].join('\n');
+    presentParticipantsLine(execCtx),
+    '登場人物の名前は上記の実在の人物名をそのまま使い、架空の名前や関係を作らないでください。',
+    `指示：${resolvePlaceholderNames(promptHint, execCtx) ?? ''}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const rawText = await generateChatCompletion({
     messages: [{ role: 'system', content: systemPrompt }],
     maxTokens: 150,
@@ -91,7 +114,7 @@ export async function executeInsertDialogue(params, execCtx) {
   }
 
   if (character_id == null) {
-    const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateNarrationLine(prompt_hint);
+    const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateNarrationLine(prompt_hint, execCtx);
     const message = createMessage(execCtx.sessionId, { sender_type: 'narration', content });
     broadcast(execCtx.sessionId, { type: 'message_complete', message });
     return { inserted: 'narration' };
