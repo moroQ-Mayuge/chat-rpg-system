@@ -3,7 +3,7 @@ import { addParticipant } from '../../../db/repositories/roomSessionsRepo.js';
 import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../attributeTagMatching.js';
-import { resolveMentionedSingle } from '../mentionResolution.js';
+import { resolveSingleTargetId } from '../targetResolution.js';
 import { isEligibleInRoute } from '../../routeScopedCharacters.js';
 
 function pickWeighted(candidateIds) {
@@ -57,14 +57,14 @@ function tagMatchCandidates(roomTemplateId, playthroughId) {
 
 const DEFAULT_REJECTION_NARRATION = '{character_name}は、この場にふさわしくないようで姿を見せなかった。';
 
-// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?: number|"mentioned", candidate_character_ids?, outfit_id?, entrance_narration?, require_attribute_match?, rejection_narration? }
+// { selection_mode: "specific"|"random_weighted"|"random_uniform"|"tag_match", character_id?: number|"mentioned"|"condition_matched", candidate_character_ids?, outfit_id?, entrance_narration?, require_attribute_match?, rejection_narration? }
 export async function executeCharacterJoin(params, execCtx) {
   const { selection_mode, character_id, candidate_character_ids = [], outfit_id = null, entrance_narration } = params;
   const presentIds = new Set(execCtx.session.participants.map((p) => p.character_id));
 
   let targetId;
   if (selection_mode === 'specific') {
-    targetId = character_id === 'mentioned' ? resolveMentionedSingle(execCtx.mentionedCharacterIds) : character_id;
+    targetId = resolveSingleTargetId(character_id, execCtx);
     if (targetId == null) return { skipped: true, reason: 'no_mention' };
 
     // Guard against a "summon"-style event naming a fixed character who

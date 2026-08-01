@@ -1,7 +1,7 @@
 import { addMemory, formatOccurredLabel } from '../../../db/repositories/characterMemoriesRepo.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
-// { character_id: number|"all_present"|"mentioned"|"departed", content: string, is_pinned?, mentioned_limit? }
+// { character_id: number|"all_present"|"mentioned"|"condition_matched"|"departed", content: string, is_pinned?, mentioned_limit? }
 // Targeting mirrors setCharacterImpression.js, minus the instance hint: memory
 // is route-scoped and mob characters are excluded outright (addMemory's own
 // guard returns null for them), so there's no per-instance dimension to carry.
@@ -14,14 +14,7 @@ export async function executeAddCharacterMemory(params, execCtx) {
   const { character_id, content, is_pinned, mentioned_limit } = params;
   if (!content?.trim()) return { skipped: true, reason: 'empty_content' };
 
-  const targetIds =
-    character_id === 'all_present'
-      ? execCtx.session.participants.map((p) => p.character_id)
-      : character_id === 'departed'
-        ? execCtx.departedCharacterIds ?? []
-        : character_id === 'mentioned'
-          ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-          : [character_id];
+  const targetIds = character_id === 'departed' ? execCtx.departedCharacterIds ?? [] : resolveTargetIds(character_id, mentioned_limit, execCtx);
 
   const occurredLabel = formatOccurredLabel(execCtx.playthroughId);
   const changes = [];

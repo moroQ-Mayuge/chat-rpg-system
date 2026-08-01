@@ -200,6 +200,7 @@ const emptyEvent = {
   max_fires_per_session: null,
   exclusive_group: null,
   reset_scope: 'playthrough',
+  per_character_firing: false,
   has_outcome_branch: false,
   outcome_logic: 'AND',
   outcome_root_label: '',
@@ -699,6 +700,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               >
                 <option value="">ナレーション</option>
                 <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+                <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
                 {charOptions}
               </select>
             </label>
@@ -764,6 +766,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
                 >
                   <option value="">選択してください</option>
                   <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+                <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
                   {charOptions}
                 </select>
               </label>
@@ -837,6 +840,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
                 >
                   <option value="">選択してください</option>
                   <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+                <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
                   {charOptions}
                 </select>
               </label>
@@ -944,6 +948,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">未指定（グローバル）</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -976,6 +981,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1023,6 +1029,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             >
               <option value="">選択してください</option>
               <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+                <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1170,6 +1177,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1221,6 +1229,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1253,6 +1262,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1293,6 +1303,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               <option value="departed">このイベントで退出したキャラ</option>
               {charOptions}
             </select>
@@ -1380,6 +1391,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">ルート全体</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1416,6 +1428,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1457,6 +1470,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
               <option value="">選択してください</option>
               <option value="all_present">同席者全員</option>
               <option value="mentioned">@メンション中のキャラ</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
               {charOptions}
             </select>
           </label>
@@ -1999,6 +2013,19 @@ export default function EventsPage() {
             {draft.has_outcome_branch && (
               <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
                 発火後、下の条件群で成功/失敗を判定し、アクションの「成功時のみ」「失敗時のみ」欄に応じて実行するアクションを絞り込みます。各条件群は成功/失敗どちらか一方へさらに最大{MAX_OUTCOME_NODE_DEPTH}段までネストできます。
+              </p>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={draft.per_character_firing ?? false}
+                onChange={(e) => setDraft({ ...draft, per_character_firing: e.target.checked })}
+              />
+              同席者ごとに個別発火させる
+            </label>
+            {draft.per_character_firing && (
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                「同席者の誰か1人でも」等の条件に複数人が同時に該当しうる場合（例：2人が同時に妊娠中）、従来は最初に該当した1人でクールダウン／最大発火回数を使い切ってしまい、2人目には二度と発火しませんでした。ONにすると、該当したキャラごとに個別にクールダウン／最大発火回数を数え、排他グループもキャラ単位で働きます。アクション側の対象キャラを「条件が一致したキャラ」にすると、その発火の該当キャラだけを処理対象にできます（「同席者全員」のままだと、まだ条件を満たしていない同席者にも処理が及んでしまいます）。条件に「同席者の誰か1人でも」等のキャラ指定が1つも無い場合、この設定は効きません。
               </p>
             )}
           </div>

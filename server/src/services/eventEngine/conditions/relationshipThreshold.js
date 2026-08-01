@@ -11,16 +11,20 @@ function compare(value, comparison, target) {
 }
 
 // { character_id: number | "any_present" | "mentioned", axis_id, comparison, value, mentioned_limit? }
-export function evaluateRelationshipThreshold(params, ctx) {
+// character_id is required here (unlike flag_state), so this is always
+// character-scoped -- returns the matching id array directly, never null.
+// See flagState.js's matchingCharactersForFlagState for the general contract.
+export function matchingCharactersForRelationshipThreshold(params, ctx) {
   const { character_id, axis_id, comparison, value, mentioned_limit } = params;
+  const characterIds =
+    character_id === 'any_present'
+      ? ctx.participants.map((p) => p.character_id)
+      : character_id === 'mentioned'
+        ? resolveMentionedList(ctx.mentionedCharacterIds, mentioned_limit)
+        : [character_id];
+  return characterIds.filter((id) => compare(getValue(ctx.playthroughId, id, axis_id, ctx.session.id), comparison, value));
+}
 
-  if (character_id === 'any_present') {
-    return ctx.participants.some((p) => compare(getValue(ctx.playthroughId, p.character_id, axis_id, ctx.session.id), comparison, value));
-  }
-  if (character_id === 'mentioned') {
-    const ids = resolveMentionedList(ctx.mentionedCharacterIds, mentioned_limit);
-    return ids.some((id) => compare(getValue(ctx.playthroughId, id, axis_id, ctx.session.id), comparison, value));
-  }
-
-  return compare(getValue(ctx.playthroughId, character_id, axis_id, ctx.session.id), comparison, value);
+export function evaluateRelationshipThreshold(params, ctx) {
+  return matchingCharactersForRelationshipThreshold(params, ctx).length > 0;
 }

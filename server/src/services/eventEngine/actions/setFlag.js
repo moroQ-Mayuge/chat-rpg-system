@@ -1,6 +1,6 @@
 import { getFlag, setFlag } from '../../../db/repositories/sessionFlagsRepo.js';
 import { getCharacterFlag, setCharacterFlag } from '../../../db/repositories/characterFlagsRepo.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
 function computeNextValue(operation, current, value) {
   if (operation === 'set') return value;
@@ -14,7 +14,7 @@ function computeNextValue(operation, current, value) {
 }
 
 // { flag_key, operation: "set"|"increment"|"decrement"|"toggle", value?,
-//   character_id?: number|"all_present"|"mentioned", mentioned_limit?,
+//   character_id?: number|"all_present"|"mentioned"|"condition_matched", mentioned_limit?,
 //   scope?: "playthrough"|"session" (default "playthrough") }
 // character_id unset -> unchanged global session_flags write.
 // character_id set -> per-character character_flags write, applied to every
@@ -29,12 +29,7 @@ export async function executeSetFlag(params, execCtx) {
     return { flag_key, value: next };
   }
 
-  const targetIds =
-    character_id === 'all_present'
-      ? execCtx.session.participants.map((p) => p.character_id)
-      : character_id === 'mentioned'
-        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-        : [character_id];
+  const targetIds = resolveTargetIds(character_id, mentioned_limit, execCtx);
   const flagCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId };
   const changes = targetIds.map((id) => {
     const current = getCharacterFlag(id, flag_key, scope, flagCtx)?.flag_value;

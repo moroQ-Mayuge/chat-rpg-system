@@ -3,7 +3,7 @@ import { getPlaythrough, syncDerivedCharacterFlags } from '../../../db/repositor
 import { getWorld } from '../../../db/repositories/worldsRepo.js';
 import { db } from '../../../db/connection.js';
 import { cyclePhaseFor } from '../../fertilityCycle.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
 // 受胎判定。周期(0070)の段階を確率に変えるので、危険日に何をしたかがそのまま
 // 効いてくる。周期が無効なキャラ・無効なWorldでは NO_CYCLE_CHANCE を使う。
@@ -16,7 +16,7 @@ const PHASE_CHANCE = {
 };
 const NO_CYCLE_CHANCE = 0.2;
 
-// { character_id: number|"all_present"|"mentioned", mentioned_limit?, chance? }
+// { character_id: number|"all_present"|"mentioned"|"condition_matched", mentioned_limit?, chance? }
 // chance を明示すると周期を無視してその確率になる(確実に妊娠させる演出用に 1 を
 // 指定する、など)。避妊は has_status / has_item といった既存の条件でイベント側が
 // 弾く前提で、ここには持ち込まない——道具立ては世界観ごとに違うため。
@@ -29,12 +29,7 @@ export async function executeConceive(params, execCtx) {
   // 限っている以上、この視点では機能ごと成立しない。
   if (playthrough.protagonist_mode === 'narrator') return { skipped: true, reason: 'narrator_mode' };
 
-  const targetIds =
-    character_id === 'all_present'
-      ? execCtx.session.participants.map((p) => p.character_id)
-      : character_id === 'mentioned'
-        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-        : [character_id];
+  const targetIds = resolveTargetIds(character_id, mentioned_limit, execCtx);
 
   const multiplier = world.conception_rate_multiplier ?? 1;
   const results = [];

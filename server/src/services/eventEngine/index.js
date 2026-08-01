@@ -4,7 +4,7 @@ import { countUserTurnsForPlaythrough } from '../../db/repositories/messagesRepo
 import { getAllFlags, getFlag } from '../../db/repositories/sessionFlagsRepo.js';
 import { getFireCount, getLastFireTurn, recordFire, hasFiredWithOutcome } from '../../db/repositories/eventFireHistoryRepo.js';
 import { getOverride } from '../../db/repositories/roomTemplateEventsRepo.js';
-import { evaluateCondition } from './conditions/registry.js';
+import { evaluateCondition, getMatchingCharacters } from './conditions/registry.js';
 import { executeAction } from './actions/registry.js';
 
 // Deliberate simplification vs. SPEC.md 3.6.1's literal staged before/after-LLM-call
@@ -12,8 +12,14 @@ import { executeAction } from './actions/registry.js';
 // available anyway (step 5 happens after step 3), all condition types — including
 // keyword's user_message/ai_response targets — are evaluated together in one pass
 // once both texts are on hand.
-function passesCooldownAndMaxFires(def, playthroughId, roomSessionId, turnNumber) {
-  const scope = { roomSessionId, resetScope: def.reset_scope };
+//
+// characterId scopes the cooldown/max_fires check itself (per_character_firing's
+// per-candidate gate below) -- left at its default null for the ordinary,
+// event-wide check every non-per_character_firing def still uses. Rows in
+// event_fire_history for such defs are always written with character_id NULL
+// (recordFire's own default), so this parameter has no effect on them either way.
+function passesCooldownAndMaxFires(def, playthroughId, roomSessionId, turnNumber, characterId = null) {
+  const scope = { roomSessionId, resetScope: def.reset_scope, characterId };
   if (def.max_fires_per_session != null && getFireCount(playthroughId, def.id, scope) >= def.max_fires_per_session) {
     return false;
   }
@@ -85,17 +91,54 @@ async function resolveOutcomeLevel(def, nodeId, depth, outcomeLogic, baseCtx, bu
   return outcome;
 }
 
-function resolveExclusiveGroups(eligibleDefs) {
+// Keyed by (exclusive_group, characterId) rather than exclusive_group alone:
+// two per_character_firing entries sharing a group should still each get
+// their own character's turn (A's "reveal" firing must not block B's later
+// "reveal" firing just because they're in the same group) -- only two
+// entries about the *same* character in the *same* group are meant to be
+// mutually exclusive. characterId is null for every non-per_character_firing
+// entry, so their dedup is exactly the old whole-group behavior.
+function resolveExclusiveGroups(eligibleEntries) {
   const seenGroups = new Set();
   const firing = [];
-  for (const def of eligibleDefs) {
-    if (def.exclusive_group) {
-      if (seenGroups.has(def.exclusive_group)) continue;
-      seenGroups.add(def.exclusive_group);
+  for (const entry of eligibleEntries) {
+    if (entry.def.exclusive_group) {
+      const key = `${entry.def.exclusive_group}:${entry.characterId ?? ''}`;
+      if (seenGroups.has(key)) continue;
+      seenGroups.add(key);
     }
-    firing.push(def);
+    firing.push(entry);
   }
   return firing;
+}
+
+// per_character_firing's candidate narrowing (see 0086_per_character_event_firing.sql).
+// Combines whichever of this def's trigger conditions can name a specific
+// character (flag_state/has_status/has_outfit/relationship_threshold, see
+// conditions/registry.js's getMatchingCharacters) into one candidate id list,
+// using the same AND/OR the def's condition_logic already applies to the
+// plain boolean pass/fail. Conditions that can't name a character
+// (probability/keyword/llm_judge/participant_count/has_item/has_money) are
+// ignored here -- they already gated whether the def is eligible at all, via
+// the ordinary boolean evaluation the caller ran first.
+//
+// Returns null when no condition contributed a character list at all (a
+// per_character_firing def with no character-scoped condition -- a
+// misconfiguration, not an error: the caller falls back to firing once,
+// unscoped, same as if the toggle were off).
+function computeCandidateCharacterIds(def, triggerConditions, conditionCtxs) {
+  const matchedArrays = triggerConditions
+    .map((condition, i) => getMatchingCharacters(condition, conditionCtxs[i]))
+    .filter((arr) => arr !== null);
+  if (matchedArrays.length === 0) return null;
+  if (def.condition_logic === 'OR') return [...new Set(matchedArrays.flat())];
+  // AND: a character must appear in every contributing condition's own match
+  // list, not just satisfy each condition ANYone-present-wise -- this is
+  // stricter than (and the whole point of departing from) the plain boolean
+  // AND, which only asks "did each condition find *someone*", not "the same
+  // someone". reduce with no seed starts from matchedArrays[0], so a single
+  // contributing condition returns its own list untouched.
+  return matchedArrays.reduce((acc, arr) => acc.filter((id) => arr.includes(id)));
 }
 
 // Runs every active event definition for the room template this session belongs
@@ -128,6 +171,11 @@ export async function runEventEngine({
     flagSetAtTurn: (flagKey) => getFlag(playthroughId, flagKey)?.set_at_turn ?? null,
   };
 
+  // {def, characterId}[] -- characterId is null for every ordinary def (one
+  // potential firing, exactly as before per_character_firing existed) and
+  // one entry per qualifying candidate for a per_character_firing def (zero,
+  // one, or several -- e.g. two mothers reaching the same pregnancy_stage on
+  // different days each get their own entry once their own turn comes up).
   const eligible = [];
   for (const def of defs) {
     if (!passesCooldownAndMaxFires(def, playthroughId, sessionId, turnNumber)) continue;
@@ -137,17 +185,30 @@ export async function runEventEngine({
     // 'outcome'-phase conditions are checked separately, after the event has
     // already fired (see below) — they don't gate whether it fires at all.
     const triggerConditions = def.conditions.filter((c) => c.phase !== 'outcome');
-    const results = await Promise.all(
-      triggerConditions.map((condition) =>
-        evaluateCondition(condition, {
-          ...baseCtx,
-          eventDefinitionId: def.id,
-          overrideProbability: condition.condition_type === 'probability' ? override?.override_probability : undefined,
-        }),
-      ),
-    );
+    const conditionCtxs = triggerConditions.map((condition) => ({
+      ...baseCtx,
+      eventDefinitionId: def.id,
+      overrideProbability: condition.condition_type === 'probability' ? override?.override_probability : undefined,
+    }));
+    const results = await Promise.all(triggerConditions.map((condition, i) => evaluateCondition(condition, conditionCtxs[i])));
     const passed = def.condition_logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
-    if (passed) eligible.push(def);
+    if (!passed) continue;
+
+    if (!def.per_character_firing) {
+      eligible.push({ def, characterId: null });
+      continue;
+    }
+
+    const candidateIds = computeCandidateCharacterIds(def, triggerConditions, conditionCtxs);
+    if (candidateIds === null) {
+      eligible.push({ def, characterId: null });
+      continue;
+    }
+    for (const characterId of candidateIds) {
+      if (passesCooldownAndMaxFires(def, playthroughId, sessionId, turnNumber, characterId)) {
+        eligible.push({ def, characterId });
+      }
+    }
   }
 
   const firing = resolveExclusiveGroups(eligible);
@@ -167,7 +228,12 @@ export async function runEventEngine({
   // Actions run sequentially and re-fetch session state as needed, so a
   // character_join earlier in this same event (root or nested) is visible to
   // a later change_relationship/generate_image action in the same firing.
-  const buildExecCtx = () => ({
+  //
+  // matchedCharacterIds: null for an ordinary firing (character_id:
+  // "condition_matched" in an action is meaningless there and resolves to no
+  // one); a one-element array for a per_character_firing entry, naming the
+  // one candidate this particular firing is about -- see targetResolution.js.
+  const buildExecCtx = (characterId) => ({
     sessionId,
     playthroughId,
     roomTemplateId,
@@ -176,9 +242,10 @@ export async function runEventEngine({
     mentionedCharacterIds,
     instanceHintByCharacterId,
     departedCharacterIds,
+    matchedCharacterIds: characterId != null ? [characterId] : null,
   });
 
-  for (const def of firing) {
+  for (const { def, characterId } of firing) {
     // Success/failure outcome branching (chat enhancement backlog item 5),
     // extended to an optional nested sub-branch under either resolved
     // branch (see 0061_event_outcome_nesting.sql / resolveOutcomeLevel
@@ -187,11 +254,12 @@ export async function runEventEngine({
     let outcome = null;
     const actionResults = [];
     departedCharacterIds = [];
+    const boundBuildExecCtx = () => buildExecCtx(characterId);
     if (def.has_outcome_branch) {
-      outcome = await resolveOutcomeLevel(def, null, 0, def.outcome_logic, baseCtx, buildExecCtx, actionResults, noteActionResult);
+      outcome = await resolveOutcomeLevel(def, null, 0, def.outcome_logic, baseCtx, boundBuildExecCtx, actionResults, noteActionResult);
     } else {
       for (const action of def.actions) {
-        const result = await executeAction(action, buildExecCtx());
+        const result = await executeAction(action, boundBuildExecCtx());
         noteActionResult(result);
         actionResults.push({ actionType: action.action_type, result });
       }
@@ -201,9 +269,13 @@ export async function runEventEngine({
     // prerequisite check can require a specific success/failure result.
     // Only the ROOT outcome is ever recorded -- nested sub-branch results
     // are purely internal to this one firing's action selection.
-    recordFire(playthroughId, def.id, turnNumber, outcome, sessionId);
+    //
+    // characterId (possibly null) makes this fire's cooldown/max_fires count
+    // against that one character only for a per_character_firing def --
+    // see eventFireHistoryRepo.js.
+    recordFire(playthroughId, def.id, turnNumber, outcome, sessionId, characterId);
 
-    fired.push({ eventDefinitionId: def.id, name: def.name, outcome, actionResults });
+    fired.push({ eventDefinitionId: def.id, name: def.name, outcome, actionResults, characterId });
   }
 
   return fired;

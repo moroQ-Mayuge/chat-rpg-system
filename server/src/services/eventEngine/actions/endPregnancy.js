@@ -1,9 +1,9 @@
 import { getActivePregnancy, endPregnancy, setKnownFrom } from '../../../db/repositories/characterPregnanciesRepo.js';
 import { getPlaythrough, syncDerivedCharacterFlags } from '../../../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../../../db/repositories/worldsRepo.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
-// { character_id: number|"all_present"|"mentioned", mentioned_limit?,
+// { character_id: number|"all_present"|"mentioned"|"condition_matched", mentioned_limit?,
 //   operation?: "end"|"reveal", outcome?: "出産"|"流産"|"中絶",
 //   child_name?, child_gender? }
 //
@@ -19,12 +19,7 @@ export async function executeEndPregnancy(params, execCtx) {
   const world = getWorld(playthrough.world_id);
   if (!world.pregnancy_enabled) return { skipped: true, reason: 'pregnancy_disabled' };
 
-  const targetIds =
-    character_id === 'all_present'
-      ? execCtx.session.participants.map((p) => p.character_id)
-      : character_id === 'mentioned'
-        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-        : [character_id];
+  const targetIds = resolveTargetIds(character_id, mentioned_limit, execCtx);
 
   const changes = [];
   for (const id of targetIds) {

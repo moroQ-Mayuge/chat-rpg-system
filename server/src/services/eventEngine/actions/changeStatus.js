@@ -1,7 +1,7 @@
 import { grantStatus, removeStatus, setStatusLocked } from '../../../db/repositories/characterStatusStatesRepo.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
-// { character_id: number|"all_present"|"mentioned", status_id, operation: "grant"|"remove"|"lock"|"unlock", locked?, mentioned_limit? }
+// { character_id: number|"all_present"|"mentioned"|"condition_matched", status_id, operation: "grant"|"remove"|"lock"|"unlock", locked?, mentioned_limit? }
 // "lock" keeps an automatically-clearable status (see axis_status_triggers)
 // from being auto-removed once its threshold is no longer met — lets a
 // World author require a dedicated event ("目を覚ます" etc.) to end it
@@ -13,12 +13,10 @@ export async function executeChangeStatus(params, execCtx) {
   const targets =
     character_id === 'all_present'
       ? execCtx.session.participants.map((p) => ({ character_id: p.character_id, instance_id: p.id }))
-      : character_id === 'mentioned'
-        ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit).map((id) => ({
-            character_id: id,
-            instance_id: execCtx.instanceHintByCharacterId?.get(id),
-          }))
-        : [{ character_id, instance_id: execCtx.instanceHintByCharacterId?.get(character_id) }];
+      : resolveTargetIds(character_id, mentioned_limit, execCtx).map((id) => ({
+          character_id: id,
+          instance_id: execCtx.instanceHintByCharacterId?.get(id),
+        }));
 
   const changes = targets.map(({ character_id: id, instance_id }) => {
     const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId, roomSessionCharacterId: instance_id };

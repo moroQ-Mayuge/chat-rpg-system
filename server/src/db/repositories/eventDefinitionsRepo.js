@@ -21,6 +21,7 @@ function attachConditionsAndActions(def) {
     ...def,
     enabled: Boolean(def.enabled),
     has_outcome_branch: Boolean(def.has_outcome_branch),
+    per_character_firing: Boolean(def.per_character_firing),
     conditions,
     actions,
     outcome_nodes: outcomeNodes,
@@ -133,10 +134,10 @@ export function createEventDefinition(data) {
         `INSERT INTO event_definitions
           (name, scope, room_template_id, enabled, condition_logic, priority, cooldown_turns, max_fires_per_session, exclusive_group,
            has_outcome_branch, outcome_logic, outcome_root_label, prerequisite_event_definition_id, requires_prerequisite_outcome,
-           reset_scope, prerequisite_reset_scope)
+           reset_scope, prerequisite_reset_scope, per_character_firing)
          VALUES (@name, @scope, @room_template_id, @enabled, @condition_logic, @priority, @cooldown_turns, @max_fires_per_session, @exclusive_group,
                  @has_outcome_branch, @outcome_logic, @outcome_root_label, @prerequisite_event_definition_id, @requires_prerequisite_outcome,
-                 @reset_scope, @prerequisite_reset_scope)`,
+                 @reset_scope, @prerequisite_reset_scope, @per_character_firing)`,
       )
       .run({
         name: data.name,
@@ -155,6 +156,7 @@ export function createEventDefinition(data) {
         requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
         reset_scope: data.reset_scope ?? 'playthrough',
         prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
+        per_character_firing: data.per_character_firing ? 1 : 0,
       });
     replaceConditionsAndActions(result.lastInsertRowid, data);
     return result.lastInsertRowid;
@@ -171,7 +173,7 @@ export function updateEventDefinition(id, data) {
          max_fires_per_session = @max_fires_per_session, exclusive_group = @exclusive_group,
          has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic, outcome_root_label = @outcome_root_label,
          prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome,
-         reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope
+         reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope, per_character_firing = @per_character_firing
        WHERE id = @id`,
     ).run({
       id,
@@ -191,6 +193,7 @@ export function updateEventDefinition(id, data) {
       requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
       reset_scope: data.reset_scope ?? 'playthrough',
       prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
+      per_character_firing: data.per_character_firing ? 1 : 0,
     });
     replaceConditionsAndActions(id, data);
   });

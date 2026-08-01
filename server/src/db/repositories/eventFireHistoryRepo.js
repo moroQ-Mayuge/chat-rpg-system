@@ -1,9 +1,14 @@
 import { db } from '../connection.js';
 
-export function recordFire(playthroughId, eventDefinitionId, turnNumber, outcome = null, roomSessionId = null) {
+// characterId is optional everywhere below (default null). "IS ?" rather
+// than "= ?" so a NULL characterId matches NULL rows -- SQL's "= NULL" is
+// never true, which would silently break every non-per_character_firing
+// event (the overwhelming majority; their rows are always character_id IS
+// NULL, see 0086_per_character_event_firing.sql).
+export function recordFire(playthroughId, eventDefinitionId, turnNumber, outcome = null, roomSessionId = null, characterId = null) {
   db.prepare(
-    'INSERT INTO event_fire_history (playthrough_id, room_session_id, event_definition_id, fired_at_turn, outcome) VALUES (?, ?, ?, ?, ?)',
-  ).run(playthroughId, roomSessionId, eventDefinitionId, turnNumber, outcome);
+    'INSERT INTO event_fire_history (playthrough_id, room_session_id, event_definition_id, fired_at_turn, outcome, character_id) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(playthroughId, roomSessionId, eventDefinitionId, turnNumber, outcome, characterId);
 }
 
 // Whether a query should accumulate over the whole route (playthrough_id) or
@@ -18,34 +23,40 @@ function scopeClause(playthroughId, { resetScope, roomSessionId }) {
 // Used by event chaining (prerequisite_event_definition_id): has this event
 // ever fired (within the requesting event's chosen scope), and if a specific
 // outcome is required, did its most recent fire resolve to that outcome?
-export function hasFiredWithOutcome(playthroughId, eventDefinitionId, requiredOutcome, { roomSessionId, resetScope } = {}) {
+// characterId left at its default (null) here deliberately: a prerequisite
+// chain asks "has this event fired for anyone", not for one specific
+// character, even when the prerequisite itself is per_character_firing.
+export function hasFiredWithOutcome(playthroughId, eventDefinitionId, requiredOutcome, { roomSessionId, resetScope, characterId = null } = {}) {
   if (requiredOutcome === 'any') {
-    return getFireCount(playthroughId, eventDefinitionId, { roomSessionId, resetScope }) > 0;
+    return getFireCount(playthroughId, eventDefinitionId, { roomSessionId, resetScope, characterId }) > 0;
   }
   const { column, value } = scopeClause(playthroughId, { resetScope, roomSessionId });
   const row = db
     .prepare(
       `SELECT outcome FROM event_fire_history
-       WHERE ${column} = ? AND event_definition_id = ?
+       WHERE ${column} = ? AND event_definition_id = ? AND character_id IS ?
        ORDER BY fired_at_turn DESC, id DESC LIMIT 1`,
     )
-    .get(value, eventDefinitionId);
+    .get(value, eventDefinitionId, characterId);
   return row?.outcome === requiredOutcome;
 }
 
-export function getFireCount(playthroughId, eventDefinitionId, { roomSessionId, resetScope } = {}) {
+// characterId set -> counts only that character's own fires (per_character_firing's
+// per-candidate max_fires gate). Left null -> counts only character_id-less
+// rows, i.e. unchanged behavior for every event that isn't per_character_firing.
+export function getFireCount(playthroughId, eventDefinitionId, { roomSessionId, resetScope, characterId = null } = {}) {
   const { column, value } = scopeClause(playthroughId, { resetScope, roomSessionId });
   return db
-    .prepare(`SELECT COUNT(*) AS c FROM event_fire_history WHERE ${column} = ? AND event_definition_id = ?`)
-    .get(value, eventDefinitionId).c;
+    .prepare(`SELECT COUNT(*) AS c FROM event_fire_history WHERE ${column} = ? AND event_definition_id = ? AND character_id IS ?`)
+    .get(value, eventDefinitionId, characterId).c;
 }
 
 // Highest fired_at_turn recorded for this event (within scope), or null if
 // it has never fired there.
-export function getLastFireTurn(playthroughId, eventDefinitionId, { roomSessionId, resetScope } = {}) {
+export function getLastFireTurn(playthroughId, eventDefinitionId, { roomSessionId, resetScope, characterId = null } = {}) {
   const { column, value } = scopeClause(playthroughId, { resetScope, roomSessionId });
   const row = db
-    .prepare(`SELECT MAX(fired_at_turn) AS turn FROM event_fire_history WHERE ${column} = ? AND event_definition_id = ?`)
-    .get(value, eventDefinitionId);
+    .prepare(`SELECT MAX(fired_at_turn) AS turn FROM event_fire_history WHERE ${column} = ? AND event_definition_id = ? AND character_id IS ?`)
+    .get(value, eventDefinitionId, characterId);
   return row?.turn ?? null;
 }

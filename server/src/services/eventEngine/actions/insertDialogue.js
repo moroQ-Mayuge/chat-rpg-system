@@ -4,7 +4,8 @@ import { broadcast } from '../../../ws/rooms.js';
 import { generateChatCompletion } from '../../koboldClient.js';
 import { serializeCharacter } from '../../characterSheetFormat.js';
 import { getUndressStateLines } from '../../undressState.js';
-import { resolveMentionedList, resolveMentionedSingle } from '../mentionResolution.js';
+import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveSingleTargetId } from '../targetResolution.js';
 import { resolveTargetToken, buildParticipantsByName } from '../placeholderResolution.js';
 
 function fallbackEmotionKey() {
@@ -52,32 +53,41 @@ async function generateNarrationLine(promptHint) {
 // dialogue text to the referenced participant's display name (same token
 // grammar as generate_image's prompt_override, see placeholderResolution.js
 // -- a ".category" suffix has no meaning for a name and is simply dropped).
-// Candidate priority mirrors generateImage.js minus target_character_ids
-// (insert_dialogue has no such param): @mention this turn, else everyone
+// Candidate priority: @mention this turn, else (for a per_character_firing
+// event) the one candidate this particular firing is about, else everyone
 // currently present.
+//
+// The matchedCharacterIds tier matters concretely: without it, ${target1} in
+// a per_character_firing event's narration falls back to "everyone present"
+// and names whichever participant happens to be first in session order --
+// which, with two characters mid-pregnancy at different stages in the same
+// room, is not necessarily the one this firing is actually about.
 function resolvePlaceholderNames(text, execCtx) {
   if (!text) return text;
   const participants = execCtx.session.participants;
   const participantsByName = buildParticipantsByName(participants);
   const mentionedIds = resolveMentionedList(execCtx.mentionedCharacterIds, null);
-  const candidateParticipants = mentionedIds.length > 0 ? mentionedIds.map((id) => participants.find((p) => p.character_id === id)).filter(Boolean) : participants;
+  const candidateIds = mentionedIds.length > 0 ? mentionedIds : execCtx.matchedCharacterIds;
+  const candidateParticipants = candidateIds ? candidateIds.map((id) => participants.find((p) => p.character_id === id)).filter(Boolean) : participants;
   return text.replace(/\$\{([^}]+)\}/g, (match, token) => {
     const { participant } = resolveTargetToken(token, candidateParticipants, participantsByName);
     return participant ? participant.name : '';
   });
 }
 
-// { mode: "fixed"|"generated", character_id?: number|null|"mentioned", text?, prompt_hint?, emotion_tag? }
+// { mode: "fixed"|"generated", character_id?: number|null|"mentioned"|"condition_matched", text?, prompt_hint?, emotion_tag? }
 export async function executeInsertDialogue(params, execCtx) {
   const { mode, text, prompt_hint, emotion_tag } = params;
-  let character_id = params.character_id ?? null;
+  const rawCharacterId = params.character_id ?? null;
 
-  // "mentioned" is resolved before the null check below so an unresolved
-  // mention (nobody @-mentioned this turn) skips the action outright,
-  // instead of silently falling through to the null-means-narration branch.
-  if (character_id === 'mentioned') {
-    character_id = resolveMentionedSingle(execCtx.mentionedCharacterIds);
-    if (character_id == null) return { skipped: true, reason: 'no_mention' };
+  // "mentioned"/"condition_matched" are resolved before the null check below
+  // so an unresolved mention (nobody @-mentioned this turn) or an
+  // unavailable match skips the action outright, instead of silently
+  // falling through to the null-means-narration branch.
+  let character_id = rawCharacterId;
+  if (rawCharacterId === 'mentioned' || rawCharacterId === 'condition_matched') {
+    character_id = resolveSingleTargetId(rawCharacterId, execCtx);
+    if (character_id == null) return { skipped: true, reason: rawCharacterId === 'mentioned' ? 'no_mention' : 'no_match' };
   }
 
   if (character_id == null) {

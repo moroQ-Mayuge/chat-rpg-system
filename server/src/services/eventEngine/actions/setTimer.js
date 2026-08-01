@@ -1,8 +1,8 @@
 import { setTimer } from '../../../db/repositories/playthroughTimersRepo.js';
 import { getPlaythrough, syncTimerFlags } from '../../../db/repositories/playthroughsRepo.js';
-import { resolveMentionedList } from '../mentionResolution.js';
+import { resolveTargetIds } from '../targetResolution.js';
 
-// { key, days, character_id?: number|"all_present"|"mentioned", mentioned_limit?, note? }
+// { key, days, character_id?: number|"all_present"|"mentioned"|"condition_matched", mentioned_limit?, note? }
 //
 // 「n日後に成立する予約」を張る。期日が来たかは flag_state で timer:<key> を
 // pending / due として読む——専用の条件タイプは足していない。
@@ -22,14 +22,7 @@ export async function executeSetTimer(params, execCtx) {
   const startDay = playthrough.current_day;
   const dueDay = startDay + Math.floor(dayCount);
 
-  const targetIds =
-    character_id == null
-      ? [null]
-      : character_id === 'all_present'
-        ? execCtx.session.participants.map((p) => p.character_id)
-        : character_id === 'mentioned'
-          ? resolveMentionedList(execCtx.mentionedCharacterIds, mentioned_limit)
-          : [character_id];
+  const targetIds = character_id == null ? [null] : resolveTargetIds(character_id, mentioned_limit, execCtx);
 
   const timers = targetIds.map((id) =>
     setTimer(execCtx.playthroughId, key.trim(), { characterId: id, startDay, dueDay, note: note ?? '' }),
