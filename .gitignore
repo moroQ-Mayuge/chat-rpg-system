@@ -4,6 +4,6 @@ storage/images/
 .env
 dist/
 *.log
-.claude/settings.local.json
+.claude/
 koboldcpp/
 backups/
