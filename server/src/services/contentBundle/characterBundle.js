@@ -11,6 +11,11 @@ export function collectCharacterEntry(characterId, imageCollector) {
     ...fields,
     event_participation_weight: character.event_participation_weight,
     relationship_defaults: character.relationship_defaults.map((d) => ({ axis_name: d.axis_name, initial_value: d.initial_value })),
+    // ユーザーが自分で名前を付けて増やせる自由記述欄(「あなたとの関係」「あなたの印象」等)。
+    // インポート側(importCharacterEntries -> createCharacter -> replaceImpressionDefaults)は
+    // 元から受け取れる作りだったが、エクスポート側がこの項目を組み立てておらず、
+    // 書き出したバンドルには一貫して欠落していた。
+    impression_defaults: character.impression_defaults.map((d) => ({ field_key: d.field_key, default_value: d.default_value })),
     outfits: character.outfits.map((outfit) => ({
       name: outfit.name,
       clothing_description: outfit.clothing_description,
