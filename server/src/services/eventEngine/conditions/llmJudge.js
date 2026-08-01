@@ -1,4 +1,6 @@
 import { generateChatCompletion } from '../../koboldClient.js';
+import { resolvePlaceholderText } from '../placeholderResolution.js';
+import { withDisambiguatedNames } from '../../participantNaming.js';
 
 // { question } — a yes/no question judged against the just-generated turn
 // (user_message + ai_response), for event outcome checks that a
@@ -23,14 +25,28 @@ export async function evaluateLlmJudge(params, ctx) {
   const { question } = params;
   if (!question) return false;
 
+  // Same gap insert_dialogue's generated mode had: without a cast list the
+  // model has no way to know who "${target1}" or a bare name in the
+  // question even refers to, let alone who's present at all. Resolves
+  // ${target1}/${player}/${target1.pregnancy_stage}/etc. in the question
+  // itself (same as narration text) and separately grounds the judge with
+  // who's actually in the room, since a question can reference someone by
+  // name without going through a placeholder at all.
+  const names = withDisambiguatedNames(ctx.participants ?? []).map((p) => p.display_name);
+  const presentLine = names.length > 0 ? `この場にいる人物：${names.join('、')}` : '';
+  const resolvedQuestion = resolvePlaceholderText(question, ctx) ?? question;
+
   const prompt = [
     '次の会話を読んで、質問にyesかnoの一言だけで答えてください。',
+    presentLine,
     '',
     `ユーザーの発言：「${ctx.userMessage ?? ''}」`,
     `キャラクターの応答：「${ctx.aiResponseText ?? ''}」`,
     '',
-    `質問：${question}`,
-  ].join('\n');
+    `質問：${resolvedQuestion}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   try {
     const raw = await generateChatCompletion({

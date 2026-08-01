@@ -1,5 +1,6 @@
 import { addMemory, formatOccurredLabel } from '../../../db/repositories/characterMemoriesRepo.js';
 import { resolveTargetIds } from '../targetResolution.js';
+import { resolvePlaceholderText } from '../placeholderResolution.js';
 
 // { character_id: number|"all_present"|"mentioned"|"condition_matched"|"departed", content: string, is_pinned?, mentioned_limit? }
 // Targeting mirrors setCharacterImpression.js, minus the instance hint: memory
@@ -17,18 +18,19 @@ export async function executeAddCharacterMemory(params, execCtx) {
   const targetIds = character_id === 'departed' ? execCtx.departedCharacterIds ?? [] : resolveTargetIds(character_id, mentioned_limit, execCtx);
 
   const occurredLabel = formatOccurredLabel(execCtx.playthroughId);
+  const resolvedContent = resolvePlaceholderText(content, execCtx);
   const changes = [];
   for (const id of targetIds) {
     const memory = addMemory({
       playthrough_id: execCtx.playthroughId,
       character_id: id,
-      content,
+      content: resolvedContent,
       is_pinned: Boolean(is_pinned),
       occurred_label: occurredLabel,
       source: 'event',
     });
     // null means the target was a mob (memory intentionally not kept for them).
-    if (memory) changes.push({ character_id: id, memory_id: memory.id, content });
+    if (memory) changes.push({ character_id: id, memory_id: memory.id, content: resolvedContent });
   }
   return { changes };
 }

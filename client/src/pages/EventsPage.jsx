@@ -242,6 +242,36 @@ function MentionedLimitField({ value, onChange }) {
   );
 }
 
+// Reference for ${...} placeholder tokens usable in free-text fields that go
+// through resolvePlaceholderText server-side (insert_dialogue's固定文/生成ヒント,
+// set_scene_situation, add_character_memory, set_character_impression,
+// set_address, LLM判定の質問文). Kept as one collapsible so the same long
+// reference doesn't get pasted six times across this file.
+function PlaceholderReferenceDetails() {
+  return (
+    <details style={{ marginTop: 4 }}>
+      <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>使える${'{...}'}トークン一覧</summary>
+      <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+        <p style={{ margin: '0 0 4px' }}>
+          <strong>キャラ</strong>：${'{target1}'} ${'{target2}'} …（@メンション優先→対象群→同席者全員の順）、${'{キャラ名}'}（名前指名）、${'{player}'}（主人公。名前未設定なら「あなた」）
+        </p>
+        <p style={{ margin: '0 0 4px' }}>
+          <strong>キャラの属性</strong>（${'{target1.〜}'} の形。上記のキャラ指定すべてと${'{player.〜}'}
+          にも使えます）：<code>nickname</code>（愛称）・<code>occupation</code>（職業）・<code>first_person</code>
+          （一人称）・<code>age_apparent</code>（見た目年齢）・<code>current_address</code>（今の呼び方）・
+          関係性軸名そのもの（例：${'{target1.好感度}'}）・<code>flag:キー名</code>（キャラフラグ。例：${'{target1.flag:pregnancy_stage}'}）
+        </p>
+        <p style={{ margin: 0 }}>
+          <strong>場面・世界観</strong>：<code>season</code>・<code>time_slot</code>・<code>weather</code>・
+          <code>day_of_week</code>・<code>is_holiday</code>（フラグ状態条件と同じ値）・<code>current_day</code>
+          （経過日数）・<code>money</code>（所持金）・<code>currency_unit</code>（通貨単位）・
+          <code>flag:キー名</code>（ルート全体のフラグ）
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
@@ -638,7 +668,9 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
           </label>
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
             直近のユーザー発言とAI応答を読み、この質問にyes/noで判定させます。判定コストがかかるため多用は避けてください。
+            同席者の実名一覧も自動でLLMに伝わるので、${'{target1}'}等のプレースホルダーで名指しできます。
           </p>
+          <PlaceholderReferenceDetails />
         </div>
       )}
     </div>
@@ -730,14 +762,21 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
                 ${'{キャラ名}'} で固定のキャラ名に、${'{target1}'} ${'{target2}'}
                 …で「@メンション中のキャラ（いなければ同席者全員）」の順番のキャラ名に、それぞれ置換されます。
               </p>
+              <PlaceholderReferenceDetails />
             </>
           ) : (
-            <input
-              style={{ width: '100%', marginTop: 8 }}
-              placeholder="生成ヒント：少し照れながら本音を漏らす一言を発言する"
-              value={p.prompt_hint ?? ''}
-              onChange={(e) => setParams({ prompt_hint: e.target.value })}
-            />
+            <>
+              <input
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="生成ヒント：少し照れながら本音を漏らす一言を発言する"
+                value={p.prompt_hint ?? ''}
+                onChange={(e) => setParams({ prompt_hint: e.target.value })}
+              />
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                ここも${'{target1}'}等のプレースホルダーで実名を書けます（LLMには同席者の実名一覧も自動で伝わります）。
+              </p>
+              <PlaceholderReferenceDetails />
+            </>
           )}
         </div>
       )}
@@ -1073,9 +1112,9 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
             onChange={(e) => setParams({ text: e.target.value })}
           />
           <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-            この部屋セッションが続く間（次にこのアクションが再実行されるか、部屋を移動するまで）、地の文生成のシステムプロンプトに「現在の場面状況：〜」として渡り続けます。${'{キャラ名}'}
-            ${'{target1}'} ${'{target2}'} …のプレースホルダーが使えます（`insert_dialogue`と同じ構文、名前に置換）。
+            この部屋セッションが続く間（次にこのアクションが再実行されるか、部屋を移動するまで）、地の文生成のシステムプロンプトに「現在の場面状況：〜」として渡り続けます。
           </p>
+          <PlaceholderReferenceDetails />
         </div>
       )}
 
@@ -1245,6 +1284,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}
+          <PlaceholderReferenceDetails />
         </div>
       )}
 
@@ -1286,6 +1326,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}
+          <PlaceholderReferenceDetails />
         </div>
       )}
 
@@ -1324,6 +1365,7 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}
+          <PlaceholderReferenceDetails />
         </div>
       )}
 

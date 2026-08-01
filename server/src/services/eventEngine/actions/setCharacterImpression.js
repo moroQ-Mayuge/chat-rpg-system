@@ -1,5 +1,6 @@
 import { setImpressionValue } from '../../../db/repositories/characterImpressionStatesRepo.js';
 import { resolveTargetIds } from '../targetResolution.js';
+import { resolvePlaceholderText } from '../placeholderResolution.js';
 
 // { character_id: number|"all_present"|"mentioned"|"condition_matched", field_key: string, value: string, mentioned_limit? }
 // Mirrors setAddress.js's targeting exactly.
@@ -12,9 +13,10 @@ export async function executeSetCharacterImpression(params, execCtx) {
           character_id: id,
           instance_id: execCtx.instanceHintByCharacterId?.get(id),
         }));
+  const resolvedValue = resolvePlaceholderText(value, execCtx);
   const changes = targets.map(({ character_id: id, instance_id }) => ({
     character_id: id,
-    ...setImpressionValue(execCtx.playthroughId, id, field_key, value, execCtx.sessionId, instance_id),
+    ...setImpressionValue(execCtx.playthroughId, id, field_key, resolvedValue, execCtx.sessionId, instance_id),
   }));
   return { changes };
 }

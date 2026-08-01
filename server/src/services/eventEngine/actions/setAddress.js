@@ -1,5 +1,6 @@
 import { setCurrentAddress } from '../../../db/repositories/characterAddressStatesRepo.js';
 import { resolveTargetIds } from '../targetResolution.js';
+import { resolvePlaceholderText } from '../placeholderResolution.js';
 
 // { character_id: number|"all_present"|"mentioned"|"condition_matched", address: string, mentioned_limit? }
 export async function executeSetAddress(params, execCtx) {
@@ -13,9 +14,10 @@ export async function executeSetAddress(params, execCtx) {
           character_id: id,
           instance_id: execCtx.instanceHintByCharacterId?.get(id),
         }));
+  const resolvedAddress = resolvePlaceholderText(address, execCtx);
   const changes = targets.map(({ character_id: id, instance_id }) => ({
     character_id: id,
-    ...setCurrentAddress(execCtx.playthroughId, id, address, execCtx.sessionId, instance_id),
+    ...setCurrentAddress(execCtx.playthroughId, id, resolvedAddress, execCtx.sessionId, instance_id),
   }));
   return { changes };
 }

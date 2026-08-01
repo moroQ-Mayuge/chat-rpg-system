@@ -4,9 +4,9 @@ import { broadcast } from '../../../ws/rooms.js';
 import { generateChatCompletion } from '../../koboldClient.js';
 import { serializeCharacter } from '../../characterSheetFormat.js';
 import { getUndressStateLines } from '../../undressState.js';
-import { resolveMentionedList } from '../mentionResolution.js';
 import { resolveSingleTargetId } from '../targetResolution.js';
-import { resolveTargetToken, buildParticipantsByName } from '../placeholderResolution.js';
+import { resolvePlaceholderText } from '../placeholderResolution.js';
+import { withDisambiguatedNames } from '../../participantNaming.js';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -18,9 +18,9 @@ function fallbackEmotionKey() {
 // the real characters. Empty when nobody (besides the speaker, if any) is
 // present, in which case the line below it is simply omitted.
 function presentParticipantsLine(execCtx, excludeCharacterId = null) {
-  const names = execCtx.session.participants
+  const names = withDisambiguatedNames(execCtx.session.participants)
     .filter((p) => p.character_id !== excludeCharacterId)
-    .map((p) => p.name);
+    .map((p) => p.display_name);
   return names.length > 0 ? `この場にいる人物：${names.join('、')}` : '';
 }
 
@@ -38,11 +38,12 @@ async function generateCharacterLine(characterId, promptHint, execCtx) {
     '',
     'あなたは上記のキャラクターになりきって、日本語で一言だけセリフを発してください。',
     '地の文・タグ・鉤括弧は不要で、セリフ本文のみを出力してください。',
-    // ${target1}/${キャラ名} resolve to real participant names here too, same
-    // as fixed-mode text -- a hint author can write "${target1}をからかう
-    // 一言" and have it mean the actual co-present character, not a token
-    // the model has never seen.
-    `指示：${resolvePlaceholderNames(promptHint, execCtx) ?? ''}`,
+    // ${target1}/${キャラ名} resolve to real participant names (and
+    // ${player}/${target1.nickname}/etc. to their respective attributes)
+    // here too, same as fixed-mode text -- a hint author can write
+    // "${target1}をからかう一言" and have it mean the actual co-present
+    // character, not a token the model has never seen.
+    `指示：${resolvePlaceholderText(promptHint, execCtx) ?? ''}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -60,7 +61,7 @@ async function generateNarrationLine(promptHint, execCtx) {
     '以下の指示に基づいて、短い地の文（ナレーション）を日本語で1文だけ出力してください。タグや見出しは不要です。',
     presentParticipantsLine(execCtx),
     '登場人物の名前は上記の実在の人物名をそのまま使い、架空の名前や関係を作らないでください。',
-    `指示：${resolvePlaceholderNames(promptHint, execCtx) ?? ''}`,
+    `指示：${resolvePlaceholderText(promptHint, execCtx) ?? ''}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -70,32 +71,6 @@ async function generateNarrationLine(promptHint, execCtx) {
     temperature: 0.8,
   });
   return rawText.trim();
-}
-
-// Resolves ${target1}/${target2}/${キャラ名} tokens in a fixed narration/
-// dialogue text to the referenced participant's display name (same token
-// grammar as generate_image's prompt_override, see placeholderResolution.js
-// -- a ".category" suffix has no meaning for a name and is simply dropped).
-// Candidate priority: @mention this turn, else (for a per_character_firing
-// event) the one candidate this particular firing is about, else everyone
-// currently present.
-//
-// The matchedCharacterIds tier matters concretely: without it, ${target1} in
-// a per_character_firing event's narration falls back to "everyone present"
-// and names whichever participant happens to be first in session order --
-// which, with two characters mid-pregnancy at different stages in the same
-// room, is not necessarily the one this firing is actually about.
-function resolvePlaceholderNames(text, execCtx) {
-  if (!text) return text;
-  const participants = execCtx.session.participants;
-  const participantsByName = buildParticipantsByName(participants);
-  const mentionedIds = resolveMentionedList(execCtx.mentionedCharacterIds, null);
-  const candidateIds = mentionedIds.length > 0 ? mentionedIds : execCtx.matchedCharacterIds;
-  const candidateParticipants = candidateIds ? candidateIds.map((id) => participants.find((p) => p.character_id === id)).filter(Boolean) : participants;
-  return text.replace(/\$\{([^}]+)\}/g, (match, token) => {
-    const { participant } = resolveTargetToken(token, candidateParticipants, participantsByName);
-    return participant ? participant.name : '';
-  });
 }
 
 // { mode: "fixed"|"generated", character_id?: number|null|"mentioned"|"condition_matched", text?, prompt_hint?, emotion_tag? }
@@ -114,13 +89,13 @@ export async function executeInsertDialogue(params, execCtx) {
   }
 
   if (character_id == null) {
-    const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateNarrationLine(prompt_hint, execCtx);
+    const content = mode === 'fixed' ? resolvePlaceholderText(text, execCtx) : await generateNarrationLine(prompt_hint, execCtx);
     const message = createMessage(execCtx.sessionId, { sender_type: 'narration', content });
     broadcast(execCtx.sessionId, { type: 'message_complete', message });
     return { inserted: 'narration' };
   }
 
-  const content = mode === 'fixed' ? resolvePlaceholderNames(text, execCtx) : await generateCharacterLine(character_id, prompt_hint, execCtx);
+  const content = mode === 'fixed' ? resolvePlaceholderText(text, execCtx) : await generateCharacterLine(character_id, prompt_hint, execCtx);
   const message = createMessage(execCtx.sessionId, {
     sender_type: 'character',
     character_id,
