@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
+import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 import {
   usePlaythroughsForWorld,
   usePlaythroughMutations,
@@ -225,16 +227,41 @@ function MemoriesPanel({ playthrough }) {
 export default function PlaythroughsPage() {
   const { worldId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: worlds } = useWorlds();
   const { data: playthroughs, isLoading } = usePlaythroughsForWorld(worldId);
   const { create, remove } = usePlaythroughMutations(worldId);
   const [newName, setNewName] = useState('');
+  const [exportPanelId, setExportPanelId] = useState(null);
+  const [exportIncludeMessages, setExportIncludeMessages] = useState(false);
 
   const world = worlds?.find((w) => String(w.id) === worldId);
 
   async function handleDelete(playthrough) {
     if (!window.confirm(`ルート「${playthrough.name}」を削除しますか？(このルートのチャット履歴・部屋滞在も全て削除されます。元に戻せません)`)) return;
     await remove.mutateAsync(playthrough.id);
+  }
+
+  async function handleExportPlaythrough(playthroughId) {
+    try {
+      await contentBundleApi.exportPlaythrough(playthroughId, { includeMessages: exportIncludeMessages });
+      setExportPanelId(null);
+    } catch (err) {
+      window.alert(`エクスポートに失敗しました: ${err.message}`);
+    }
+  }
+
+  async function handleImportPlaythrough(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !world) return;
+    try {
+      const result = await contentBundleApi.import(file, world.id);
+      window.alert(formatBundleImportSummary(result));
+      queryClient.invalidateQueries({ queryKey: ['playthroughs', worldId] });
+    } catch (err) {
+      window.alert(`インポートに失敗しました: ${err.message}`);
+    }
   }
 
   async function resume(playthroughId) {
@@ -270,18 +297,38 @@ export default function PlaythroughsPage() {
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => resume(p.id)}>続きから</button>
+                <button onClick={() => setExportPanelId((cur) => (cur === p.id ? null : p.id))}>エクスポート</button>
                 <button onClick={() => handleDelete(p)} disabled={remove.isPending}>
                   削除
                 </button>
               </div>
             </div>
+            {exportPanelId === p.id && (
+              <div style={{ marginTop: 8, padding: 8, background: '#f7f7f7', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={exportIncludeMessages}
+                    onChange={(e) => setExportIncludeMessages(e.target.checked)}
+                  />
+                  チャットの全メッセージ履歴を含める（シーン画像も同梱）
+                </label>
+                <button onClick={() => handleExportPlaythrough(p.id)}>ダウンロード</button>
+              </div>
+            )}
             {world && <ProtagonistSettingsPanel playthrough={p} world={world} />}
             {world?.memory_editing_visible && <MemoriesPanel playthrough={p} />}
           </div>
         ))}
         {playthroughs.length === 0 && <p>まだルートがありません</p>}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <label>
+          <span style={{ display: 'inline-block', border: '1px solid #ddd', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 13 }}>
+            ルートをインポート（zip）
+          </span>
+          <input type="file" accept="application/zip,.zip" style={{ display: 'none' }} onChange={handleImportPlaythrough} />
+        </label>
         <button onClick={startNew}>+ 新しいルートを始める</button>
       </div>
     </div>

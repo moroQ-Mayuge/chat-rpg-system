@@ -17,8 +17,22 @@ import {
   formatOccurredLabel,
 } from '../db/repositories/characterMemoriesRepo.js';
 import { materializeChild } from '../services/childCharacter.js';
+import { exportPlaythroughBundle } from '../services/contentBundle/index.js';
 
 export const playthroughsRouter = Router();
+
+// ?include_messages=1 でチャットログ・シーン画像も同梱する(既定は状態のみ)。
+playthroughsRouter.get('/:id/export-bundle', async (req, res) => {
+  try {
+    const includeMessages = req.query.include_messages === '1' || req.query.include_messages === 'true';
+    const zipBuffer = await exportPlaythroughBundle(req.params.id, { includeMessages });
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="playthrough-${req.params.id}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
+});
 
 playthroughsRouter.get('/', (req, res) => {
   if (!req.query.world_id) return res.status(400).json({ error: 'world_id_required' });

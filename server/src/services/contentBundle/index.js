@@ -19,6 +19,7 @@ import {
   importEventDefinitionEntries,
 } from './worldSystemsBundle.js';
 import { exportEventDefinitionJson } from '../eventPortability.js';
+import { collectPlaythroughEntry, importPlaythroughEntry } from './playthroughBundle.js';
 
 function emptyManifest() {
   return {
@@ -31,6 +32,7 @@ function emptyManifest() {
     character_statuses: [],
     axis_status_triggers: [],
     event_definitions: [],
+    playthroughs: [],
   };
 }
 
@@ -80,6 +82,15 @@ export async function exportRoomTemplateBundle(roomTemplateId, { includeCharacte
     const characterIds = collectCharacterIdsForRoomTemplateIds([roomTemplateId]);
     manifest.characters = characterIds.map((id) => collectCharacterEntry(id, imageCollector));
   }
+  return buildZip(manifest, imageCollector.entries);
+}
+
+// ルート単体のエクスポート。世界観・キャラ・部屋・イベントは同梱しない
+// (別途エクスポート済みであることが前提 — playthroughBundle.js 冒頭のコメント参照)。
+export async function exportPlaythroughBundle(playthroughId, { includeMessages = false } = {}) {
+  const imageCollector = createImageCollector();
+  const manifest = emptyManifest();
+  manifest.playthroughs.push(collectPlaythroughEntry(playthroughId, imageCollector, { includeMessages }));
   return buildZip(manifest, imageCollector.entries);
 }
 
@@ -141,8 +152,28 @@ export async function importBundle(zipBuffer, options = {}) {
     eventDefinitionsCreated = importEventDefinitionEntries(manifest.event_definitions, warnings, roomTemplates, characters, characterStatuses);
   }
 
+  // ルートは最後 — room_template_id/character_id/status_id/item_id/
+  // event_definition_id を、ここまでで実際にこの環境に存在するものの名前から
+  // 引き直すので、それらが揃っている必要がある(このバンドル自体が世界観を
+  // 持ち歩かないので、target_world_id は上の worldIdForRooms を流用する)。
+  const playthroughs = [];
+  if ((manifest.playthroughs ?? []).length > 0) {
+    if (worldIdForRooms == null) throw new Error('target_world_id_required');
+    for (const entry of manifest.playthroughs) {
+      const result = await importPlaythroughEntry(entry, readImage, worldIdForRooms, warnings);
+      playthroughs.push(result.playthrough);
+    }
+  }
+
   return {
-    created: { worlds, room_templates: roomTemplates, characters, character_statuses: characterStatuses, event_definitions_count: eventDefinitionsCreated },
+    created: {
+      worlds,
+      room_templates: roomTemplates,
+      characters,
+      character_statuses: characterStatuses,
+      event_definitions_count: eventDefinitionsCreated,
+      playthroughs,
+    },
     warnings,
   };
 }
