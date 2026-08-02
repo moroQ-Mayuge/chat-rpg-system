@@ -6,6 +6,7 @@ import { resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsR
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { resolveOutfitTags } from './outfitTagCategories.js';
+import { composeWornOutfit } from './outfitComposition.js';
 
 // Outfit assets aren't tied to any particular World (a Character can appear
 // in several), so there's no World to resolve a style preset from — always
@@ -19,7 +20,7 @@ function buildPrompt(settings, variables) {
 // itself becomes the reference used everywhere else (SPEC.md 3.7).
 export async function generateOutfitStandingImage(outfit, extraHint) {
   const settings = getImageGenerationSettings('standing');
-  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(outfit, null), extra_hint: extraHint });
+  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(composeWornOutfit(outfit), null), extra_hint: extraHint });
   const buffer = await generateTxt2Image({
     prompt,
     negativePrompt: settings.negative_prompt,
@@ -42,7 +43,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
   const settings = getImageGenerationSettings('expression');
   const resolvedMode = mode || settings.default_mode;
   const prompt = buildPrompt(settings, {
-    character_tags: resolveOutfitTags(outfit, null),
+    character_tags: resolveOutfitTags(composeWornOutfit(outfit), null),
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });

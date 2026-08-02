@@ -12,6 +12,7 @@ import { getImageGenerationSettings } from '../../../db/repositories/imageGenera
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
 import { resolveOutfitTags, getActiveOutfitStatusModifiers } from '../../outfitTagCategories.js';
+import { composeWornOutfit } from '../../outfitComposition.js';
 import { getOutfitExposureTagSettings } from '../../../db/repositories/outfitExposureTagSettingsRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 import { resolveTargetToken } from '../placeholderResolution.js';
@@ -44,7 +45,7 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
       ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
       : null;
     const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
-    return resolveOutfitTags(outfit, categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
+    return resolveOutfitTags(composeWornOutfit(outfit), categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
   });
 
   return { text, referencedIds };
@@ -113,7 +114,7 @@ export async function executeGenerateImage(params, execCtx) {
               .map((p) => {
                 const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
                 const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
-                return resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
+                return resolveOutfitTags(composeWornOutfit(outfit), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
               })
               .filter(Boolean)
           : [];

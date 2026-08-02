@@ -5,6 +5,7 @@ import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
 import { resolveOutfitTags, getActiveOutfitStatusModifiers } from './outfitTagCategories.js';
+import { composeWornOutfit } from './outfitComposition.js';
 import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
@@ -85,7 +86,7 @@ export function buildSceneTagParts(session, participants) {
         playthroughId: session.playthrough_id,
         roomSessionId: session.id,
       });
-      return resolveOutfitTags(outfit, null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
+      return resolveOutfitTags(composeWornOutfit(outfit), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
     })
     .filter(Boolean)
     .join(', ');
