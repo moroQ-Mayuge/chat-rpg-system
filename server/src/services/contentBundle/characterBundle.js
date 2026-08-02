@@ -10,6 +10,12 @@ export function collectCharacterEntry(characterId, imageCollector) {
   return {
     ...fields,
     event_participation_weight: character.event_participation_weight,
+    // is_mob/cycle_enabled/cycle_offset_day も同じ穴だった: createCharacter は
+    // 元から受け取れる作りなのに、エクスポート側が組み立てていなかった
+    // (impression_defaults と同じ形の手落ち)。
+    is_mob: Boolean(character.is_mob),
+    cycle_enabled: Boolean(character.cycle_enabled),
+    cycle_offset_day: character.cycle_offset_day,
     relationship_defaults: character.relationship_defaults.map((d) => ({ axis_name: d.axis_name, initial_value: d.initial_value })),
     // ユーザーが自分で名前を付けて増やせる自由記述欄(「あなたとの関係」「あなたの印象」等)。
     // インポート側(importCharacterEntries -> createCharacter -> replaceImpressionDefaults)は
