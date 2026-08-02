@@ -20,6 +20,8 @@ export const CHARACTER_TEXT_FIELDS = [
   'body_type',
   'bust_description',
   'physical_features',
+  'main_features',
+  'hairstyle',
   'first_person',
   'call_user_as',
   'call_others_as',
@@ -93,6 +95,13 @@ export function listCharacters() {
 
 export function getCharacter(id) {
   return attachAssociations(db.prepare('SELECT * FROM characters WHERE id = ?').get(id));
+}
+
+// composeWornOutfit()(outfitComposition.js)の合成用。ホットパス(画像生成の
+// 度に呼ばれる)なので attachAssociations 込みの getCharacter は使わず、
+// 必要な2列だけを引く。
+export function getCharacterBodyTags(id) {
+  return db.prepare('SELECT main_features, hairstyle FROM characters WHERE id = ?').get(id);
 }
 
 function replaceRelationshipDefaults(characterId, relationshipDefaults) {

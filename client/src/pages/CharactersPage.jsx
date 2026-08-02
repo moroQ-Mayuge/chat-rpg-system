@@ -56,6 +56,14 @@ const APPEARANCE_FIELDS = [
   ['physical_features', '身体特徴'],
 ];
 
+// キャラ本体（衣装非依存）の素体タグ。衣装側の同名フィールドが空の時だけ
+// フォールバックとして使われる — server/src/services/outfitComposition.js
+// の合成ルールに対応。
+const BODY_TAG_FIELDS = [
+  ['main_features', '主たる特徴（髪型以外の目の色・体形・キャラタグなど）'],
+  ['hairstyle', '髪型'],
+];
+
 const PERSONALITY_FIELDS = [
   ['first_person', '一人称'],
   ['call_user_as', 'あなたの呼び方'],
@@ -83,7 +91,7 @@ const DEFAULT_IMPRESSION_DEFAULTS = [
 ];
 
 const emptyForm = {
-  ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
+  ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
   is_mob: false,
   gender: '女性',
@@ -94,8 +102,8 @@ const emptyForm = {
 
 // Matches server/src/db/repositories/outfitsRepo.js's OUTFIT_TAG_FIELDS order.
 const OUTFIT_TAG_CATEGORIES = [
-  ['main_features', '主たる特徴（髪型以外の目の色・体形・キャラタグなど）'],
-  ['hairstyle', '髪型'],
+  ['main_features', '主たる特徴（髪型以外の目の色・体形・キャラタグなど）※空欄ならキャラ本体の値を使用'],
+  ['hairstyle', '髪型※空欄ならキャラ本体の値を使用'],
   ['clothing_main', '服装の主たる特徴（学校制服など）'],
   ['clothing_face', '服装：顔回り（帽子・耳アクセサリなど）'],
   ['clothing_upper', '中衣（ベース）：上半身（シャツ・ジャケットなど）'],
@@ -195,7 +203,7 @@ export default function CharactersPage() {
     }
     if (!existing) return;
     const fields = {};
-    for (const [key] of [...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS]) {
+    for (const [key] of [...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS]) {
       fields[key] = existing[key] ?? '';
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
@@ -237,7 +245,7 @@ export default function CharactersPage() {
   }
 
   async function save() {
-    const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
+    const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
     payload.relationship_defaults = form.relationship_defaults;
     payload.impression_defaults = form.impression_defaults;
     payload.attribute_tags = form.attribute_tags;
@@ -784,6 +792,19 @@ export default function CharactersPage() {
                     onRoll={() => handleRollField(key)}
                     rolling={rollingField === key}
                   />
+                  ))}
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 13, fontWeight: 500 }}>素体タグ（衣装非依存・画像生成用danbooruタグ）</p>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
+                    各衣装で個別に設定した場合はそちらが優先されます。空欄の衣装ではここの値が使われます。
+                  </p>
+                  {BODY_TAG_FIELDS.map(([key, label]) => (
+                    <div key={key} style={{ marginBottom: 4 }}>
+                      <p style={{ fontSize: 11, color: '#555' }}>{label}</p>
+                      <DanbooruTagEditor value={form[key]} onChange={(v) => setField(key, v)} />
+                    </div>
                   ))}
                 </div>
 

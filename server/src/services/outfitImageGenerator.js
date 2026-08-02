@@ -20,7 +20,7 @@ function buildPrompt(settings, variables) {
 // itself becomes the reference used everywhere else (SPEC.md 3.7).
 export async function generateOutfitStandingImage(outfit, extraHint) {
   const settings = getImageGenerationSettings('standing');
-  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(composeWornOutfit(outfit), null), extra_hint: extraHint });
+  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null), extra_hint: extraHint });
   const buffer = await generateTxt2Image({
     prompt,
     negativePrompt: settings.negative_prompt,
@@ -43,7 +43,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
   const settings = getImageGenerationSettings('expression');
   const resolvedMode = mode || settings.default_mode;
   const prompt = buildPrompt(settings, {
-    character_tags: resolveOutfitTags(composeWornOutfit(outfit), null),
+    character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null),
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });

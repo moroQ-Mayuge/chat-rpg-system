@@ -45,7 +45,7 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
       ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
       : null;
     const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
-    return resolveOutfitTags(composeWornOutfit(outfit), categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
+    return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
   });
 
   return { text, referencedIds };
@@ -114,7 +114,7 @@ export async function executeGenerateImage(params, execCtx) {
               .map((p) => {
                 const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
                 const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
-                return resolveOutfitTags(composeWornOutfit(outfit), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
+                return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
               })
               .filter(Boolean)
           : [];
