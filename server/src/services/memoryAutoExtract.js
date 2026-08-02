@@ -44,6 +44,14 @@ function isMeaningfulMemory(content) {
   return trimmed.length > 0 && !EMPTY_MEMORY_PATTERN.test(trimmed);
 }
 
+// 実データでの生ログ診断(2026-08-02)で確認した唯一の失敗パターン: 会話が
+// 1往復に満たないほど薄いと、モデルは「なし」の一言では答えず、仮定・前置き
+// だらけの長文で迷走するか、会話そのものを見落として「内容を提示してください」
+// と聞き返す。どちらも指定形式の行を出さないので実害(誤記録)は無いが、
+// 無意味なLLM呼び出しと不可解なログが残るだけになる。判断材料が無いに等しい
+// 短さでは呼び出し自体を省く。
+const MIN_MESSAGES_FOR_EXTRACT = 4;
+
 export async function maybeRunMemoryAutoExtract(session, world) {
   if (!world.memory_auto_extract_enabled) return;
   if (!session.participants?.length) return;
@@ -52,6 +60,11 @@ export async function maybeRunMemoryAutoExtract(session, world) {
   // of nothing but extras has nothing to record.
   const eligible = withDisambiguatedNames(session.participants).filter((p) => canHaveMemories(p.character_id));
   if (eligible.length === 0) return;
+
+  const messageCount = db
+    .prepare(`SELECT COUNT(*) c FROM messages WHERE room_session_id = ? AND content_type = 'text'`)
+    .get(session.id).c;
+  if (messageCount < MIN_MESSAGES_FOR_EXTRACT) return;
 
   const transcript = buildRecentTranscript(session.id, 20);
   if (!transcript.trim()) return;
@@ -85,6 +98,7 @@ export async function maybeRunMemoryAutoExtract(session, world) {
     '',
     '記憶内容は一文程度の短い日本語の地の文とし、改行や「|」は含めないでください。',
     '日常的なやり取りや些細な会話は記録不要です。重要な出来事が無ければ、行を1つも出力せず「なし」とだけ出力してください。',
+    '前置き・言い訳・「もし〜なら」といった仮定の話は書かず、出力は「なし」または指定形式の行だけにしてください。',
   ].join('\n');
 
   try {
@@ -112,6 +126,13 @@ export async function maybeRunMemoryAutoExtract(session, world) {
         source: 'auto',
       });
       recorded += 1;
+    }
+    // 生出力を見る手段がこれまで無く、「何も記録されなかった」のが LLM が
+    // 正しく「なし」と判断したからなのか、出力形式が期待とズレてパースに
+    // 失敗しているからなのか区別できなかった。0件だったときだけ出す
+    // (毎回出すと通常運転でもログが埋まる)。
+    if (recorded === 0) {
+      console.log('memory auto-extract: recorded 0, raw output was:', JSON.stringify(raw));
     }
   } catch (err) {
     console.error('memory auto-extract failed:', err);
