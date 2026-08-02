@@ -215,18 +215,18 @@ composeWornOutfit(character, outfitInstance, underwearState)
 
 前段ほど「入れても現行挙動が変わらない」ように並べてある。
 
-| 段 | 内容 | 現行への影響 |
-|---|---|---|
-| 1 | **合成層 `composeWornOutfit()` の導入**。現時点では `outfits` 行をそのまま返すだけ。全読み出し経路（`resolveOutfitTags` 呼び出し元）をこの関数経由に寄せる | なし（同じオブジェクトが返る） |
-| 2 | `characters` に素体タグ列を追加。合成層に「衣装側が空ならキャラ側」の規則を実装。**キャラ側は空のまま** | なし（全件が衣装側で解決） |
-| 3 | `outfit_masters` ＋ 多対多中間テーブル ＋ 管理UI新設。`outfits` に `outfit_master_id` / `link_mode` を追加 | なし（既存衣装は `master_id=NULL` のまま） |
-| 4 | マスタ→キャラ取り込み（copy / reference）のUI。合成層が reference を解決 | 新機能のみ |
-| 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし |
-| 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ |
-| 7 | `change_outfit` に `outfit_master_id` 指定を追加 | 既存パラメータは維持 |
-| 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） |
-| 9 | エクスポート/インポートのマスタ対応（名前ベース解決） | — |
-| 10 | **既存データ整理**：`main_features`/`hairstyle` のキャラ側への集約、`main_features` に混入した衣服タグの分離、同名衣装のマスタ化 | 手作業込み |
+| 段 | 内容 | 現行への影響 | 状態 |
+|---|---|---|---|
+| 1 | **合成層 `composeWornOutfit()` の導入**。現時点では `outfits` 行をそのまま返すだけ。全読み出し経路（`resolveOutfitTags` 呼び出し元）をこの関数経由に寄せる | なし（同じオブジェクトが返る） | **完了（2026-08-02、`server/src/services/outfitComposition.js`新設、7箇所を経由済み）** |
+| 2 | `characters` に素体タグ列を追加。合成層に「衣装側が空ならキャラ側」の規則を実装。**キャラ側は空のまま** | なし（全件が衣装側で解決） | 未着手 |
+| 3 | `outfit_masters` ＋ 多対多中間テーブル ＋ 管理UI新設。`outfits` に `outfit_master_id` / `link_mode` を追加 | なし（既存衣装は `master_id=NULL` のまま） | 未着手 |
+| 4 | マスタ→キャラ取り込み（copy / reference）のUI。合成層が reference を解決 | 新機能のみ | 未着手 |
+| 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし | 未着手 |
+| 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ | 未着手 |
+| 7 | `change_outfit` に `outfit_master_id` 指定を追加 | 既存パラメータは維持 | 未着手 |
+| 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） | 未着手 |
+| 9 | エクスポート/インポートのマスタ対応（名前ベース解決） | — | 未着手 |
+| 10 | **既存データ整理**：`main_features`/`hairstyle` のキャラ側への集約、`main_features` に混入した衣服タグの分離、同名衣装のマスタ化 | 手作業込み | 未着手（§6.1参照） |
 
 ### 6.1 第10段（既存データ整理）の現在の進捗（2026-08-02 記録）
 
