@@ -17,6 +17,7 @@ import ActionCommandsPage from './pages/ActionCommandsPage.jsx';
 import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
 import SessionLogPage from './pages/SessionLogPage.jsx';
 import CharacterStatusesPage from './pages/CharacterStatusesPage.jsx';
+import OutfitMastersPage from './pages/OutfitMastersPage.jsx';
 
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
@@ -62,6 +63,9 @@ export default function App() {
           <NavLink to="/character-statuses" style={navLinkStyle}>
             キャラ状態
           </NavLink>
+          <NavLink to="/outfit-masters" style={navLinkStyle}>
+            衣装マスタ
+          </NavLink>
           <NavLink to="/events" style={navLinkStyle}>
             イベント
           </NavLink>
@@ -91,6 +95,7 @@ export default function App() {
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />
           <Route path="/character-statuses" element={<CharacterStatusesPage />} />
+          <Route path="/outfit-masters" element={<OutfitMastersPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/worlds/:worldId/playthroughs" element={<PlaythroughsPage />} />
