@@ -219,7 +219,7 @@ composeWornOutfit(character, outfitInstance, underwearState)
 |---|---|---|---|
 | 1 | **合成層 `composeWornOutfit()` の導入**。現時点では `outfits` 行をそのまま返すだけ。全読み出し経路（`resolveOutfitTags` 呼び出し元）をこの関数経由に寄せる | なし（同じオブジェクトが返る） | **完了（2026-08-02、`server/src/services/outfitComposition.js`新設、7箇所を経由済み）** |
 | 2 | `characters` に素体タグ列を追加。合成層に「衣装側が空ならキャラ側」の規則を実装。**キャラ側は空のまま** | なし（全件が衣装側で解決） | **完了（2026-08-02、migration 0088、`composeWornOutfit(characterId, outfit)`に拡張、キャラ編集画面に入力欄追加）** |
-| 3 | `outfit_masters` ＋ 多対多中間テーブル ＋ 管理UI新設。`outfits` に `outfit_master_id` / `link_mode` を追加 | なし（既存衣装は `master_id=NULL` のまま） | 未着手 |
+| 3 | `outfit_masters` ＋ 多対多中間テーブル ＋ 管理UI新設。`outfits` に `outfit_master_id` / `link_mode` を追加 | なし（既存衣装は `master_id=NULL` のまま） | **完了（2026-08-02、migration 0089、「衣装マスタ」画面新設、19カテゴリタグエディタを`OutfitTagCategoryEditor`として共有化）** |
 | 4 | マスタ→キャラ取り込み（copy / reference）のUI。合成層が reference を解決 | 新機能のみ | 未着手 |
 | 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし | 未着手 |
 | 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ | 未着手 |
