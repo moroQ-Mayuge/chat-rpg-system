@@ -81,8 +81,8 @@ export function createOutfit(characterId, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, ${tagColumns})
-       VALUES (?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
     .run(
       characterId,
@@ -91,18 +91,26 @@ export function createOutfit(characterId, data) {
       data.equipment_description ?? '',
       data.is_default ? 1 : 0,
       JSON.stringify(data.garment_operations ?? {}),
+      data.outfit_master_id ?? null,
+      data.link_mode ?? 'copy',
       ...tagValues,
     );
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
   return getOutfit(result.lastInsertRowid);
 }
 
+// outfit_master_id/link_mode fall back to the EXISTING row's value when the
+// caller's data doesn't specify them (undefined, not just falsy) -- callers
+// that only know about the older fields (e.g. CharactersPage.jsx's
+// saveOutfit()) must never silently reset a 'reference' outfit back to
+// 'copy' just by saving an unrelated field.
 export function updateOutfit(id, data) {
   const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(id);
   const tagSetClause = OUTFIT_TAG_FIELDS.map((f) => `${f} = ?`).join(', ');
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
-    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?, ${tagSetClause}
+    `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?,
+       outfit_master_id = ?, link_mode = ?, ${tagSetClause}
      WHERE id = ?`,
   ).run(
     data.name,
@@ -110,6 +118,8 @@ export function updateOutfit(id, data) {
     data.equipment_description ?? '',
     data.is_default ? 1 : 0,
     JSON.stringify(data.garment_operations ?? {}),
+    data.outfit_master_id !== undefined ? data.outfit_master_id : outfit.outfit_master_id,
+    data.link_mode !== undefined ? data.link_mode : outfit.link_mode,
     ...tagValues,
     id,
   );

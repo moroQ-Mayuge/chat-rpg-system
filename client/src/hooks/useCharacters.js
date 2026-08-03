@@ -53,6 +53,8 @@ export function useOutfitMutations(characterId) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['characters', characterId] });
   return {
     create: useMutation({ mutationFn: (data) => outfitsApi.create(characterId, data), onSuccess: invalidate }),
+    createFromMaster: useMutation({ mutationFn: (data) => outfitsApi.createFromMaster(characterId, data), onSuccess: invalidate }),
+    detachMaster: useMutation({ mutationFn: (id) => outfitsApi.detachMaster(id), onSuccess: invalidate }),
     update: useMutation({ mutationFn: ({ id, data }) => outfitsApi.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: outfitsApi.remove, onSuccess: invalidate }),
     uploadStandingImage: useMutation({

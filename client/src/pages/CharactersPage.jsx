@@ -10,8 +10,9 @@ import {
 } from '../hooks/useCharacters.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useWorlds } from '../hooks/useWorlds.js';
+import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
-import OutfitTagCategoryEditor, { OUTFIT_TAG_FIELDS } from '../components/ui/OutfitTagCategoryEditor.jsx';
+import OutfitTagCategoryEditor, { OUTFIT_TAG_CATEGORIES, OUTFIT_TAG_FIELDS } from '../components/ui/OutfitTagCategoryEditor.jsx';
 import TagChips from '../components/ui/TagChips.jsx';
 import GroupedList from '../components/ui/GroupedList.jsx';
 import { groupByKeys } from '../utils/grouping.js';
@@ -134,10 +135,13 @@ export default function CharactersPage() {
   const { data: existing } = useCharacter(isNew || selectedId == null ? null : selectedId);
   const { create, update, remove } = useCharacterMutations();
   const outfitMutations = useOutfitMutations(isNew ? null : selectedId);
+  const { data: allMasters } = useAllOutfitMasters();
 
   const [form, setForm] = useState(emptyForm);
   const [activeTab, setActiveTab] = useState('basic');
   const [activeOutfitId, setActiveOutfitId] = useState(null);
+  const [masterPickerId, setMasterPickerId] = useState('');
+  const [masterLinkMode, setMasterLinkMode] = useState('copy');
   const [policyHint, setPolicyHint] = useState('');
   const [pendingOutfitTags, setPendingOutfitTags] = useState('');
   const [pasteText, setPasteText] = useState('');
@@ -317,7 +321,32 @@ export default function CharactersPage() {
     setActiveOutfitId(outfit.id);
   }
 
+  async function addOutfitFromMaster() {
+    if (!masterPickerId) return;
+    const outfit = await outfitMutations.createFromMaster.mutateAsync({
+      outfit_master_id: Number(masterPickerId),
+      link_mode: masterLinkMode,
+    });
+    setActiveOutfitId(outfit.id);
+    setMasterPickerId('');
+  }
+
+  async function handleDetachMaster() {
+    if (!activeOutfit) return;
+    await outfitMutations.detachMaster.mutateAsync(activeOutfit.id);
+  }
+
   const activeOutfit = form.outfits?.find((o) => o.id === activeOutfitId);
+  const linkedMaster =
+    activeOutfit?.outfit_master_id != null ? allMasters?.find((m) => m.id === activeOutfit.outfit_master_id) : null;
+
+  // reference衣装は自身の19タグ列が常に空(server/src/services/outfitComposition.js
+  // が読み出し時にマスタから解決する) -- タグの有無判定・画像生成のタグ上書き
+  // 送信は、常に「実際に使われる値」＝マスタ側(見つかれば)を見る。
+  function resolveTagSource() {
+    if (activeOutfit?.link_mode === 'reference' && linkedMaster) return linkedMaster;
+    return activeOutfit;
+  }
 
   function updateActiveOutfitField(key, value) {
     setForm((f) => ({
@@ -335,7 +364,8 @@ export default function CharactersPage() {
   }
 
   function currentOutfitTags() {
-    return Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, activeOutfit[key] ?? '']));
+    const source = resolveTagSource();
+    return Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, source?.[key] ?? '']));
   }
 
   async function saveOutfit() {
@@ -366,7 +396,8 @@ export default function CharactersPage() {
   }
 
   function confirmIfNoTags() {
-    const hasAnyTag = OUTFIT_TAG_FIELDS.some((key) => activeOutfit[key]?.trim());
+    const source = resolveTagSource();
+    const hasAnyTag = OUTFIT_TAG_FIELDS.some((key) => source?.[key]?.trim());
     if (hasAnyTag) return true;
     return window.confirm('服装タグが未設定ですが、このまま画像生成しますか？（意図せず裸体が生成される場合があります）');
   }
@@ -797,6 +828,28 @@ export default function CharactersPage() {
                       <button onClick={addOutfit}>+ 追加</button>
                     </div>
 
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', fontSize: 12 }}>
+                      <select value={masterPickerId} onChange={(e) => setMasterPickerId(e.target.value)}>
+                        <option value="">衣装マスタから追加...</option>
+                        {(allMasters ?? []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <input type="radio" checked={masterLinkMode === 'copy'} onChange={() => setMasterLinkMode('copy')} />
+                        完全取り込み
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <input type="radio" checked={masterLinkMode === 'reference'} onChange={() => setMasterLinkMode('reference')} />
+                        参照のみ
+                      </label>
+                      <button onClick={addOutfitFromMaster} disabled={!masterPickerId}>
+                        + 追加
+                      </button>
+                    </div>
+
                     {activeOutfit && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
@@ -834,12 +887,36 @@ export default function CharactersPage() {
                           </label>
                         </div>
 
-                        <OutfitTagCategoryEditor
-                          values={activeOutfit}
-                          onFieldChange={updateActiveOutfitField}
-                          garmentOperations={activeOutfit.garment_operations}
-                          onGarmentOperationChange={updateGarmentOperation}
-                        />
+                        {activeOutfit.link_mode === 'reference' ? (
+                          <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 8, fontSize: 12, color: '#555' }}>
+                            <p style={{ fontWeight: 500, marginBottom: 4 }}>
+                              衣装マスタ「{linkedMaster?.name ?? '(削除済み)'}」を参照中（このマスタの内容がそのまま使われます。個別編集はできません）
+                            </p>
+                            {linkedMaster &&
+                              OUTFIT_TAG_CATEGORIES.filter(([key]) => linkedMaster[key]?.trim()).map(([key, label]) => (
+                                <p key={key} style={{ margin: '2px 0' }}>
+                                  {label.replace(/※.*/, '')}: {linkedMaster[key]}
+                                </p>
+                              ))}
+                            <button onClick={handleDetachMaster} style={{ marginTop: 8 }}>
+                              個別編集に切り替える
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            {activeOutfit.outfit_master_id != null && (
+                              <p style={{ fontSize: 11, color: '#888' }}>
+                                衣装マスタ「{linkedMaster?.name ?? '(削除済み)'}」から取り込み済み（個別に編集できます）
+                              </p>
+                            )}
+                            <OutfitTagCategoryEditor
+                              values={activeOutfit}
+                              onFieldChange={updateActiveOutfitField}
+                              garmentOperations={activeOutfit.garment_operations}
+                              onGarmentOperationChange={updateGarmentOperation}
+                            />
+                          </>
+                        )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                           <button onClick={saveOutfit}>この衣装を保存</button>

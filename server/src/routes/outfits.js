@@ -13,6 +13,7 @@ import {
   OUTFIT_TAG_FIELDS,
 } from '../db/repositories/outfitsRepo.js';
 import { getExpressionType } from '../db/repositories/expressionTypesRepo.js';
+import { instantiateMasterForCharacter, detachMasterLink } from '../db/repositories/outfitMastersRepo.js';
 import { generateOutfitStandingImage, generateOutfitExpressionImage } from '../services/outfitImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 
@@ -48,6 +49,16 @@ const upload = multer({
 outfitsRouter.post('/characters/:characterId/outfits', (req, res) => {
   if (!req.body.name) return res.status(400).json({ error: 'name_required' });
   res.status(201).json(createOutfit(req.params.characterId, req.body));
+});
+
+outfitsRouter.post('/characters/:characterId/outfits/from-master', (req, res) => {
+  const outfit = instantiateMasterForCharacter(req.params.characterId, req.body.outfit_master_id, req.body);
+  if (!outfit) return res.status(404).json({ error: 'master_not_found' });
+  res.status(201).json(outfit);
+});
+
+outfitsRouter.post('/outfits/:id/detach-master', (req, res) => {
+  res.json(detachMasterLink(req.params.id));
 });
 
 outfitsRouter.put('/outfits/:id', (req, res) => {

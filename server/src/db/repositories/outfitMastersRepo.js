@@ -1,5 +1,5 @@
 import { db } from '../connection.js';
-import { OUTFIT_TAG_FIELDS } from './outfitsRepo.js';
+import { OUTFIT_TAG_FIELDS, createOutfit, updateOutfit, getOutfit } from './outfitsRepo.js';
 
 // PLAN_2026-08-02_outfit_spec_revision.md 実装順3: outfit_masters は outfits
 // から character_id・画像・is_default を除いた「定義」だけを持つ共有マスタ。
@@ -87,4 +87,39 @@ export function attachMasterToWorld(worldId, masterId) {
 export function detachMasterFromWorld(worldId, masterId) {
   db.prepare('DELETE FROM world_outfit_masters WHERE world_id = ? AND outfit_master_id = ?').run(worldId, masterId);
   return { detached: true };
+}
+
+// PLAN_2026-08-02_outfit_spec_revision.md 実装順4: マスタをキャラの衣装として
+// 取り込む。copy=タグ列を1回だけコピーして以後独立編集、reference=タグ列を
+// 空のまま作成し、読み出し時に composeWornOutfit がマスタから解決する。
+// garment_operations も link_mode で gate する — reference の衣装側は
+// 「本当に空」を保つ(将来この列を直接読む経路ができた時の地雷を避ける)。
+export function instantiateMasterForCharacter(characterId, masterId, { name, link_mode = 'copy' } = {}) {
+  const master = getMaster(masterId);
+  if (!master) return null;
+  const isReference = link_mode === 'reference';
+  const tagValues = isReference ? {} : Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, master[f]]));
+  return createOutfit(characterId, {
+    name: name || master.name,
+    clothing_description: master.clothing_description,
+    equipment_description: master.equipment_description,
+    garment_operations: isReference ? {} : master.garment_operations,
+    outfit_master_id: master.id,
+    link_mode,
+    ...tagValues,
+  });
+}
+
+// reference衣装がキャラ個別編集の行き止まりにならないための脱出口。
+// outfit_master_id は記録として残す(以後 link_mode='copy' なので参照されない)。
+// link_mode !== 'reference' のガードは、既にcopyモードの衣装(outfit_master_id
+// は由来の記録として残っている)に誤って呼ばれても、個別編集済みのタグを
+// マスタの現在値で上書きしてしまわないため。
+export function detachMasterLink(outfitId) {
+  const outfit = getOutfit(outfitId);
+  if (!outfit || outfit.link_mode !== 'reference' || !outfit.outfit_master_id) return outfit;
+  const master = getMaster(outfit.outfit_master_id);
+  if (!master) return outfit;
+  const tagValues = Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, master[f]]));
+  return updateOutfit(outfitId, { ...outfit, ...tagValues, garment_operations: master.garment_operations, link_mode: 'copy' });
 }
