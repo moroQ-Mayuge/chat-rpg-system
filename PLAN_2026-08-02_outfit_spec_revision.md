@@ -221,7 +221,7 @@ composeWornOutfit(character, outfitInstance, underwearState)
 | 2 | `characters` に素体タグ列を追加。合成層に「衣装側が空ならキャラ側」の規則を実装。**キャラ側は空のまま** | なし（全件が衣装側で解決） | **完了（2026-08-02、migration 0088、`composeWornOutfit(characterId, outfit)`に拡張、キャラ編集画面に入力欄追加）** |
 | 3 | `outfit_masters` ＋ 多対多中間テーブル ＋ 管理UI新設。`outfits` に `outfit_master_id` / `link_mode` を追加 | なし（既存衣装は `master_id=NULL` のまま） | **完了（2026-08-02、migration 0089、「衣装マスタ」画面新設、19カテゴリタグエディタを`OutfitTagCategoryEditor`として共有化）** |
 | 4 | マスタ→キャラ取り込み（copy / reference）のUI。合成層が reference を解決 | 新機能のみ | **完了（2026-08-04、`instantiateMasterForCharacter`/`detachMasterLink`、`composeWornOutfit`のreference解決、キャラ編集画面にマスタ選択UI＋切り替え）** |
-| 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし | 未着手 |
+| 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし | **完了（2026-08-04、migration 0090、`underwearAssignment.js`、`composeWornOutfit`に`playthroughId`引数追加）** |
 | 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ | 未着手 |
 | 7 | `change_outfit` に `outfit_master_id` 指定を追加 | 既存パラメータは維持 | 未着手 |
 | 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） | 未着手 |
