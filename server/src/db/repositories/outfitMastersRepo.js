@@ -46,17 +46,18 @@ export function createMaster(data) {
   const placeholders = MASTER_FIELDS.map(() => '?').join(', ');
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
   const result = db
-    .prepare(`INSERT INTO outfit_masters (${columns}, garment_operations) VALUES (${placeholders}, ?)`)
-    .run(...values, JSON.stringify(data.garment_operations ?? {}));
+    .prepare(`INSERT INTO outfit_masters (${columns}, garment_operations, slot) VALUES (${placeholders}, ?, ?)`)
+    .run(...values, JSON.stringify(data.garment_operations ?? {}), data.slot ?? 'normal');
   return getMaster(result.lastInsertRowid);
 }
 
 export function updateMaster(id, data) {
   const setClause = MASTER_FIELDS.map((f) => `${f} = ?`).join(', ');
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
-  db.prepare(`UPDATE outfit_masters SET ${setClause}, garment_operations = ? WHERE id = ?`).run(
+  db.prepare(`UPDATE outfit_masters SET ${setClause}, garment_operations = ?, slot = ? WHERE id = ?`).run(
     ...values,
     JSON.stringify(data.garment_operations ?? {}),
+    data.slot ?? 'normal',
     id,
   );
   return getMaster(id);

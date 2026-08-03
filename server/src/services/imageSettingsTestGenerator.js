@@ -21,7 +21,7 @@ function resolveSample(kind) {
       const outfit = firstRow('SELECT * FROM outfits ORDER BY id ASC LIMIT 1');
       if (!outfit) throw new Error('サンプルとなる衣装（Outfit）が見つかりません。');
       return {
-        variables: { style_preset: resolveDefaultStylePrompt(), character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null), extra_hint: '' },
+        variables: { style_preset: resolveDefaultStylePrompt(), character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null), extra_hint: '' },
         referencePaths: [],
       };
     }
@@ -32,7 +32,7 @@ function resolveSample(kind) {
       return {
         variables: {
           style_preset: resolveDefaultStylePrompt(),
-          character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null),
+          character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null),
           expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
           extra_hint: '',
         },

@@ -81,8 +81,8 @@ export function createOutfit(characterId, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, ${tagColumns})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, overrides_underwear, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
     .run(
       characterId,
@@ -93,6 +93,7 @@ export function createOutfit(characterId, data) {
       JSON.stringify(data.garment_operations ?? {}),
       data.outfit_master_id ?? null,
       data.link_mode ?? 'copy',
+      data.overrides_underwear ? 1 : 0,
       ...tagValues,
     );
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
@@ -110,7 +111,7 @@ export function updateOutfit(id, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
     `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?,
-       outfit_master_id = ?, link_mode = ?, ${tagSetClause}
+       outfit_master_id = ?, link_mode = ?, overrides_underwear = ?, ${tagSetClause}
      WHERE id = ?`,
   ).run(
     data.name,
@@ -120,6 +121,7 @@ export function updateOutfit(id, data) {
     JSON.stringify(data.garment_operations ?? {}),
     data.outfit_master_id !== undefined ? data.outfit_master_id : outfit.outfit_master_id,
     data.link_mode !== undefined ? data.link_mode : outfit.link_mode,
+    data.overrides_underwear !== undefined ? (data.overrides_underwear ? 1 : 0) : outfit.overrides_underwear,
     ...tagValues,
     id,
   );

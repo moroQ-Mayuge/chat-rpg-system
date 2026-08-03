@@ -86,7 +86,7 @@ export function buildSceneTagParts(session, participants) {
         playthroughId: session.playthrough_id,
         roomSessionId: session.id,
       });
-      return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
+      return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, session.playthrough_id), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
     })
     .filter(Boolean)
     .join(', ');

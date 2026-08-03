@@ -39,6 +39,7 @@ export const CHARACTER_TEXT_FIELDS = [
   'secret',
   'notes',
   'attribute_tags',
+  'underwear_preference_tags',
 ];
 
 function attachAssociations(character) {
@@ -102,6 +103,11 @@ export function getCharacter(id) {
 // 必要な2列だけを引く。
 export function getCharacterBodyTags(id) {
   return db.prepare('SELECT main_features, hairstyle FROM characters WHERE id = ?').get(id);
+}
+
+// underwearAssignment.js の日次抽選用。好みタグ以外は不要なので同じく軽量に。
+export function getCharacterUnderwearPreference(id) {
+  return db.prepare('SELECT underwear_preference_tags FROM characters WHERE id = ?').get(id);
 }
 
 function replaceRelationshipDefaults(characterId, relationshipDefaults) {

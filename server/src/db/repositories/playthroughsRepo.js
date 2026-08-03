@@ -14,6 +14,7 @@ import {
 import { listActivePregnancies } from './characterPregnanciesRepo.js';
 import { cyclePhaseFor } from '../../services/fertilityCycle.js';
 import { pregnancyStateFor } from '../../services/pregnancy.js';
+import { rerollUnderwearAssignments } from '../../services/underwearAssignment.js';
 
 // day is the playthrough's 1-based absolute day count (current_day).
 // dayOfYear wraps every days_per_season * season_labels.length days (an
@@ -245,6 +246,7 @@ export function advanceTime(playthroughId, slots = 1) {
   // 日が変わらない時間帯送りでは段階も変わらないので、その時はスキップする。
   if (day !== playthrough.current_day) {
     syncDerivedCharacterFlags(playthroughId, day, world);
+    rerollUnderwearAssignments(playthroughId, world);
   }
 
   applySelfStatRegen(playthroughId, slots);

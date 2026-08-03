@@ -40,6 +40,7 @@ const emptyForm = {
   notify_relationship_changes: false,
   status_display_settings: DEFAULT_STATUS_DISPLAY_SETTINGS,
   currency_enabled: false,
+  underwear_random_enabled: false,
   currency_unit: '円',
   initial_money: 0,
   self_stat_auto_update_enabled: false,
@@ -157,6 +158,7 @@ export default function WorldsPage() {
         notify_relationship_changes: Boolean(world.notify_relationship_changes),
         status_display_settings: world.status_display_settings ?? DEFAULT_STATUS_DISPLAY_SETTINGS,
         currency_enabled: Boolean(world.currency_enabled),
+        underwear_random_enabled: Boolean(world.underwear_random_enabled),
         currency_unit: world.currency_unit ?? '円',
         initial_money: world.initial_money ?? 0,
         self_stat_auto_update_enabled: Boolean(world.self_stat_auto_update_enabled),
@@ -1053,6 +1055,18 @@ export default function WorldsPage() {
                 </label>
               </div>
             )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
+            <p style={{ fontWeight: 500 }}>下着ランダム設定</p>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.underwear_random_enabled}
+                onChange={(e) => setForm({ ...form, underwear_random_enabled: e.target.checked })}
+              />
+              日付が変わるたびに下着をランダムに再抽選する（「衣装マスタ」で下着枠として登録したものが対象）
+            </label>
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>

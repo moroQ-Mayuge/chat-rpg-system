@@ -5,6 +5,7 @@ import OutfitTagCategoryEditor, { OUTFIT_TAG_FIELDS } from '../components/ui/Out
 
 const emptyForm = {
   name: '',
+  slot: 'normal',
   clothing_description: '',
   equipment_description: '',
   attribute_tags: '',
@@ -15,6 +16,7 @@ const emptyForm = {
 function masterToForm(m) {
   return {
     name: m.name,
+    slot: m.slot ?? 'normal',
     clothing_description: m.clothing_description ?? '',
     equipment_description: m.equipment_description ?? '',
     attribute_tags: m.attribute_tags ?? '',
@@ -91,7 +93,10 @@ export default function OutfitMastersPage() {
               borderRadius: 6,
             }}
           >
-            <span>{m.name}</span>
+            <span>
+              {m.name}
+              {m.slot === 'underwear' && <span style={{ fontSize: 11, color: '#888' }}> [下着]</span>}
+            </span>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => startEdit(m)}>編集</button>
               <button onClick={() => handleDelete(m.id)}>削除</button>
@@ -106,6 +111,19 @@ export default function OutfitMastersPage() {
           名前
           <input style={{ display: 'block', width: '100%' }} value={form.name} onChange={(e) => setField('name', e.target.value)} />
         </label>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="radio" checked={form.slot === 'normal'} onChange={() => setField('slot', 'normal')} />
+            通常衣装
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="radio" checked={form.slot === 'underwear'} onChange={() => setField('slot', 'underwear')} />
+            下着（Worldの日次ランダム抽選の対象）
+          </label>
+        </div>
+        <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+          「下着を上書きする」フラグ（水着など）はマスタではなく、キャラ側の各衣装インスタンスに個別に設定します。
+        </p>
         <label style={{ display: 'block', marginBottom: 8 }}>
           服装（自由記述）
           <input

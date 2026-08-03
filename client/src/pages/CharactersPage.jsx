@@ -95,6 +95,7 @@ const DEFAULT_IMPRESSION_DEFAULTS = [
 const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
+  underwear_preference_tags: '',
   is_mob: false,
   gender: '女性',
   cycle_enabled: false,
@@ -176,6 +177,7 @@ export default function CharactersPage() {
       fields[key] = existing[key] ?? '';
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
+    fields.underwear_preference_tags = existing.underwear_preference_tags ?? '';
     fields.is_mob = Boolean(existing.is_mob);
     fields.gender = existing.gender ?? '';
     fields.cycle_enabled = Boolean(existing.cycle_enabled);
@@ -218,6 +220,7 @@ export default function CharactersPage() {
     payload.relationship_defaults = form.relationship_defaults;
     payload.impression_defaults = form.impression_defaults;
     payload.attribute_tags = form.attribute_tags;
+    payload.underwear_preference_tags = form.underwear_preference_tags;
     payload.is_mob = form.is_mob;
     payload.gender = form.gender;
     payload.cycle_enabled = form.cycle_enabled;
@@ -377,6 +380,7 @@ export default function CharactersPage() {
         clothing_description: activeOutfit.clothing_description,
         equipment_description: activeOutfit.equipment_description,
         is_default: Boolean(activeOutfit.is_default),
+        overrides_underwear: Boolean(activeOutfit.overrides_underwear),
         garment_operations: activeOutfit.garment_operations ?? {},
         ...currentOutfitTags(),
       },
@@ -704,6 +708,16 @@ export default function CharactersPage() {
                   />
                 </div>
                 <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                    下着の好み属性キー（Worldの「下着ランダム」が有効な場合の抽選の絞り込みに使用。未指定なら全体から抽選）
+                  </p>
+                  <TagChips
+                    tags={(form.underwear_preference_tags || '').split(',').map((t) => t.trim()).filter(Boolean)}
+                    onChange={(tags) => setField('underwear_preference_tags', tags.join(', '))}
+                    placeholder="例: スポーツ系, 甘め"
+                  />
+                </div>
+                <div style={{ marginTop: 10 }}>
                   <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>性別</p>
                   <select value={form.gender ?? ''} onChange={(e) => setField('gender', e.target.value)}>
                     <option value="女性">女性</option>
@@ -868,6 +882,14 @@ export default function CharactersPage() {
                               onChange={(e) => updateActiveOutfitField('is_default', e.target.checked)}
                             />
                             デフォルト衣装にする
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 20 }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(activeOutfit.overrides_underwear)}
+                              onChange={(e) => updateActiveOutfitField('overrides_underwear', e.target.checked)}
+                            />
+                            下着を上書きする（水着など。Worldの日次ランダム抽選の対象から外れ、常にこの衣装自身の下着タグを使う）
                           </label>
                           <label>
                             服装
