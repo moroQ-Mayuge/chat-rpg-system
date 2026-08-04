@@ -47,5 +47,9 @@ export function useRoomSessionMutations(id) {
       onSuccess: invalidate,
     }),
     sellItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.sellItem(id, itemId), onSuccess: invalidate }),
+    wearItem: useMutation({
+      mutationFn: ({ characterId, itemId }) => roomSessionsApi.wearItem(id, characterId, itemId),
+      onSuccess: invalidate,
+    }),
   };
 }

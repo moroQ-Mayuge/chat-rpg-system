@@ -111,6 +111,18 @@ export function instantiateMasterForCharacter(characterId, masterId, { name, lin
   });
 }
 
+// PLAN_2026-08-02_outfit_spec_revision.md 実装順6: 「着る」用。同じマスタから
+// 既に取り込み済みの衣装インスタンスがあればそれを使い回す(毎回新規作成すると、
+// 着るたびに空の立ち絵/表情差分を持つ行が増えてしまう)。無ければ実装順4の
+// copyモードで新規作成する。
+export function wearMasterAsCharacter(characterId, masterId) {
+  const existing = db
+    .prepare('SELECT * FROM outfits WHERE character_id = ? AND outfit_master_id = ? ORDER BY id ASC LIMIT 1')
+    .get(characterId, masterId);
+  if (existing) return existing;
+  return instantiateMasterForCharacter(characterId, masterId, { link_mode: 'copy' });
+}
+
 // reference衣装がキャラ個別編集の行き止まりにならないための脱出口。
 // outfit_master_id は記録として残す(以後 link_mode='copy' なので参照されない)。
 // link_mode !== 'reference' のガードは、既にcopyモードの衣装(outfit_master_id

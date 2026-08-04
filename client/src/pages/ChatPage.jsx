@@ -448,6 +448,81 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
   );
 }
 
+// 「着る」パネル(実装順6)。ItemActionPanelと違い、対象を先に選ぶ——プレイヤーは
+// characters行を持たずoutfitsの対象になれないため、対象は常にNPC。選んだ対象
+// "自身の"所持品(渡した衣装アイテムはその時点で相手の手元にある)から着られる
+// もの(outfit_master_id が設定されたもの)だけを絞り込んで見せる。
+function ItemWearPanel({ command, playthroughId, sessionId, participants, onClose, onSend }) {
+  const [targetId, setTargetId] = useState('');
+  const { data: inventory } = useInventory(playthroughId, targetId ? Number(targetId) : null);
+  const { wearItem } = useRoomSessionMutations(sessionId);
+  const [itemId, setItemId] = useState('');
+
+  const wearableItems = (inventory ?? []).filter((entry) => entry.outfit_master_id != null);
+
+  async function submit() {
+    const entry = wearableItems.find((e) => e.item_id === Number(itemId));
+    const target = participants.find((p) => p.character_id === Number(targetId));
+    if (!entry || !target) return;
+    await wearItem.mutateAsync({ characterId: target.character_id, itemId: entry.item_id });
+    onSend(`@${target.name}が『${entry.name}』を${command.label}`);
+    onClose();
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>{command.label}</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>対象</span>
+          <select
+            style={{ width: '100%' }}
+            value={targetId}
+            onChange={(e) => {
+              setTargetId(e.target.value);
+              setItemId('');
+            }}
+          >
+            <option value="">対象を選択してください</option>
+            {participants.map((p) => (
+              <option key={p.id} value={p.character_id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {targetId && (
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>着せる衣装</span>
+            {wearableItems.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#888' }}>着られる持ち物がありません</p>
+            ) : (
+              <select style={{ width: '100%' }} value={itemId} onChange={(e) => setItemId(e.target.value)}>
+                <option value="">選択してください</option>
+                {wearableItems.map((entry) => (
+                  <option key={entry.item_id} value={entry.item_id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={submit} disabled={!targetId || !itemId}>
+            {command.label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FreeActionPanel({ onClose, onSend }) {
   const [text, setText] = useState('');
 
@@ -950,6 +1025,16 @@ export default function ChatPage() {
           playthroughId={session.playthrough_id}
           participants={session.participants}
           draft={draft}
+          onClose={() => setItemPanel(null)}
+          onSend={sendText}
+        />
+      )}
+      {itemPanel?.command_type === 'item_wear' && (
+        <ItemWearPanel
+          command={itemPanel}
+          playthroughId={session.playthrough_id}
+          sessionId={id}
+          participants={session.participants}
           onClose={() => setItemPanel(null)}
           onSend={sendText}
         />

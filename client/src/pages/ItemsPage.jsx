@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllItems, useItemMutations } from '../hooks/useItems.js';
 import { useAllItemCategories, useItemCategoryMutations } from '../hooks/useItemCategories.js';
+import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
 import { groupByKeys } from '../utils/grouping.js';
 import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 
-const emptyItemForm = { world_id: '', name: '', description: '', image_tags: '', category_id: '', buy_price: '', sell_price: '' };
+const emptyItemForm = {
+  world_id: '',
+  name: '',
+  description: '',
+  image_tags: '',
+  category_id: '',
+  buy_price: '',
+  sell_price: '',
+  outfit_master_id: '',
+};
 const emptyCategoryForm = { world_id: '', name: '', is_consumable: false };
 
 function worldLabel(worldId, worlds) {
@@ -96,6 +106,7 @@ function ItemCategoriesSection({ worlds }) {
 function ItemsSection({ worlds }) {
   const { data: items, isLoading } = useAllItems();
   const { data: categories } = useAllItemCategories();
+  const { data: outfitMasters } = useAllOutfitMasters();
   const { create, update, remove } = useItemMutations();
   const { mobileListOpen, openList, closeList } = useMobileListToggle();
   const [selectedId, setSelectedId] = useState(null);
@@ -117,6 +128,7 @@ function ItemsSection({ worlds }) {
         category_id: found.category_id ?? '',
         buy_price: found.buy_price ?? '',
         sell_price: found.sell_price ?? '',
+        outfit_master_id: found.outfit_master_id ?? '',
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,6 +152,7 @@ function ItemsSection({ worlds }) {
       category_id: form.category_id ? Number(form.category_id) : null,
       buy_price: form.buy_price === '' ? null : Number(form.buy_price),
       sell_price: form.sell_price === '' ? null : Number(form.sell_price),
+      outfit_master_id: form.outfit_master_id ? Number(form.outfit_master_id) : null,
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -244,6 +257,23 @@ function ItemsSection({ worlds }) {
                   </select>
                 </label>
               </div>
+              <label style={{ display: 'block', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: '#888', display: 'block' }}>
+                  紐づく衣装マスタ（任意・設定すると「着る」行動コマンドで着用できるアイテムになる）
+                </span>
+                <select
+                  style={{ width: '100%' }}
+                  value={form.outfit_master_id}
+                  onChange={(e) => setForm({ ...form, outfit_master_id: e.target.value })}
+                >
+                  <option value="">なし（通常のアイテム）</option>
+                  {(outfitMasters ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label style={{ display: 'block', marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: '#888', display: 'block' }}>説明（LLM文脈用の自由記述）</span>
                 <input style={{ width: '100%' }} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />

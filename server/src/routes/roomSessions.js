@@ -8,7 +8,9 @@ import {
   endSessionForMove,
   createRoomSession,
   setAccompanying,
+  updateParticipantOutfit,
 } from '../db/repositories/roomSessionsRepo.js';
+import { wearMasterAsCharacter } from '../db/repositories/outfitMastersRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem, getItem, listPickupItemsForSession, markItemPickedUp } from '../db/repositories/itemsRepo.js';
@@ -244,6 +246,23 @@ roomSessionsRouter.post('/:id/sell-item', (req, res) => {
   broadcast(req.params.id, { type: 'message_complete', message });
   broadcast(req.params.id, { type: 'money_changed', money });
   res.json({ money, message });
+});
+
+// 衣装アイテム(items.outfit_master_id が設定されたもの)を、対象キャラの現在の
+// 着用衣装にする(実装順6)。プレイヤーはcharacters行を持たずoutfitsの対象に
+// なれないため、character_id は常にNPC。既に同じマスタから取り込み済みの
+// 衣装インスタンスがあれば使い回す(wearMasterAsCharacter側の挙動)。
+roomSessionsRouter.post('/:id/wear-item', (req, res) => {
+  const { character_id, item_id } = req.body;
+  if (!character_id || !item_id) return res.status(400).json({ error: 'character_id_and_item_id_required' });
+
+  const item = getItem(item_id);
+  if (!item?.outfit_master_id) return res.status(400).json({ error: 'not_an_outfit_item' });
+
+  const outfit = wearMasterAsCharacter(character_id, item.outfit_master_id);
+  updateParticipantOutfit(req.params.id, character_id, outfit.id);
+  broadcast(req.params.id, { type: 'participants_changed' });
+  res.json({ outfit });
 });
 
 roomSessionsRouter.post('/:id/exit', async (req, res) => {

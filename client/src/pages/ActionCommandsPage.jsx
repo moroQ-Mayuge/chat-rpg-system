@@ -25,6 +25,7 @@ const COMMAND_TYPE_LABELS = {
   item_pickup: 'アイテム入手',
   item_check: '持ち物確認',
   item_use: 'アイテム使用',
+  item_wear: '着る',
   free_text: '自由入力',
 };
 

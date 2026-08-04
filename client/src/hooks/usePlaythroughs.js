@@ -41,10 +41,12 @@ export function usePlaythroughMutations(worldId) {
   };
 }
 
-export function useInventory(playthroughId) {
+// ownerCharacterId省略(null)ならプレイヤー所持品、指定すればそのNPCの所持品
+// (実装順6の「着る」パネルが対象NPCの手元を確認するために使う)。
+export function useInventory(playthroughId, ownerCharacterId = null) {
   return useQuery({
-    queryKey: ['playthroughs', playthroughId, 'inventory'],
-    queryFn: () => playthroughsApi.listInventory(playthroughId),
+    queryKey: ['playthroughs', playthroughId, 'inventory', ownerCharacterId],
+    queryFn: () => playthroughsApi.listInventory(playthroughId, ownerCharacterId),
     enabled: playthroughId != null,
   });
 }

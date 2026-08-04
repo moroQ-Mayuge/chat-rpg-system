@@ -87,12 +87,12 @@ playthroughsRouter.get('/:id/room-sessions', (req, res) => {
   res.json(listSessionsForPlaythrough(req.params.id));
 });
 
-// Player-held inventory (owner_character_id null). NPC-held inventory is
-// reachable via transferItem below but has no listing endpoint yet — no UI
-// needs to browse an NPC's held items today, only move things into their
-// hands.
+// Player-held inventory by default (owner_character_id null). Pass
+// ?owner_character_id= to browse a specific NPC's held items instead (実装順6
+// の「着る」パネルが、渡した衣装アイテムがその相手の手元にあるか確認するため使う）。
 playthroughsRouter.get('/:id/inventory', (req, res) => {
-  res.json(listInventoryForPlaythrough(req.params.id));
+  const ownerCharacterId = req.query.owner_character_id ? Number(req.query.owner_character_id) : null;
+  res.json(listInventoryForPlaythrough(req.params.id, ownerCharacterId));
 });
 
 playthroughsRouter.post('/:id/inventory', (req, res) => {
