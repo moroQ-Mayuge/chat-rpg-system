@@ -5,6 +5,7 @@ import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
+import { getPersistedOutfit, setPersistedOutfit } from './playthroughCharacterOutfitRepo.js';
 import { ensureImpressionStatesSeeded } from './characterImpressionStatesRepo.js';
 import { getOutfit } from './outfitsRepo.js';
 import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
@@ -320,9 +321,10 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     const defaultOutfit = db
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(characterId);
+    const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(playthroughId, characterId);
     const rscResult = db
       .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)')
-      .run(sessionId, characterId, carryOver?.current_outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
+      .run(sessionId, characterId, carryOver?.current_outfit_id ?? persisted?.outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     if (carryOver && options.fromRoomSessionId != null) {
@@ -406,7 +408,8 @@ export function setCurrentSceneImage(id, generatedImageId) {
 // playthrough if this is the character's first appearance in this route.
 export function addParticipant(sessionId, characterId, outfitId = null) {
   const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
-  const resolvedOutfitId = outfitId ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
+  const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(session.playthrough_id, characterId);
+  const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
   const existing = db
     .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);
@@ -441,5 +444,9 @@ export function updateParticipantOutfit(sessionId, characterId, outfitId) {
     sessionId,
     characterId,
   );
+  if (!isMobCharacter(characterId)) {
+    const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
+    setPersistedOutfit(session.playthrough_id, characterId, outfitId);
+  }
   return getRoomSession(sessionId);
 }
