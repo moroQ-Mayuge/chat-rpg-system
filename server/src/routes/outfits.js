@@ -13,7 +13,7 @@ import {
   OUTFIT_TAG_FIELDS,
 } from '../db/repositories/outfitsRepo.js';
 import { getExpressionType } from '../db/repositories/expressionTypesRepo.js';
-import { instantiateMasterForCharacter, detachMasterLink } from '../db/repositories/outfitMastersRepo.js';
+import { instantiateMasterForCharacter, detachMasterLink, createMasterFromOutfit } from '../db/repositories/outfitMastersRepo.js';
 import { generateOutfitStandingImage, generateOutfitExpressionImage } from '../services/outfitImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 
@@ -59,6 +59,12 @@ outfitsRouter.post('/characters/:characterId/outfits/from-master', (req, res) =>
 
 outfitsRouter.post('/outfits/:id/detach-master', (req, res) => {
   res.json(detachMasterLink(req.params.id));
+});
+
+outfitsRouter.post('/outfits/:id/promote-to-master', (req, res) => {
+  const master = createMasterFromOutfit(req.params.id, req.body);
+  if (!master) return res.status(404).json({ error: 'outfit_not_found' });
+  res.status(201).json(master);
 });
 
 outfitsRouter.put('/outfits/:id', (req, res) => {

@@ -4,6 +4,7 @@ export const outfitsApi = {
   create: (characterId, data) => api.post(`/characters/${characterId}/outfits`, data),
   createFromMaster: (characterId, data) => api.post(`/characters/${characterId}/outfits/from-master`, data),
   detachMaster: (id) => api.post(`/outfits/${id}/detach-master`),
+  promoteToMaster: (id, data) => api.post(`/outfits/${id}/promote-to-master`, data),
   update: (id, data) => api.put(`/outfits/${id}`, data),
   remove: (id) => api.del(`/outfits/${id}`),
   uploadStandingImage: (id, file) => {

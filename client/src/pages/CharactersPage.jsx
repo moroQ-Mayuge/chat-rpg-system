@@ -143,6 +143,8 @@ export default function CharactersPage() {
   const [activeOutfitId, setActiveOutfitId] = useState(null);
   const [masterPickerId, setMasterPickerId] = useState('');
   const [masterLinkMode, setMasterLinkMode] = useState('copy');
+  const [promoteFormOpen, setPromoteFormOpen] = useState(false);
+  const [promoteName, setPromoteName] = useState('');
   const [policyHint, setPolicyHint] = useState('');
   const [pendingOutfitTags, setPendingOutfitTags] = useState('');
   const [pasteText, setPasteText] = useState('');
@@ -337,6 +339,17 @@ export default function CharactersPage() {
   async function handleDetachMaster() {
     if (!activeOutfit) return;
     await outfitMutations.detachMaster.mutateAsync(activeOutfit.id);
+  }
+
+  function openPromoteForm() {
+    setPromoteName(activeOutfit?.name ?? '');
+    setPromoteFormOpen(true);
+  }
+
+  async function handlePromoteToMaster() {
+    if (!activeOutfit || !promoteName.trim()) return;
+    await outfitMutations.promoteToMaster.mutateAsync({ id: activeOutfit.id, data: { name: promoteName.trim() } });
+    setPromoteFormOpen(false);
   }
 
   const activeOutfit = form.outfits?.find((o) => o.id === activeOutfitId);
@@ -931,6 +944,27 @@ export default function CharactersPage() {
                                 衣装マスタ「{linkedMaster?.name ?? '(削除済み)'}」から取り込み済み（個別に編集できます）
                               </p>
                             )}
+                            {activeOutfit.outfit_master_id == null &&
+                              (promoteFormOpen ? (
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, fontSize: 12 }}>
+                                  <input
+                                    type="text"
+                                    value={promoteName}
+                                    onChange={(e) => setPromoteName(e.target.value)}
+                                    placeholder="マスタ名"
+                                  />
+                                  <button onClick={handlePromoteToMaster} disabled={!promoteName.trim()}>
+                                    登録
+                                  </button>
+                                  <button onClick={() => setPromoteFormOpen(false)}>キャンセル</button>
+                                </div>
+                              ) : (
+                                <div style={{ marginBottom: 6 }}>
+                                  <button onClick={openPromoteForm} style={{ fontSize: 11 }}>
+                                    この衣装をマスタとして登録
+                                  </button>
+                                </div>
+                              ))}
                             <OutfitTagCategoryEditor
                               values={activeOutfit}
                               onFieldChange={updateActiveOutfitField}

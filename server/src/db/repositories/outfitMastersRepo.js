@@ -123,6 +123,30 @@ export function wearMasterAsCharacter(characterId, masterId) {
   return instantiateMasterForCharacter(characterId, masterId, { link_mode: 'copy' });
 }
 
+// instantiateMasterForCharacter の逆方向: 既にキャラ個別に定義済みの衣装
+// (制服など複数キャラでほぼ同一のタグを個別入力しているもの)から新規マスタを
+// 作る。第10段(既存データ整理)の前作業を軽くする狙い -- 代表となる1キャラの
+// 衣装をこれでマスタ化すれば、他キャラは既存の「マスタから追加」UIで
+// 置き換えるだけで済み、19タグの再入力が要らない。
+// 元の衣装行は新マスタへ link_mode='copy' でリンクし直す(タグ値はそのまま
+// -- copyは元々「取り込み後に個別編集自由」なので detach 相当の作業は不要。
+// outfit_master_id は由来の記録として残す)。
+export function createMasterFromOutfit(outfitId, { name, attribute_tags = '', slot = 'normal' } = {}) {
+  const outfit = getOutfit(outfitId);
+  if (!outfit) return null;
+  const master = createMaster({
+    name: name || outfit.name,
+    clothing_description: outfit.clothing_description,
+    equipment_description: outfit.equipment_description,
+    attribute_tags,
+    slot,
+    garment_operations: outfit.garment_operations,
+    ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, outfit[f]])),
+  });
+  updateOutfit(outfitId, { ...outfit, outfit_master_id: master.id, link_mode: 'copy' });
+  return master;
+}
+
 // reference衣装がキャラ個別編集の行き止まりにならないための脱出口。
 // outfit_master_id は記録として残す(以後 link_mode='copy' なので参照されない)。
 // link_mode !== 'reference' のガードは、既にcopyモードの衣装(outfit_master_id

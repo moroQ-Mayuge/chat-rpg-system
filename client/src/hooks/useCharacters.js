@@ -55,6 +55,13 @@ export function useOutfitMutations(characterId) {
     create: useMutation({ mutationFn: (data) => outfitsApi.create(characterId, data), onSuccess: invalidate }),
     createFromMaster: useMutation({ mutationFn: (data) => outfitsApi.createFromMaster(characterId, data), onSuccess: invalidate }),
     detachMaster: useMutation({ mutationFn: (id) => outfitsApi.detachMaster(id), onSuccess: invalidate }),
+    promoteToMaster: useMutation({
+      mutationFn: ({ id, data }) => outfitsApi.promoteToMaster(id, data),
+      onSuccess: () => {
+        invalidate();
+        queryClient.invalidateQueries({ queryKey: ['outfitMasters'] });
+      },
+    }),
     update: useMutation({ mutationFn: ({ id, data }) => outfitsApi.update(id, data), onSuccess: invalidate }),
     remove: useMutation({ mutationFn: outfitsApi.remove, onSuccess: invalidate }),
     uploadStandingImage: useMutation({
