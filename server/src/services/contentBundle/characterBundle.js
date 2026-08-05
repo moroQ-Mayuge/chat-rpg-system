@@ -34,6 +34,16 @@ export function collectCharacterEntry(characterId, imageCollector) {
       // writes `?? {}` unconditionally, so a round-trip silently wiped it.
       garment_operations: outfit.garment_operations ?? {},
       is_default: Boolean(outfit.is_default),
+      // outfit_masters は relationship_axes/expression_types と同じ「宛先install
+      // に既存の前提」のグローバル参照マスタ扱い -- バンドルに同梱せず、
+      // 名前だけ持ち出してimport時に引き直す(実装順9)。missingだった分、
+      // link_mode='reference'の衣装は自身のタグ列が空のまま(実装順4の設計)
+      // なので、これを欠かすとimport後に空タグのcopy衣装へ静かに劣化していた。
+      outfit_master_name: outfit.outfit_master_id != null
+        ? (db.prepare('SELECT name FROM outfit_masters WHERE id = ?').get(outfit.outfit_master_id)?.name ?? null)
+        : null,
+      link_mode: outfit.link_mode,
+      overrides_underwear: Boolean(outfit.overrides_underwear),
       standing_image: imageCollector.add(outfit.standing_image_path, 'char-standing'),
       expression_images: outfit.expression_images.map((img) => ({
         llm_tag_key: img.llm_tag_key,
@@ -64,6 +74,15 @@ function resolveExpressionTypeId(llmTagKey, warnings) {
   return et.id;
 }
 
+function resolveOutfitMasterId(name, warnings) {
+  const master = db.prepare('SELECT id FROM outfit_masters WHERE name = ?').get(name);
+  if (!master) {
+    warnings.push(`衣装マスタ「${name}」が見つかりませんでした`);
+    return null;
+  }
+  return master.id;
+}
+
 export async function importCharacterEntries(entries, readImage, warnings) {
   const created = [];
   for (const entry of entries) {
@@ -77,7 +96,13 @@ export async function importCharacterEntries(entries, readImage, warnings) {
     for (const autoOutfit of character.outfits) deleteOutfit(autoOutfit.id);
 
     for (const outfitData of entry.outfits ?? []) {
-      const outfit = createOutfit(character.id, outfitData);
+      const outfitMasterId = outfitData.outfit_master_name ? resolveOutfitMasterId(outfitData.outfit_master_name, warnings) : null;
+      let linkMode = outfitData.link_mode ?? 'copy';
+      if (linkMode === 'reference' && outfitMasterId == null) {
+        linkMode = 'copy';
+        warnings.push(`衣装「${outfitData.name}」の参照先マスタが見つからないため、コピー扱いに切り替えました（タグが空の可能性があります）`);
+      }
+      const outfit = createOutfit(character.id, { ...outfitData, outfit_master_id: outfitMasterId, link_mode: linkMode });
       if (outfitData.standing_image) {
         const imgBuffer = readImage(outfitData.standing_image);
         if (imgBuffer) {

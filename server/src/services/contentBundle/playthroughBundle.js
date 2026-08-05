@@ -52,6 +52,7 @@ export function collectPlaythroughEntry(playthroughId, imageCollector, { include
   const itemNames = nameMap(db.prepare('SELECT id, name FROM items').all());
   const roomTemplateNames = nameMap(db.prepare('SELECT id, name FROM room_templates').all());
   const eventDefNames = nameMap(db.prepare('SELECT id, name FROM event_definitions').all());
+  const masterNames = nameMap(db.prepare('SELECT id, name FROM outfit_masters').all());
 
   function outfitRef(outfitId) {
     if (outfitId == null) return null;
@@ -237,6 +238,23 @@ export function collectPlaythroughEntry(playthroughId, imageCollector, { include
         added_at: r.added_at,
         revealed: r.revealed,
       })),
+    // 実装順8/5で追加されて以来、このバンドルに一度も同梱されていなかった
+    // 2テーブル(実装順9で解消)。current_outfit_id と同じ outfitRef() で
+    // 名前解決する -- 別テーブルというだけで実体は同じ「衣装への参照」。
+    playthrough_character_outfit: db
+      .prepare('SELECT character_id, outfit_id FROM playthrough_character_outfit WHERE playthrough_id = ?')
+      .all(playthroughId)
+      .map((r) => ({
+        character_name: characterNames.get(r.character_id) ?? null,
+        outfit_ref: outfitRef(r.outfit_id),
+      })),
+    playthrough_character_underwear: db
+      .prepare('SELECT character_id, outfit_master_id FROM playthrough_character_underwear WHERE playthrough_id = ?')
+      .all(playthroughId)
+      .map((r) => ({
+        character_name: characterNames.get(r.character_id) ?? null,
+        outfit_master_name: r.outfit_master_id != null ? (masterNames.get(r.outfit_master_id) ?? null) : null,
+      })),
   };
 }
 
@@ -274,6 +292,7 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
   // イベント名は世界観をまたいで重複しうる(このセッションで実際に重複を
   // 32件片付けた実績がある)ので、best-effort で最初に一致したものを使う。
   const eventDefIdByName = new Map(db.prepare('SELECT id, name FROM event_definitions').all().map((e) => [e.name, e.id]));
+  const masterIdByName = new Map(db.prepare('SELECT id, name FROM outfit_masters').all().map((m) => [m.name, m.id]));
 
   // 1. ルート本体。createPlaythrough は既定値で作るので、直後に生の値で
   // 上書きする(世界観の初期値ではなく、持ち出した時点の状態を復元するため)。
@@ -538,6 +557,24 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
     db.prepare(
       'INSERT INTO playthrough_timers (playthrough_id, timer_key, character_id, start_day, due_day, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(pid, t.timer_key, characterId, t.start_day, t.due_day, t.note, t.created_at);
+  }
+
+  for (const r of entry.playthrough_character_outfit ?? []) {
+    const characterId = resolveCharacter(r.character_name);
+    if (characterId == null) continue;
+    let outfitId = null;
+    if (r.outfit_ref) {
+      const outfit = db.prepare('SELECT id FROM outfits WHERE character_id = ? AND name = ?').get(characterId, r.outfit_ref.outfit_name);
+      outfitId = outfit?.id ?? null;
+    }
+    db.prepare('INSERT INTO playthrough_character_outfit (playthrough_id, character_id, outfit_id) VALUES (?, ?, ?)').run(pid, characterId, outfitId);
+  }
+
+  for (const r of entry.playthrough_character_underwear ?? []) {
+    const characterId = resolveCharacter(r.character_name);
+    if (characterId == null) continue;
+    const masterId = r.outfit_master_name != null ? masterIdByName.get(r.outfit_master_name) ?? null : null;
+    db.prepare('INSERT INTO playthrough_character_underwear (playthrough_id, character_id, outfit_master_id) VALUES (?, ?, ?)').run(pid, characterId, masterId);
   }
 
   for (const i of entry.playthrough_inventory ?? []) {
