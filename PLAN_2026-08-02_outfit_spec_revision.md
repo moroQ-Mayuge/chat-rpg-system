@@ -224,7 +224,7 @@ composeWornOutfit(character, outfitInstance, underwearState)
 | 5 | `outfit_masters.slot='下着'` ＋ ルート単位の着用下着テーブル ＋ 「下着を上書きする」フラグ ＋ 日次抽選（`advanceTime` / `timeSkip` の day ロールオーバー） ＋ World単位ON/OFF | OFF既定なら影響なし | **完了（2026-08-04、migration 0090、`underwearAssignment.js`、`composeWornOutfit`に`playthroughId`引数追加）** |
 | 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ | **完了（2026-08-04、migration 0091、`item_wear`種別追加、NPC所持品一覧エンドポイント新設）** |
 | 7 | `change_outfit` に `outfit_master_id` 指定を追加 | 既存パラメータは維持 | **完了（2026-08-05、`wearMasterAsCharacter`を再利用、対象指定は`resolveSingleTargetId`のまま変更なし、`EventsPage.jsx`にマスタ選択プルダウン追加）** |
-| 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） | 未着手 |
+| 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） | **完了（2026-08-05、migration 0092、`playthroughCharacterOutfitRepo.js`新設、`updateParticipantOutfit`/`createRoomSession`/`addParticipant`の3箇所に解決順として挿入。モブは`isMobCharacter`で除外）** |
 | 9 | エクスポート/インポートのマスタ対応（名前ベース解決） | — | 未着手 |
 | 10 | **既存データ整理**：`main_features`/`hairstyle` のキャラ側への集約、`main_features` に混入した衣服タグの分離、同名衣装のマスタ化 | 手作業込み | 未着手（§6.1参照） |
 
