@@ -6,6 +6,7 @@ import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
+import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
 import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
@@ -152,7 +153,7 @@ function actionDefaults(type) {
     case 'change_relationship':
       return { character_id: null, axis_id: null, operation: 'add', value: 5 };
     case 'change_outfit':
-      return { character_id: null, outfit_id: null };
+      return { character_id: null, outfit_id: null, outfit_master_id: null };
     case 'advance_time':
       return { slots: 1 };
     case 'make_item_available':
@@ -677,7 +678,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, items, statuses, hasOutcomeBranch, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, statuses, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -1075,6 +1076,17 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, status
           <label>
             <span style={label11}>切り替え先衣装ID</span>
             <input type="number" value={p.outfit_id ?? ''} onChange={(e) => setParams({ outfit_id: Number(e.target.value) || null })} />
+          </label>
+          <label>
+            <span style={label11}>衣装マスタから指定（任意・指定時はこちらが優先）</span>
+            <select value={p.outfit_master_id ?? ''} onChange={(e) => setParams({ outfit_master_id: Number(e.target.value) || null })}>
+              <option value="">指定なし</option>
+              {(outfitMasters ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       )}
@@ -1790,6 +1802,7 @@ export default function EventsPage() {
   const { data: expressionTypes } = useExpressionTypes();
   const { data: roomTemplates } = useRoomTemplates();
   const { data: items } = useAllItems();
+  const { data: outfitMasters } = useAllOutfitMasters();
   const { data: statuses } = useAllCharacterStatuses();
   const { data: worlds } = useWorlds();
   const { create, update, remove } = useEventDefinitionMutations();
@@ -2282,6 +2295,7 @@ export default function EventsPage() {
                   axes={axes}
                   expressionTypes={expressionTypes}
                   items={items}
+                  outfitMasters={outfitMasters}
                   statuses={statuses}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
