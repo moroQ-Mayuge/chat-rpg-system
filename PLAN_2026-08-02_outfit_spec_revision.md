@@ -225,7 +225,7 @@ composeWornOutfit(character, outfitInstance, underwearState)
 | 6 | `items.outfit_master_id` ＋ 「着る」行動コマンド ＋ 部屋での発見・購入対応 | 新機能のみ | **完了（2026-08-04、migration 0091、`item_wear`種別追加、NPC所持品一覧エンドポイント新設）** |
 | 7 | `change_outfit` に `outfit_master_id` 指定を追加 | 既存パラメータは維持 | **完了（2026-08-05、`wearMasterAsCharacter`を再利用、対象指定は`resolveSingleTargetId`のまま変更なし、`EventsPage.jsx`にマスタ選択プルダウン追加）** |
 | 8 | 着用衣装のルート単位持続（C7 の修正） | **挙動が変わる**（部屋移動で既定に戻らなくなる） | **完了（2026-08-05、migration 0092、`playthroughCharacterOutfitRepo.js`新設、`updateParticipantOutfit`/`createRoomSession`/`addParticipant`の3箇所に解決順として挿入。モブは`isMobCharacter`で除外）** |
-| 9 | エクスポート/インポートのマスタ対応（名前ベース解決） | — | 未着手 |
+| 9 | エクスポート/インポートのマスタ対応（名前ベース解決） | — | **完了（2026-08-06、`characterBundle.js`に`outfit_master_name`/`link_mode`/`overrides_underwear`のexport/import追加、`playthroughBundle.js`に`playthrough_character_outfit`/`playthrough_character_underwear`のexport/import追加。`outfit_masters`本体は`relationship_axes`等と同じ「宛先に既存の前提」で名前解決のみ）** |
 | 10 | **既存データ整理**：`main_features`/`hairstyle` のキャラ側への集約、`main_features` に混入した衣服タグの分離、同名衣装のマスタ化 | 手作業込み | 未着手（§6.1参照） |
 
 ### 6.1 第10段（既存データ整理）の現在の進捗（2026-08-02 記録）
