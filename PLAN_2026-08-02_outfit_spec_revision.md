@@ -236,3 +236,7 @@ composeWornOutfit(character, outfitInstance, underwearState)
 - **それ以外のキャラ**：ユーザー側でタグ関連（素体タグと衣装タグの切り分けなど）を整理作業中
 
 → 第10段（既存データ整理）に着手する際は、全キャラ一括ではなく**キャラごとの整理済み/未整理の状態を前提に**進める。
+
+### 6.2 追加実装（2026-08-06）：既存衣装のマスタ登録（第10段の前作業簡略化）
+
+`instantiateMasterForCharacter`（実装順4、マスタ→キャラ）の逆方向として`outfitMastersRepo.createMasterFromOutfit(outfitId, {name})`を追加。既にどこかのキャラに正しいタグ値で入っている衣装（例：同名衣装71件が5種類に集約される制服類）を、19タグの再入力無しでそのままマスタ化できる。元の衣装行は新マスタへ`link_mode='copy'`でリンクし直され、タグ値自体は変わらない。`POST /outfits/:id/promote-to-master`、`CharactersPage.jsx`の衣装エディタに「この衣装をマスタとして登録」ボタン（`outfit_master_id`未設定の衣装にのみ表示）。第10段本体（既存データ整理）はまだ未着手。
