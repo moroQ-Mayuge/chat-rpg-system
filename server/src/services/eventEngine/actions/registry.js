@@ -21,6 +21,7 @@ import { executeEndPregnancy } from './endPregnancy.js';
 import { executeSetTimer } from './setTimer.js';
 import { executeClearTimer } from './clearTimer.js';
 import { executeTimeSkip } from './timeSkip.js';
+import { executeTransformCharacter } from './transformCharacter.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -46,6 +47,7 @@ export const actionRegistry = {
   set_timer: executeSetTimer,
   clear_timer: executeClearTimer,
   time_skip: executeTimeSkip,
+  transform_character: executeTransformCharacter,
 };
 
 export async function executeAction(action, execCtx) {

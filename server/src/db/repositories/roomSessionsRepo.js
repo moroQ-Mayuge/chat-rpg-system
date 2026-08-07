@@ -464,3 +464,16 @@ export function updateParticipantOutfit(sessionId, characterId, outfitId) {
   }
   return getRoomSession(sessionId);
 }
+
+export function updateParticipantTransformation(sessionId, characterId, transformationId) {
+  db.prepare('UPDATE room_session_characters SET current_transformation_id = ? WHERE room_session_id = ? AND character_id = ?').run(
+    transformationId,
+    sessionId,
+    characterId,
+  );
+  if (!isMobCharacter(characterId)) {
+    const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
+    setPersistedTransformation(session.playthrough_id, characterId, transformationId);
+  }
+  return getRoomSession(sessionId);
+}

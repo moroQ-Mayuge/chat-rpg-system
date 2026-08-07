@@ -7,6 +7,7 @@ import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
 import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
+import { useAllCharacterTransformations } from '../hooks/useCharacterTransformations.js';
 import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
@@ -83,6 +84,7 @@ const ACTION_TYPES = [
   { value: 'set_flag', label: 'フラグ操作' },
   { value: 'change_relationship', label: '関係性パラメータ変更' },
   { value: 'change_outfit', label: '衣装変更' },
+  { value: 'transform_character', label: '変身' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'make_item_available', label: 'アイテムを拾える状態にする' },
@@ -154,6 +156,8 @@ function actionDefaults(type) {
       return { character_id: null, axis_id: null, operation: 'add', value: 5 };
     case 'change_outfit':
       return { character_id: null, outfit_id: null, outfit_master_id: null };
+    case 'transform_character':
+      return { character_id: null, transformation_id: null };
     case 'advance_time':
       return { slots: 1 };
     case 'make_item_available':
@@ -678,7 +682,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, statuses, hasOutcomeBranch, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -1084,6 +1088,37 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
               {(outfitMasters ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {action.action_type === 'transform_character' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
+              {charOptions}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>変身先（未指定＝解除して素のキャラに戻す）</span>
+            <select value={p.transformation_id ?? ''} onChange={(e) => setParams({ transformation_id: Number(e.target.value) || null })}>
+              <option value="">指定なし（変身解除）</option>
+              {(transformations ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.character_name}: {t.name}
                 </option>
               ))}
             </select>
@@ -1803,6 +1838,7 @@ export default function EventsPage() {
   const { data: roomTemplates } = useRoomTemplates();
   const { data: items } = useAllItems();
   const { data: outfitMasters } = useAllOutfitMasters();
+  const { data: transformations } = useAllCharacterTransformations();
   const { data: statuses } = useAllCharacterStatuses();
   const { data: worlds } = useWorlds();
   const { create, update, remove } = useEventDefinitionMutations();
@@ -2296,6 +2332,7 @@ export default function EventsPage() {
                   expressionTypes={expressionTypes}
                   items={items}
                   outfitMasters={outfitMasters}
+                  transformations={transformations}
                   statuses={statuses}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}

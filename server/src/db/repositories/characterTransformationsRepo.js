@@ -24,6 +24,18 @@ export const CHARACTER_TRANSFORMATION_FIELDS = [
   'special_skills',
 ];
 
+// EventsPage.jsx の変身先ピッカー(character_idが動的な"mentioned"/"condition_matched"の
+// ときは対象を事前に絞れないため、全キャラ分をキャラ名付きで一覧表示する)向け。
+export function listAll() {
+  return db
+    .prepare(
+      `SELECT ct.*, c.name AS character_name FROM character_transformations ct
+       JOIN characters c ON c.id = ct.character_id
+       ORDER BY c.name ASC, ct.name ASC`,
+    )
+    .all();
+}
+
 export function listForCharacter(characterId) {
   return db
     .prepare('SELECT * FROM character_transformations WHERE character_id = ? ORDER BY id ASC')
