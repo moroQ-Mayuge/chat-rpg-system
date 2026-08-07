@@ -32,7 +32,7 @@
 
 **推奨候補（対応方針、未決定）**: character_idを分けず、**衣装マスタと同じ発想**（`outfit_masters`のマスタ定義＋`current_outfit_id`のセッション/ルート単位持続＋`composeWornOutfit`合成層）を、衣装だけでなく名前・見た目・技能にも拡張する形。character_idが変わらないため「好感度・基本ステータス共有」は自動的に満たされ、イベント条件・チャットログ・関係値への副作用もゼロ。実装順3〜8の資産をほぼ転用できる。
 
-**実装状況**: この方針で着手済み。4段階に分割し、**第1段（スキーマ＋合成層＋表示反映）は2026-08-08に実装・検証・コミット済み**（`character_transformations`テーブル、`current_transformation_id`／`playthrough_character_transformation`、`composeCharacterIdentity()`、`attachParticipants()`/`promptBuilder.js`/`insertDialogue.js`への差し込み。コミット`5a5c59a`）。まだ変身を発生させる書き込み経路（イベントアクション・プレイヤー主導コマンド）・編集UIは無い。残り3段（イベントアクション／プレイヤー主導コマンド／編集UI）は未着手、「実装順N」で個別着手予定。
+**実装状況**: この方針で着手済み。4段階に分割し、**第1段（スキーマ＋合成層＋表示反映）・第2段（イベントアクション`transform_character`＋CRUD API）は2026-08-08に実装・検証・コミット済み**（第1段: `character_transformations`テーブル、`current_transformation_id`／`playthrough_character_transformation`、`composeCharacterIdentity()`、`attachParticipants()`/`promptBuilder.js`/`insertDialogue.js`への差し込み、コミット`5a5c59a`。第2段: `updateParticipantTransformation`、`executeTransformCharacter`（対象キャラ以外の変身定義は`transformation_not_owned`で安全に無視）、`character-transformations`系REST API新設、`EventsPage.jsx`に「変身」アクションUI追加、コミット`dce2163`）。まだプレイヤー主導コマンド・編集UIは無い（API直叩きでのみ変身定義を作成可能）。残り2段（プレイヤー主導「変身のお願い」コマンド／`CharactersPage.jsx`編集UI）は未着手、順次実施中。
 
 ---
 
@@ -84,7 +84,7 @@
 | # | 内容 | 分類 | 状態 |
 |---|---|---|---|
 | 1 | `${player}`が別`@キャラ`に置き換わる | バグ | 原因特定（生成モードのプロンプトにプレイヤーが許可リストから漏れている） |
-| 2 | 変身キャラ機構の追加 | 新機能 | **実装中**（4段階に分割、第1段完了・コミット済み。残り3段は未着手） |
+| 2 | 変身キャラ機構の追加 | 新機能 | **実装中**（4段階に分割、第1・2段完了・コミット済み。残り2段は未着手） |
 | 3 | 部屋アイテムが場面をまたいでリセットされない | 仕様通り（バグではない） | 恒久仕様と判明、リセット機構自体が未実装（新規追加が必要） |
 | 4 | 子供キャラ生成時に要素がほぼ空 | バグ | 原因特定（36フィールド中25が未設定、継承ロジックも4フィールドのみ）。副次的に`child_gender`未使用も発覚 |
 | 5 | 母の名前の洋風/和風判定・表記ルール整理 | 新機能 | 実データ検証済みだが洋風名の実例が無く判定基準は要相談 |
