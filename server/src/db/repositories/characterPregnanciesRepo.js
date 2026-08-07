@@ -75,6 +75,12 @@ export function endPregnancy(id, day, outcome, { childName = '', childGender = '
   return getPregnancy(id);
 }
 
+// 実装順4(不具合報告2026-08-06項目4): 子キャラ生成後、「詳細をLLMで生成」で
+// 母の性格・口調を参考文脈として使うための逆引き。
+export function getPregnancyByChildCharacterId(childCharacterId) {
+  return db.prepare('SELECT * FROM character_pregnancies WHERE child_character_id = ?').get(childCharacterId);
+}
+
 export function setChildCharacter(id, childCharacterId) {
   db.prepare('UPDATE character_pregnancies SET child_character_id = ? WHERE id = ?').run(childCharacterId, id);
   return getPregnancy(id);

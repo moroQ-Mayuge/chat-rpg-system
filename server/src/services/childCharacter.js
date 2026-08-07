@@ -1,11 +1,12 @@
 import { db } from '../db/connection.js';
-import { createCharacter, getCharacter } from '../db/repositories/charactersRepo.js';
+import { createCharacter, getCharacter, updateCharacter } from '../db/repositories/charactersRepo.js';
 import { attachCharacterToWorld } from '../db/repositories/worldCharactersRepo.js';
-import { getPregnancy, setChildCharacter } from '../db/repositories/characterPregnanciesRepo.js';
+import { getPregnancy, setChildCharacter, getPregnancyByChildCharacterId } from '../db/repositories/characterPregnanciesRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { childGrowthStateFor, childAppearanceAge } from './pregnancy.js';
 import { generateChildName } from './childName.js';
+import { generateCharacterSheet } from './characterAssist.js';
 
 // 当面は少女で固定。可変にするのは「子を次代の主人公にする」を実装する時期で、
 // それまで性別で分岐する処理を増やさないための固定
@@ -128,4 +129,48 @@ export function materializeChild(pregnancyId) {
   setChildCharacter(pregnancy.id, child.id);
 
   return { child: getCharacter(child.id), mother_name: mother.name };
+}
+
+// materializeChild が確実に決めた項目(継承した見た目・World設定由来の属性キー・
+// 呼び方・親子関係の備考)は、LLMの推測で上書きされないよう常に子の現在値で
+// 再上書きする。
+const PRESERVED_ON_DETAIL_GENERATION = [
+  'name',
+  'gender',
+  'age_real',
+  'age_apparent',
+  'race',
+  'attribute',
+  'eye_description',
+  'hair_description',
+  'attribute_tags',
+  'call_user_as',
+  'notes',
+];
+
+// materializeChild とは独立した、明示的に呼び出す操作(不具合報告2026-08-06
+// 項目4)。koboldcppが止まっていれば失敗するのはこちら側だけで、キャラ行自体は
+// 既に確実に存在する(materializeChild 自身の設計方針と同じ)。母の性格・口調を
+// 参考文脈として渡し、「そのままコピーせず変化させる」よう明示することで
+// 要望の両方(空欄埋め／引き継ぎ表現の変化)を満たす。
+export async function generateChildDetails(childId) {
+  const child = getCharacter(childId);
+  if (!child) return { error: 'character_not_found' };
+
+  const pregnancy = getPregnancyByChildCharacterId(childId);
+  const mother = pregnancy ? getCharacter(pregnancy.character_id) : null;
+
+  const motherContext = mother
+    ? `母親「${mother.name}」の性格『${mother.personality || '不明'}』、口調『${mother.speech_style || '不明'}』、一人称『${mother.first_person || '不明'}』を参考にしつつ、血のつながりを感じさせる部分を残しながらも、母の言い回しをそのまま流用せず、年齢相応かつこの子自身の個性が出るよう微妙に変化させてください。`
+    : '';
+  const instruction = `${child.age_apparent || child.age_real}歳の${child.gender || '女の子'}「${child.name}」。${motherContext}性格・口調・容姿・技能など残りの設定を考えてください。`;
+
+  const sheet = await generateCharacterSheet(instruction);
+
+  const merged = {
+    ...child,
+    ...sheet.fields,
+    ...Object.fromEntries(PRESERVED_ON_DETAIL_GENERATION.map((f) => [f, child[f]])),
+  };
+  return { child: updateCharacter(childId, merged), suggestedTags: sheet.suggestedTags };
 }

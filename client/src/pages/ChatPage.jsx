@@ -680,7 +680,9 @@ export default function ChatPage() {
       const result = await playthroughsApi.materializeChild(session.playthrough_id, pregnancyId);
       queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
       queryClient.invalidateQueries({ queryKey: ['characters'] });
-      alert(`「${result.child.name}」をキャラクターとして作成しました。立ち絵と表情はキャラクター画面から作成してください。`);
+      alert(
+        `「${result.child.name}」をキャラクターとして作成しました。立ち絵と表情、詳細設定（キャラ画面の「詳細をLLMで生成」ボタン）はキャラクター画面から行ってください。`,
+      );
     } catch (err) {
       setMaterializeError(`子キャラの作成に失敗しました：${err.message}`);
     } finally {

@@ -7,6 +7,7 @@ import {
   deleteCharacter,
 } from '../db/repositories/charactersRepo.js';
 import { generateCharacterSheet, parseAndSuggestTags, regenerateField } from '../services/characterAssist.js';
+import { generateChildDetails } from '../services/childCharacter.js';
 import { exportCharacterBundle } from '../services/contentBundle/index.js';
 import { listWorldsForCharacter, attachCharacterToWorld, detachCharacterFromWorld } from '../db/repositories/worldCharactersRepo.js';
 
@@ -76,6 +77,16 @@ charactersRouter.post('/:id/worlds', (req, res) => {
 
 charactersRouter.delete('/:id/worlds/:worldId', (req, res) => {
   res.json(detachCharacterFromWorld(req.params.worldId, req.params.id));
+});
+
+charactersRouter.post('/:id/generate-child-details', async (req, res) => {
+  const existing = getCharacter(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  try {
+    res.json(await generateChildDetails(req.params.id));
+  } catch (err) {
+    res.status(502).json({ error: 'generation_failed', message: err.message });
+  }
 });
 
 charactersRouter.get('/:id/export-bundle', async (req, res) => {

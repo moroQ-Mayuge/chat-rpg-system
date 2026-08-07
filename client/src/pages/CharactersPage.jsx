@@ -205,6 +205,7 @@ export default function CharactersPage() {
   const [imageGenError, setImageGenError] = useState(null);
   const [expressionGenMode, setExpressionGenMode] = useState('');
   const [batchExpressionProgress, setBatchExpressionProgress] = useState(null);
+  const [generatingDetails, setGeneratingDetails] = useState(false);
 
   useEffect(() => {
     setPendingOutfitTags('');
@@ -305,6 +306,19 @@ export default function CharactersPage() {
       setAssistError(err.message);
     } finally {
       setIsGeneratingSheet(false);
+    }
+  }
+
+  async function handleGenerateChildDetails() {
+    setGeneratingDetails(true);
+    setAssistError(null);
+    try {
+      await charactersApi.generateChildDetails(selectedId);
+      queryClient.invalidateQueries({ queryKey: ['characters', selectedId] });
+    } catch (err) {
+      setAssistError(err.message);
+    } finally {
+      setGeneratingDetails(false);
     }
   }
 
@@ -780,6 +794,13 @@ export default function CharactersPage() {
 
             {activeTab === 'basic' && (
               <div>
+                {existing?.is_auto_created && (
+                  <div style={{ marginBottom: 10 }}>
+                    <button onClick={handleGenerateChildDetails} disabled={generatingDetails}>
+                      {generatingDetails ? '生成中...' : '詳細をLLMで生成（親の設定を参考に）'}
+                    </button>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
                   {BASIC_FIELDS.map(([key, label]) => (
                     <FieldWithRoll
