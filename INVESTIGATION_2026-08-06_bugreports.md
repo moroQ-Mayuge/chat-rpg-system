@@ -8,7 +8,13 @@
 
 ## 1. イベントの`${player}`が、よく別の`@キャラ`に置き換わる
 
-**状態: 調査完了、原因を概ね特定。対応方針は未定（ユーザー判断待ち）。**
+**状態: 実装完了・コミット済み（2026-08-08、コミット`cdf1965`）。**
+
+`insertDialogue.js`の`presentParticipantsLine()`（LLMへの「実在の許可済み人物一覧」）にプレイヤーを追加（`protagonist_mode === 'character'`の時のみ、`'narrator'`時は本来この場に存在しないため加えない）。あわせて、`${player}`自体の解決（`placeholderResolution.js`）が`resolveProtagonist()`のWorld既定値フォールバックを経由していなかった隣接バグ（`use_custom_protagonist`がOFFでもWorld側の名前を使わず常に「あなた」に落ちていた）も同時に修正——これを直さないと「許可リストは正しい名前、置換結果は『あなた』」という新しい不一致を生むため。
+
+**検証**: 直接スクリプトで`${player}`の解決結果・`presentParticipantsLine`のロジック（character/narrator両モード、既存NPCとの共存）を確認、他プレースホルダートークンへの回帰なしを確認。dev環境にkoboldcpp未起動のため、実際のLLM出力での改善確認はできず（プロンプト構築ロジック自体の正しさのみ保証）。
+
+**今回は対象外（別件として記録のみ）**: `${player.属性}`未実装、`llm_judge`の`${target1}`が`per_character_firing`で意図と異なるキャラを拾うバグ（原因は別箇所、`eventEngine/index.js`の条件評価コンテキスト）。
 
 - `${player}`自体の解決（`server/src/services/eventEngine/placeholderResolution.js`の`resolveGlobalToken`）は`base === 'player'`なら必ず`playthrough.protagonist_name`（未設定なら「あなた」）を返す作りで、`@キャラ`名との文字列的な衝突は起きない。プレイヤーは`characters`/`room_session_characters`に行を持たない（`worlds`/`playthroughs`の自由記述列のみ）ため、`@`メンションスキャン（`resolveMentions()`）の対象にも構造的に入らない。
 - **本命（ユーザー確認済み: 生成モードで発生）**: `insertDialogue.js`の`generateNarrationLine()`が組み立てるLLM向けシステムプロンプトが「実在の人物名は登場人物一覧の中からのみ使うこと」と指示するが、その一覧（`presentParticipantsLine()`）は**部屋の参加者のみでプレイヤーを含まない**。`${player}`は指示文中で先にプレイヤー実名へ置換済みのため、「その名前は許可リストに無い」という矛盾状態でLLMに書かせており、モデルが許可リストにある別`@キャラ`名で代用してしまう、という筋。固定文（`mode: "fixed"`）や`set_scene_situation`では起きないはず。
@@ -89,7 +95,7 @@
 
 | # | 内容 | 分類 | 状態 |
 |---|---|---|---|
-| 1 | `${player}`が別`@キャラ`に置き換わる | バグ | 原因特定（生成モードのプロンプトにプレイヤーが許可リストから漏れている） |
+| 1 | `${player}`が別`@キャラ`に置き換わる | バグ | **実装完了**（許可リストにプレイヤーを追加＋隣接するWorld既定名フォールバック漏れも修正。`${player.属性}`未実装／`llm_judge`の`${target1}`バグは対象外のまま） |
 | 2 | 変身キャラ機構の追加 | 新機能 | **実装完了**（4段階すべてコミット済み） |
 | 3 | 部屋アイテムが場面をまたいでリセットされない | 仕様通り（バグではない） | 恒久仕様と判明、リセット機構自体が未実装（新規追加が必要） |
 | 4 | 子供キャラ生成時に要素がほぼ空 | バグ | **実装完了**（「詳細をLLMで生成」操作を新設。`child_gender`未使用は意図的な既存仕様のため今回は対象外） |
