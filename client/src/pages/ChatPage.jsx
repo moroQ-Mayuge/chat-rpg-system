@@ -7,6 +7,7 @@ import { useChatStream } from '../hooks/useChatStream.js';
 import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
+import { useCharacterTransformationsForCharacter } from '../hooks/useCharacterTransformations.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
@@ -515,6 +516,76 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button type="button" onClick={submit} disabled={!targetId || !itemId}>
+            {command.label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 「変身のお願い」パネル(実装順3)。ItemWearPanelと同じ「対象を先に選ぶ」形だが、
+// 対象NPC"自身の"変身定義(character_transformationsはcharacter_id必須の1キャラ
+// 専用)だけを選ばせる。変身の解除も意味のある選択肢なので、着る側と違い
+// 変身先の選択自体は必須にしない(対象さえ選べば送信可)。
+function TransformRequestPanel({ command, sessionId, participants, onClose, onSend }) {
+  const [targetId, setTargetId] = useState('');
+  const { data: transformations } = useCharacterTransformationsForCharacter(targetId ? Number(targetId) : null);
+  const { transformRequest } = useRoomSessionMutations(sessionId);
+  const [transformationId, setTransformationId] = useState('');
+
+  async function submit() {
+    const target = participants.find((p) => p.character_id === Number(targetId));
+    if (!target) return;
+    const value = transformationId === '' ? null : Number(transformationId);
+    await transformRequest.mutateAsync({ characterId: target.character_id, transformationId: value });
+    const chosen = (transformations ?? []).find((t) => t.id === value);
+    onSend(`@${target.name}に${command.label}（${chosen ? chosen.name : '変身解除'}）`);
+    onClose();
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>{command.label}</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>対象</span>
+          <select
+            style={{ width: '100%' }}
+            value={targetId}
+            onChange={(e) => {
+              setTargetId(e.target.value);
+              setTransformationId('');
+            }}
+          >
+            <option value="">対象を選択してください</option>
+            {participants.map((p) => (
+              <option key={p.id} value={p.character_id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {targetId && (
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>変身先</span>
+            <select style={{ width: '100%' }} value={transformationId} onChange={(e) => setTransformationId(e.target.value)}>
+              <option value="">変身を解除する</option>
+              {(transformations ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={submit} disabled={!targetId}>
             {command.label}
           </button>
         </div>
@@ -1033,6 +1104,15 @@ export default function ChatPage() {
         <ItemWearPanel
           command={itemPanel}
           playthroughId={session.playthrough_id}
+          sessionId={id}
+          participants={session.participants}
+          onClose={() => setItemPanel(null)}
+          onSend={sendText}
+        />
+      )}
+      {itemPanel?.command_type === 'transform_request' && (
+        <TransformRequestPanel
+          command={itemPanel}
           sessionId={id}
           participants={session.participants}
           onClose={() => setItemPanel(null)}

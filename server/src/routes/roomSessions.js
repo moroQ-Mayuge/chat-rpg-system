@@ -9,8 +9,10 @@ import {
   createRoomSession,
   setAccompanying,
   updateParticipantOutfit,
+  updateParticipantTransformation,
 } from '../db/repositories/roomSessionsRepo.js';
 import { wearMasterAsCharacter } from '../db/repositories/outfitMastersRepo.js';
+import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem, getItem, listPickupItemsForSession, markItemPickedUp } from '../db/repositories/itemsRepo.js';
@@ -263,6 +265,23 @@ roomSessionsRouter.post('/:id/wear-item', (req, res) => {
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });
+});
+
+// 「変身のお願い」(実装順3)。character_transformations は character_id 必須の
+// 1キャラ専用なので、対象キャラのものでない変身定義は実装順2のイベント
+// アクションと同じ規約で拒否する。transformation_id 省略/nullで変身解除。
+roomSessionsRouter.post('/:id/transform-request', (req, res) => {
+  const { character_id, transformation_id } = req.body;
+  if (!character_id) return res.status(400).json({ error: 'character_id_required' });
+  if (transformation_id != null) {
+    const transformation = getTransformation(transformation_id);
+    if (!transformation || transformation.character_id !== Number(character_id)) {
+      return res.status(400).json({ error: 'transformation_not_owned' });
+    }
+  }
+  updateParticipantTransformation(req.params.id, character_id, transformation_id ?? null);
+  broadcast(req.params.id, { type: 'participants_changed' });
+  res.json({ transformation_id: transformation_id ?? null });
 });
 
 roomSessionsRouter.post('/:id/exit', async (req, res) => {

@@ -26,6 +26,7 @@ const COMMAND_TYPE_LABELS = {
   item_check: '持ち物確認',
   item_use: 'アイテム使用',
   item_wear: '着る',
+  transform_request: '変身のお願い',
   free_text: '自由入力',
 };
 

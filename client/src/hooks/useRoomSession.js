@@ -51,5 +51,9 @@ export function useRoomSessionMutations(id) {
       mutationFn: ({ characterId, itemId }) => roomSessionsApi.wearItem(id, characterId, itemId),
       onSuccess: invalidate,
     }),
+    transformRequest: useMutation({
+      mutationFn: ({ characterId, transformationId }) => roomSessionsApi.transformRequest(id, characterId, transformationId),
+      onSuccess: invalidate,
+    }),
   };
 }
