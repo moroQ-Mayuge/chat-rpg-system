@@ -8,6 +8,10 @@ import {
   useCharacterWorlds,
   useCharacterWorldMutations,
 } from '../hooks/useCharacters.js';
+import {
+  useCharacterTransformationsForCharacter,
+  useCharacterTransformationMutations,
+} from '../hooks/useCharacterTransformations.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
@@ -85,6 +89,35 @@ const PERSONALITY_FIELDS = [
   ['notes', '備考'],
 ];
 
+// character_transformations のフィールドグルーピング(実装順4)。キャラ本体の
+// BASIC_FIELDS/APPEARANCE_FIELDS/PERSONALITY_FIELDSと同じ命名・粒度で揃えて
+// あるので、同じレイアウトで並べても違和感がない。
+const TRANSFORMATION_NAME_FIELDS = [
+  ['name', '変身後の名前（必須）'],
+  ['full_name', '本名'],
+  ['nickname', 'あだ名'],
+];
+const TRANSFORMATION_APPEARANCE_FIELDS = [
+  ['appearance_features', '容姿特徴'],
+  ['eye_description', '目色形状'],
+  ['hair_description', '髪型髪色'],
+  ['body_type', '体型'],
+  ['bust_description', '胸大きさ形'],
+  ['physical_features', '身体特徴'],
+  ['main_features', '主たる特徴（画像生成用danbooruタグ）'],
+  ['hairstyle', '髪型（画像生成用danbooruタグ）'],
+];
+const TRANSFORMATION_PERSONALITY_FIELDS = [
+  ['first_person', '一人称'],
+  ['speech_style', '口調'],
+  ['sentence_ending', '語尾'],
+  ['personality', '性格'],
+];
+const TRANSFORMATION_SKILL_FIELDS = [
+  ['skills', 'スキル技能'],
+  ['special_skills', '特殊スキル'],
+];
+
 // Pre-populated so a new character starts with a visible example rather than
 // a blank list -- these are just a starting point, freely renamed/removed.
 const DEFAULT_IMPRESSION_DEFAULTS = [
@@ -123,6 +156,17 @@ function FieldWithRoll({ label, value, onChange, onRoll, rolling }) {
   );
 }
 
+// 変身定義フォーム用の軽量フィールド(実装順4)。FieldWithRollと違い、LLM
+// 再生成は今回のスコープ外なので🎲ボタンは付けない。
+function PlainField({ label, value, onChange }) {
+  return (
+    <div>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>{label}</p>
+      <input style={{ width: '100%' }} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
 export default function CharactersPage() {
   const queryClient = useQueryClient();
   const { data: characters, isLoading: loadingList } = useCharacters();
@@ -137,6 +181,8 @@ export default function CharactersPage() {
   const { create, update, remove } = useCharacterMutations();
   const outfitMutations = useOutfitMutations(isNew ? null : selectedId);
   const { data: allMasters } = useAllOutfitMasters();
+  const { data: transformations } = useCharacterTransformationsForCharacter(isNew ? null : selectedId);
+  const transformationMutations = useCharacterTransformationMutations(isNew ? null : selectedId);
 
   const [form, setForm] = useState(emptyForm);
   const [activeTab, setActiveTab] = useState('basic');
@@ -145,6 +191,8 @@ export default function CharactersPage() {
   const [masterLinkMode, setMasterLinkMode] = useState('copy');
   const [promoteFormOpen, setPromoteFormOpen] = useState(false);
   const [promoteName, setPromoteName] = useState('');
+  const [activeTransformationId, setActiveTransformationId] = useState(null);
+  const [transformationDraft, setTransformationDraft] = useState(null);
   const [policyHint, setPolicyHint] = useState('');
   const [pendingOutfitTags, setPendingOutfitTags] = useState('');
   const [pasteText, setPasteText] = useState('');
@@ -350,6 +398,39 @@ export default function CharactersPage() {
     if (!activeOutfit || !promoteName.trim()) return;
     await outfitMutations.promoteToMaster.mutateAsync({ id: activeOutfit.id, data: { name: promoteName.trim() } });
     setPromoteFormOpen(false);
+  }
+
+  function selectTransformation(t) {
+    setActiveTransformationId(t.id);
+    setTransformationDraft(t);
+  }
+
+  function newTransformationDraft() {
+    setActiveTransformationId('new');
+    setTransformationDraft({ name: '', outfit_master_id: null });
+  }
+
+  function setTransformationField(key, value) {
+    setTransformationDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  async function saveTransformation() {
+    if (!transformationDraft?.name?.trim()) return;
+    if (activeTransformationId === 'new') {
+      const created = await transformationMutations.create.mutateAsync(transformationDraft);
+      setActiveTransformationId(created.id);
+      setTransformationDraft(created);
+    } else {
+      const updated = await transformationMutations.update.mutateAsync({ id: activeTransformationId, data: transformationDraft });
+      setTransformationDraft(updated);
+    }
+  }
+
+  async function deleteTransformation() {
+    if (activeTransformationId == null || activeTransformationId === 'new') return;
+    await transformationMutations.remove.mutateAsync(activeTransformationId);
+    setActiveTransformationId(null);
+    setTransformationDraft(null);
   }
 
   const activeOutfit = form.outfits?.find((o) => o.id === activeOutfitId);
@@ -685,6 +766,7 @@ export default function CharactersPage() {
                 ['personality', '性格・口調'],
                 ['relationships', '関係性初期値'],
                 ['impressions', 'あなたとの関係・印象'],
+                ['transformations', '変身'],
               ].map(([key, label]) => (
                 <button
                   key={key}
@@ -1156,6 +1238,100 @@ export default function CharactersPage() {
                 <button style={{ marginTop: 8 }} onClick={addImpressionDefault}>
                   + フィールドを追加
                 </button>
+              </div>
+            )}
+
+            {activeTab === 'transformations' && (
+              <div>
+                {isNew ? (
+                  <p style={{ fontSize: 12, color: '#888' }}>キャラを作成してから変身を追加できます。</p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 11, color: '#888', margin: '0 0 10px' }}>
+                      好感度・基本ステータスは変身前のこのキャラと共有したまま、呼び名・見た目・技能だけを差し替える「変身後アイデンティティ」です。空欄の項目はこのキャラ本体の値を使います。イベントの「変身」アクションやチャット画面の「変身のお願い」から選べます。
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                      {(transformations ?? []).map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => selectTransformation(t)}
+                          style={{ fontWeight: activeTransformationId === t.id ? 700 : 400 }}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                      <button onClick={newTransformationDraft}>+ 追加</button>
+                    </div>
+
+                    {transformationDraft && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                          {TRANSFORMATION_NAME_FIELDS.map(([key, label]) => (
+                            <PlainField
+                              key={key}
+                              label={label}
+                              value={transformationDraft[key]}
+                              onChange={(v) => setTransformationField(key, v)}
+                            />
+                          ))}
+                        </div>
+                        <p style={{ fontSize: 11, color: '#888', margin: 0 }}>見た目</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                          {TRANSFORMATION_APPEARANCE_FIELDS.map(([key, label]) => (
+                            <PlainField
+                              key={key}
+                              label={label}
+                              value={transformationDraft[key]}
+                              onChange={(v) => setTransformationField(key, v)}
+                            />
+                          ))}
+                        </div>
+                        <p style={{ fontSize: 11, color: '#888', margin: 0 }}>性格・口調</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                          {TRANSFORMATION_PERSONALITY_FIELDS.map(([key, label]) => (
+                            <PlainField
+                              key={key}
+                              label={label}
+                              value={transformationDraft[key]}
+                              onChange={(v) => setTransformationField(key, v)}
+                            />
+                          ))}
+                        </div>
+                        <p style={{ fontSize: 11, color: '#888', margin: 0 }}>技能</p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                          {TRANSFORMATION_SKILL_FIELDS.map(([key, label]) => (
+                            <PlainField
+                              key={key}
+                              label={label}
+                              value={transformationDraft[key]}
+                              onChange={(v) => setTransformationField(key, v)}
+                            />
+                          ))}
+                        </div>
+                        <label>
+                          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>変身時に着せる衣装（任意・衣装マスタから指定）</span>
+                          <select
+                            value={transformationDraft.outfit_master_id ?? ''}
+                            onChange={(e) => setTransformationField('outfit_master_id', Number(e.target.value) || null)}
+                          >
+                            <option value="">指定なし</option>
+                            {(allMasters ?? []).map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                          {activeTransformationId !== 'new' && <button onClick={deleteTransformation}>削除</button>}
+                          <button onClick={saveTransformation} disabled={!transformationDraft.name?.trim()}>
+                            {activeTransformationId === 'new' ? '作成' : '保存'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
