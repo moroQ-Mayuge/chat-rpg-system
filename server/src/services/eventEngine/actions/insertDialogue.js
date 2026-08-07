@@ -7,6 +7,8 @@ import { getUndressStateLines } from '../../undressState.js';
 import { resolveSingleTargetId } from '../targetResolution.js';
 import { resolvePlaceholderText } from '../placeholderResolution.js';
 import { withDisambiguatedNames } from '../../participantNaming.js';
+import { getTransformation } from '../../../db/repositories/characterTransformationsRepo.js';
+import { composeCharacterIdentity } from '../../characterIdentity.js';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -30,10 +32,12 @@ async function generateCharacterLine(characterId, promptHint, execCtx) {
   const outfit = participant?.current_outfit_id
     ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
     : null;
+  const transformation = participant?.current_transformation_id ? getTransformation(participant.current_transformation_id) : null;
+  const identityCharacter = composeCharacterIdentity(character, transformation);
   const undressStateLines = getUndressStateLines(execCtx.playthroughId, execCtx.sessionId, characterId);
 
   const systemPrompt = [
-    serializeCharacter(character, outfit, undressStateLines),
+    serializeCharacter(identityCharacter, outfit, undressStateLines),
     presentParticipantsLine(execCtx, characterId),
     '',
     'あなたは上記のキャラクターになりきって、日本語で一言だけセリフを発してください。',

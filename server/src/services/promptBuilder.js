@@ -10,6 +10,8 @@ import { pregnancyStateFor, childGrowthStateFor } from './pregnancy.js';
 import { getActivePregnancy, listAwaitingChildAppearance } from '../db/repositories/characterPregnanciesRepo.js';
 import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames } from './participantNaming.js';
+import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
+import { composeCharacterIdentity } from './characterIdentity.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
@@ -221,7 +223,9 @@ function buildSystemPrompt(session, participants, options = {}) {
       // of that character (relationshipStatesRepo.js/characterAddressStatesRepo.js
       // ignore it entirely for non-mob characters, so this is a no-op there).
       const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id, p.id);
-      const effectiveCharacter = { ...character, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
+      const transformation = p.current_transformation_id ? getTransformation(p.current_transformation_id) : null;
+      const identityCharacter = composeCharacterIdentity(character, transformation);
+      const effectiveCharacter = { ...identityCharacter, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
       const undressStateLines = getUndressStateLines(session.playthrough_id, session.id, character.id);
       // Freeform "あなたとの関係"/"あなたの印象"-style fields (0063_character_impression_fields.sql)
       // -- only ever non-empty for characters with configured

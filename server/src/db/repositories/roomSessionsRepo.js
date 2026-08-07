@@ -6,6 +6,7 @@ import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
 import { getPersistedOutfit, setPersistedOutfit } from './playthroughCharacterOutfitRepo.js';
+import { getPersistedTransformation, setPersistedTransformation } from './playthroughCharacterTransformationRepo.js';
 import { ensureImpressionStatesSeeded } from './characterImpressionStatesRepo.js';
 import { getOutfit } from './outfitsRepo.js';
 import { getActiveOutfitStatusModifiers } from '../../services/outfitTagCategories.js';
@@ -156,9 +157,11 @@ function attachParticipants(session) {
   if (!session) return session;
   const allParticipants = db
     .prepare(
-      `SELECT rsc.id, rsc.character_id, c.name, rsc.current_outfit_id, rsc.is_active, rsc.is_accompanying
+      `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name,
+              rsc.current_outfit_id, rsc.current_transformation_id, rsc.is_active, rsc.is_accompanying
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
+       LEFT JOIN character_transformations ct ON ct.id = rsc.current_transformation_id
        WHERE rsc.room_session_id = ?`,
     )
     .all(session.id);
@@ -322,9 +325,18 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')
       .get(characterId);
     const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(playthroughId, characterId);
+    const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(playthroughId, characterId);
     const rscResult = db
-      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, ?)')
-      .run(sessionId, characterId, carryOver?.current_outfit_id ?? persisted?.outfit_id ?? defaultOutfit?.id ?? null, carryOver ? 1 : 0);
+      .prepare(
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, ?)',
+      )
+      .run(
+        sessionId,
+        characterId,
+        carryOver?.current_outfit_id ?? persisted?.outfit_id ?? defaultOutfit?.id ?? null,
+        carryOver?.current_transformation_id ?? persistedTransformation?.transformation_id ?? null,
+        carryOver ? 1 : 0,
+      );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     if (carryOver && options.fromRoomSessionId != null) {
@@ -410,19 +422,21 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
   const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(session.playthrough_id, characterId);
   const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
+  const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(session.playthrough_id, characterId);
+  const resolvedTransformationId = persistedTransformation?.transformation_id ?? null;
   const existing = db
     .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);
   let roomSessionCharacterId = existing?.id;
   if (existing) {
     db.prepare(
-      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, joined_at = datetime('now'), left_at = NULL
+      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, joined_at = datetime('now'), left_at = NULL
        WHERE id = ?`,
-    ).run(resolvedOutfitId, existing.id);
+    ).run(resolvedOutfitId, resolvedTransformationId, existing.id);
   } else {
     const rscResult = db
-      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active) VALUES (?, ?, ?, 1)')
-      .run(sessionId, characterId, resolvedOutfitId);
+      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, is_active) VALUES (?, ?, ?, ?, 1)')
+      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId);
     roomSessionCharacterId = rscResult.lastInsertRowid;
   }
   ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);
