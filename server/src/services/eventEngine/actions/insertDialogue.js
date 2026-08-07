@@ -9,6 +9,7 @@ import { resolvePlaceholderText } from '../placeholderResolution.js';
 import { withDisambiguatedNames } from '../../participantNaming.js';
 import { getTransformation } from '../../../db/repositories/characterTransformationsRepo.js';
 import { composeCharacterIdentity } from '../../characterIdentity.js';
+import { resolveProtagonist } from '../../../db/repositories/playthroughsRepo.js';
 
 function fallbackEmotionKey() {
   return db.prepare("SELECT llm_tag_key FROM expression_types WHERE name = '通常'").get()?.llm_tag_key ?? 'normal';
@@ -23,6 +24,15 @@ function presentParticipantsLine(execCtx, excludeCharacterId = null) {
   const names = withDisambiguatedNames(execCtx.session.participants)
     .filter((p) => p.character_id !== excludeCharacterId)
     .map((p) => p.display_name);
+  // プレイヤーがキャラクターとしてこの場にいるモードの時だけ加える(不具合報告
+  // 2026-08-06項目1)。${player}は指示文中で実名に置換済みなのに、この許可
+  // リストにプレイヤーが載っていないと「その名前は許可リストに無い」矛盾に
+  // なり、モデルが別の@キャラ名で代用してしまっていた。'narrator'(プレイヤーが
+  // キャラでない神/GM視点)の時は本来この場に存在しないので加えない。
+  const protagonist = resolveProtagonist(execCtx.playthroughId);
+  if (protagonist.mode === 'character') {
+    names.push(protagonist.name?.trim() || 'あなた');
+  }
   return names.length > 0 ? `この場にいる人物：${names.join('、')}` : '';
 }
 

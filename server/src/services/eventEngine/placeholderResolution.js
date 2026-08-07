@@ -1,5 +1,5 @@
 import { db } from '../../db/connection.js';
-import { getPlaythrough } from '../../db/repositories/playthroughsRepo.js';
+import { getPlaythrough, resolveProtagonist } from '../../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../../db/repositories/worldsRepo.js';
 import { getFlag } from '../../db/repositories/sessionFlagsRepo.js';
 import { getCharacterFlag } from '../../db/repositories/characterFlagsRepo.js';
@@ -85,8 +85,7 @@ const GLOBAL_FLAG_TOKENS = new Set(['season', 'time_slot', 'weather', 'day_of_we
 
 function resolveGlobalToken(base, execCtx) {
   if (base === 'player') {
-    const playthrough = getPlaythrough(execCtx.playthroughId);
-    return playthrough.protagonist_name?.trim() || 'あなた';
+    return resolveProtagonist(execCtx.playthroughId).name?.trim() || 'あなた';
   }
   if (base === 'current_day') {
     return String(getPlaythrough(execCtx.playthroughId).current_day);
