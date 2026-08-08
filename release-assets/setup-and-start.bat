@@ -5,7 +5,7 @@ echo ============================================
 echo  ChatRPG setup ^& start
 echo ============================================
 echo.
-echo [1/3] Installing dependencies (npm install)...
+echo [1/4] Installing dependencies (npm install)...
 call npm install
 if errorlevel 1 (
   echo.
@@ -15,11 +15,21 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/3] Preparing the database (npm run migrate)...
+echo [2/4] Building native modules (better-sqlite3, sharp)...
+call npm rebuild better-sqlite3 sharp --workspace server --ignore-scripts=false
+if errorlevel 1 (
+  echo.
+  echo npm rebuild failed. The server will not start without this step.
+  pause
+  exit /b 1
+)
+
+echo.
+echo [3/4] Preparing the database (npm run migrate)...
 call npm run migrate
 
 echo.
-echo [3/3] Starting the server...
+echo [4/4] Starting the server...
 echo   Open http://localhost:5180 in your browser.
 echo   Press Ctrl+C in this window to stop.
 echo.

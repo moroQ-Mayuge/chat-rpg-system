@@ -7,8 +7,10 @@
 `npm install`または`npm ci`を実行したら、必ず続けて以下を実行すること:
 
 ```bash
-npm rebuild better-sqlite3 sharp --workspace server
+npm rebuild better-sqlite3 sharp --workspace server --ignore-scripts=false
 ```
+
+**`--ignore-scripts=false`を付け忘れると`npm rebuild`は「rebuilt dependencies successfully」と表示されるだけで実際には何もビルドしない空撃ちになる**（`.npmrc`の`ignore-scripts=true`が`npm rebuild`内部のinstallスクリプト実行にも及ぶため。2026-08-09、release-assets/setup-and-start.batの検証で発覚）。付け忘れに気づかず「rebuildしたのに直らない」場合はまずこのフラグの有無を疑うこと。
 
 これを忘れるとサーバー起動時に`better-sqlite3`のネイティブモジュール未ビルドエラー、または画像処理（`sharp`）関連の実行時エラーになる。新しいネイティブ依存を追加した場合も同様にこのリストへ追記して`npm rebuild`すること。
 
