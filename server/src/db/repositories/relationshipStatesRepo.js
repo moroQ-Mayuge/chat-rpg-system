@@ -44,20 +44,49 @@ export function getValue(playthroughId, characterId, axisId, roomSessionId, room
   return getAxis(axisId)?.default_value ?? 0;
 }
 
-// そのルートの全キャラ分の現在の関係値を一括取得(記憶パネルの
-// listMemoriesForPlaythroughと同形)。モブはplaythrough_idスコープを
-// 使わない(scopeColumns参照)ため、このWHERE句だけで自然に除外される。
+// そのルートに一度でも登場した(room_session_charactersに履歴がある)非モブキャラ
+// 全員×全関係性軸を、値が無ければ軸のdefault_valueで埋めて返す。getValue()の
+// フォールバック(行が無ければaxis.default_value)と同じ考え方を一覧全体に広げた形。
+// 既存行だけを見る前バージョンでは、後から関係が動いていない軸/未シードのキャラが
+// 一覧から丸ごと消えていた。
 export function listValuesForPlaythrough(playthroughId) {
-  return db
+  const characterIds = db
     .prepare(
-      `SELECT rs.character_id, rs.relationship_axis_id, rs.current_value,
-              ra.name AS axis_name, ra.min_value, ra.max_value
-       FROM relationship_states rs
-       JOIN relationship_axes ra ON ra.id = rs.relationship_axis_id
-       WHERE rs.playthrough_id = ?
-       ORDER BY rs.character_id ASC, ra.id ASC`,
+      `SELECT DISTINCT rsc.character_id
+       FROM room_session_characters rsc
+       JOIN room_sessions rs ON rs.id = rsc.room_session_id
+       JOIN characters c ON c.id = rsc.character_id
+       WHERE rs.playthrough_id = ? AND c.is_mob = 0`,
     )
-    .all(playthroughId);
+    .all(playthroughId)
+    .map((r) => r.character_id);
+  if (characterIds.length === 0) return [];
+
+  const axes = db.prepare('SELECT id, name, min_value, max_value, default_value FROM relationship_axes ORDER BY id ASC').all();
+  const placeholders = characterIds.map(() => '?').join(',');
+  const existing = db
+    .prepare(
+      `SELECT character_id, relationship_axis_id, current_value FROM relationship_states
+       WHERE playthrough_id = ? AND character_id IN (${placeholders})`,
+    )
+    .all(playthroughId, ...characterIds);
+  const existingMap = new Map(existing.map((r) => [`${r.character_id}:${r.relationship_axis_id}`, r.current_value]));
+
+  const result = [];
+  for (const characterId of characterIds) {
+    for (const axis of axes) {
+      const key = `${characterId}:${axis.id}`;
+      result.push({
+        character_id: characterId,
+        relationship_axis_id: axis.id,
+        axis_name: axis.name,
+        min_value: axis.min_value,
+        max_value: axis.max_value,
+        current_value: existingMap.has(key) ? existingMap.get(key) : axis.default_value,
+      });
+    }
+  }
+  return result;
 }
 
 function clamp(value, axis) {
