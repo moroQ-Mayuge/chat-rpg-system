@@ -118,12 +118,12 @@ const TRANSFORMATION_SKILL_FIELDS = [
   ['special_skills', '特殊スキル'],
 ];
 
-// Pre-populated so a new character starts with a visible example rather than
-// a blank list -- these are just a starting point, freely renamed/removed.
-const DEFAULT_IMPRESSION_DEFAULTS = [
-  { field_key: 'あなたとの関係', default_value: '' },
-  { field_key: 'あなたの印象', default_value: '' },
-];
+// 実装上はcharacter_impression_defaultsの自由記述配列の一部だが、実データでは
+// ほぼ全キャラが持つ事実上の標準フィールド(タブ名「あなたとの関係・印象」も
+// この2つを指す)。エディタ上は他の固定フィールドと同じ専用UIで常に表示し、
+// 削除不可にする。
+const STANDARD_IMPRESSION_FIELD_KEYS = ['あなたとの関係', 'あなたの印象'];
+const DEFAULT_IMPRESSION_DEFAULTS = STANDARD_IMPRESSION_FIELD_KEYS.map((field_key) => ({ field_key, default_value: '' }));
 
 const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
@@ -366,10 +366,12 @@ export default function CharactersPage() {
     }));
   }
 
-  function updateImpressionDefault(index, patch) {
+  // 標準2項目を除いたフィルタ後リストで表示するため、indexではなく対象
+  // オブジェクトそのもので操作する(フィルタ後のindexは元配列のindexとズレる)。
+  function updateImpressionDefault(target, patch) {
     setForm((f) => ({
       ...f,
-      impression_defaults: f.impression_defaults.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+      impression_defaults: f.impression_defaults.map((d) => (d === target ? { ...d, ...patch } : d)),
     }));
   }
 
@@ -377,8 +379,20 @@ export default function CharactersPage() {
     setForm((f) => ({ ...f, impression_defaults: [...f.impression_defaults, { field_key: '', default_value: '' }] }));
   }
 
-  function removeImpressionDefault(index) {
-    setForm((f) => ({ ...f, impression_defaults: f.impression_defaults.filter((_, i) => i !== index) }));
+  function removeImpressionDefault(target) {
+    setForm((f) => ({ ...f, impression_defaults: f.impression_defaults.filter((d) => d !== target) }));
+  }
+
+  function standardImpressionValue(fieldKey) {
+    return form.impression_defaults?.find((d) => d.field_key === fieldKey)?.default_value ?? '';
+  }
+
+  function setStandardImpressionValue(fieldKey, value) {
+    setForm((f) => {
+      const idx = f.impression_defaults.findIndex((d) => d.field_key === fieldKey);
+      if (idx === -1) return { ...f, impression_defaults: [...f.impression_defaults, { field_key: fieldKey, default_value: value }] };
+      return { ...f, impression_defaults: f.impression_defaults.map((d, i) => (i === idx ? { ...d, default_value: value } : d)) };
+    });
   }
 
   async function addOutfit() {
@@ -1235,29 +1249,49 @@ export default function CharactersPage() {
             {activeTab === 'impressions' && (
               <div>
                 <p style={{ fontSize: 11, color: '#888', margin: '0 0 10px' }}>
-                  「あなたとの関係」「あなたの印象」のような、プレイスルーを通じて持続する自由記述フィールドです。イベントのアクション「あなたとの関係印象を変更」や、Worldの自動更新設定（下記）で書き換えられます。ここで設定するのは新しいプレイスルー開始時の初期値です。
+                  「あなたとの関係」「あなたの印象」は、プレイスルーを通じて持続する初期値です。イベントのアクション「あなたとの関係印象を変更」や、Worldの自動更新設定（下記）で書き換えられます。ここで設定するのは新しいプレイスルー開始時の初期値です。
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(form.impression_defaults ?? []).map((d, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                  {STANDARD_IMPRESSION_FIELD_KEYS.map((fieldKey) => (
+                    <label key={fieldKey} style={{ display: 'block' }}>
+                      <span style={{ fontSize: 11, color: '#888', display: 'block' }}>{fieldKey}</span>
                       <input
-                        style={{ width: 140, flexShrink: 0 }}
-                        placeholder="フィールド名（例：あなたとの関係）"
-                        value={d.field_key}
-                        onChange={(e) => updateImpressionDefault(i, { field_key: e.target.value })}
-                      />
-                      <input
-                        style={{ flex: 1 }}
+                        style={{ width: '100%' }}
                         placeholder="初期値（例：ただの知り合い）"
-                        value={d.default_value}
-                        onChange={(e) => updateImpressionDefault(i, { default_value: e.target.value })}
+                        value={standardImpressionValue(fieldKey)}
+                        onChange={(e) => setStandardImpressionValue(fieldKey, e.target.value)}
                       />
-                      <button onClick={() => removeImpressionDefault(i)}>削除</button>
-                    </div>
+                    </label>
                   ))}
                 </div>
+
+                <p style={{ fontWeight: 500, fontSize: 12, margin: '0 0 4px' }}>追加のフィールド</p>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+                  上記2項目以外に、このキャラ独自の持続フィールドを自由に追加できます。
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(form.impression_defaults ?? [])
+                    .filter((d) => !STANDARD_IMPRESSION_FIELD_KEYS.includes(d.field_key))
+                    .map((d, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                        <input
+                          style={{ width: 140, flexShrink: 0 }}
+                          placeholder="フィールド名（例：秘密の約束）"
+                          value={d.field_key}
+                          onChange={(e) => updateImpressionDefault(d, { field_key: e.target.value })}
+                        />
+                        <input
+                          style={{ flex: 1 }}
+                          placeholder="初期値（例：まだ何もない）"
+                          value={d.default_value}
+                          onChange={(e) => updateImpressionDefault(d, { default_value: e.target.value })}
+                        />
+                        <button onClick={() => removeImpressionDefault(d)}>削除</button>
+                      </div>
+                    ))}
+                </div>
                 <button style={{ marginTop: 8 }} onClick={addImpressionDefault}>
-                  + フィールドを追加
+                  + 追加のフィールドを追加
                 </button>
               </div>
             )}
