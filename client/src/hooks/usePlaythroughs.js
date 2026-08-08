@@ -51,6 +51,16 @@ export function useInventory(playthroughId, ownerCharacterId = null) {
   });
 }
 
+// 衣装マスタ専用の所持経済(0096)。itemsを介さない別テーブルのため、
+// useInventoryとは別クエリキーで管理する。
+export function useOutfitInventory(playthroughId, ownerCharacterId = null) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'outfit-inventory', ownerCharacterId],
+    queryFn: () => playthroughsApi.listOutfitInventory(playthroughId, ownerCharacterId),
+    enabled: playthroughId != null,
+  });
+}
+
 export function useCharacterMemories(playthroughId, enabled = true) {
   return useQuery({
     queryKey: ['playthroughs', playthroughId, 'memories'],
@@ -125,6 +135,22 @@ export function useInventoryMutations(playthroughId) {
     transferItem: useMutation({
       mutationFn: ({ itemId, quantity, toCharacterId }) =>
         playthroughsApi.transferInventoryItem(playthroughId, itemId, quantity, toCharacterId),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+export function useOutfitInventoryMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'outfit-inventory'] });
+  return {
+    addItem: useMutation({
+      mutationFn: ({ outfitMasterId, quantity }) => playthroughsApi.addOutfitInventoryItem(playthroughId, outfitMasterId, quantity),
+      onSuccess: invalidate,
+    }),
+    transferItem: useMutation({
+      mutationFn: ({ outfitMasterId, quantity, toCharacterId }) =>
+        playthroughsApi.transferOutfitInventoryItem(playthroughId, outfitMasterId, quantity, toCharacterId),
       onSuccess: invalidate,
     }),
   };

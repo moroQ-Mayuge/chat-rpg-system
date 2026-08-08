@@ -16,6 +16,7 @@ import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCateg
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
+import { listMastersForWorld } from '../db/repositories/outfitMastersRepo.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
@@ -307,10 +308,18 @@ function buildSystemPrompt(session, participants, options = {}) {
         i.buy_price != null &&
         (roomCandidateItemCategories.length === 0 || roomCandidateItemCategories.some((c) => c.id === i.category_id)),
     );
+    // 衣装マスタ側の商品(0096)。items経由ではなくWorldスコープ(world_outfit_masters)
+    // だけで絞り込む——部屋ごとの品揃え選択UIは今のところ無いので、そのWorldで
+    // 使える価格設定済みマスタは全部この部屋でも売っている扱いにする。
+    const outfitProducts = listMastersForWorld(worldId).filter((m) => m.buy_price != null);
     const money = getMoney(session.playthrough_id);
     const productLines =
       shopProducts.length > 0
         ? shopProducts.map((i) => `${i.name}（${i.buy_price}${world.currency_unit}）`).join('、')
+        : null;
+    const outfitProductLines =
+      outfitProducts.length > 0
+        ? outfitProducts.map((m) => `${m.name}（${m.buy_price}${world.currency_unit}）`).join('、')
         : null;
     shopBlock = [
       '[買い物モード]',
@@ -318,7 +327,12 @@ function buildSystemPrompt(session, participants, options = {}) {
       productLines
         ? `商品リスト（この中のアイテムのみ[ITEM_GRANT]で実際に販売できます。価格に言及して構いません）：${productLines}`
         : '現在、店頭に並んでいる商品はないようです。',
-    ].join('\n');
+      outfitProductLines
+        ? `衣装リスト（この中の衣装のみ[OUTFIT_GRANT: 衣装名]で実際に販売できます。価格に言及して構いません）：${outfitProductLines}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // Status-value auto-update (SPEC.md): World opt-in (self_stat_auto_update_enabled,
@@ -395,6 +409,11 @@ function buildSystemPrompt(session, participants, options = {}) {
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
     '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）',
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（具体的な物がその場で見つかった・キャラクターが差し出した場合のみ。世間話や比喩表現では使わない）。これは持ち物に直接入るのではなく「その場で拾える状態」になります。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
+    // 衣装は厳選プリセットでLLMの即興対象ではないため、ITEM_GRANTと違い常時使える
+    // タグにはしない——買い物モード（衣装リストが実在する時）限定の案内にする。
+    isShopMode
+      ? '[OUTFIT_GRANT: 衣装名]: 衣装リストにある衣装をプレイヤーが実際に購入した場合のみ使ってください（それ以外の衣装名は使えません）。'
+      : null,
     statBlock ? '[STAT_CHANGE: キャラ名|軸名|符号付き整数]: 状態値が変化した場合のみ（任意）' : null,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',

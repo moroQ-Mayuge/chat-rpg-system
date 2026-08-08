@@ -12,6 +12,8 @@ const emptyForm = {
   equipment_description: '',
   attribute_tags: '',
   garment_operations: {},
+  buy_price: '',
+  sell_price: '',
   ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, ''])),
 };
 
@@ -23,6 +25,8 @@ function masterToForm(m) {
     equipment_description: m.equipment_description ?? '',
     attribute_tags: m.attribute_tags ?? '',
     garment_operations: m.garment_operations ?? {},
+    buy_price: m.buy_price ?? '',
+    sell_price: m.sell_price ?? '',
     ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, m[key] ?? ''])),
   };
 }
@@ -88,10 +92,17 @@ export default function OutfitMastersPage() {
 
   async function handleSave() {
     if (!form.name) return;
+    // 空欄=非売品(null)。テキスト入力の''はサーバー側の`?? null`では素通りしない
+    // ため、送信直前にここで変換する。
+    const payload = {
+      ...form,
+      buy_price: form.buy_price === '' ? null : Number(form.buy_price),
+      sell_price: form.sell_price === '' ? null : Number(form.sell_price),
+    };
     if (editingId != null) {
-      await update.mutateAsync({ id: editingId, data: form });
+      await update.mutateAsync({ id: editingId, data: payload });
     } else {
-      await create.mutateAsync(form);
+      await create.mutateAsync(payload);
     }
     setEditingId(null);
     setForm(emptyForm);
@@ -143,6 +154,7 @@ export default function OutfitMastersPage() {
               />
               {m.name}
               {m.slot === 'underwear' && <span style={{ fontSize: 11, color: '#888' }}> [下着]</span>}
+              {m.buy_price != null && <span style={{ fontSize: 11, color: '#888' }}> [¥{m.buy_price}]</span>}
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => startEdit(m)}>編集</button>
@@ -196,6 +208,26 @@ export default function OutfitMastersPage() {
             onChange={(e) => setField('attribute_tags', e.target.value)}
           />
         </label>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+          <label style={{ flex: 1 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>販売価格（空欄なら非売品）</span>
+            <input
+              type="number"
+              style={{ display: 'block', width: '100%' }}
+              value={form.buy_price}
+              onChange={(e) => setField('buy_price', e.target.value)}
+            />
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>売却価格</span>
+            <input
+              type="number"
+              style={{ display: 'block', width: '100%' }}
+              value={form.sell_price}
+              onChange={(e) => setField('sell_price', e.target.value)}
+            />
+          </label>
+        </div>
 
         <OutfitTagCategoryEditor
           values={form}

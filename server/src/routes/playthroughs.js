@@ -8,6 +8,11 @@ import {
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
 import { listInventoryForPlaythrough, addItemToInventory, removeItemFromInventory, transferItem } from '../db/repositories/inventoryRepo.js';
+import {
+  listOutfitInventoryForPlaythrough,
+  addOutfitToInventory,
+  transferOutfitItem,
+} from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { isRoomInWorld } from '../db/repositories/worldRoomTemplatesRepo.js';
 import {
   listMemoriesForPlaythrough,
@@ -118,6 +123,24 @@ playthroughsRouter.post('/:id/inventory/transfer', (req, res) => {
     return res.status(400).json({ error: 'item_id_and_to_character_id_required' });
   }
   res.json(transferItem(req.params.id, req.body.item_id, req.body.quantity ?? 1, req.body.to_character_id));
+});
+
+// 衣装マスタ専用の所持経済(0096)。itemsを介さないため別ルート群として並置。
+playthroughsRouter.get('/:id/outfit-inventory', (req, res) => {
+  const ownerCharacterId = req.query.owner_character_id ? Number(req.query.owner_character_id) : null;
+  res.json(listOutfitInventoryForPlaythrough(req.params.id, ownerCharacterId));
+});
+
+playthroughsRouter.post('/:id/outfit-inventory', (req, res) => {
+  if (!req.body.outfit_master_id) return res.status(400).json({ error: 'outfit_master_id_required' });
+  res.status(201).json(addOutfitToInventory(req.params.id, req.body.outfit_master_id, req.body.quantity ?? 1));
+});
+
+playthroughsRouter.post('/:id/outfit-inventory/transfer', (req, res) => {
+  if (!req.body.outfit_master_id || !req.body.to_character_id) {
+    return res.status(400).json({ error: 'outfit_master_id_and_to_character_id_required' });
+  }
+  res.json(transferOutfitItem(req.params.id, req.body.outfit_master_id, req.body.quantity ?? 1, req.body.to_character_id));
 });
 
 // Route-scoped character memories (0068). Nested under the playthrough because

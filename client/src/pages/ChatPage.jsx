@@ -6,7 +6,7 @@ import { useRoomConnections } from '../hooks/useRoomTemplates.js';
 import { useChatStream } from '../hooks/useChatStream.js';
 import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
-import { useInventory, useInventoryMutations } from '../hooks/usePlaythroughs.js';
+import { useInventory, useInventoryMutations, useOutfitInventory, useOutfitInventoryMutations } from '../hooks/usePlaythroughs.js';
 import { useCharacterTransformationsForCharacter } from '../hooks/useCharacterTransformations.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 import { useWorlds } from '../hooks/useWorlds.js';
@@ -367,26 +367,46 @@ function detectMentionedParticipant(draft, participants) {
 // the wording of the chat line it posts.
 function ItemActionPanel({ command, playthroughId, participants, draft, onClose, onSend }) {
   const { data: inventory } = useInventory(playthroughId);
+  // 保有衣装(0096、itemsを介さない別経済)は「渡す」でのみ選択肢に混ぜる——
+  // 「使う」「食べる」等、items専用のconsumes_item系コマンドには衣装の出番が無い。
+  const { data: outfitInventory } = useOutfitInventory(playthroughId);
   const { useItem, transferItem } = useInventoryMutations(playthroughId);
-  const [itemId, setItemId] = useState('');
+  const { transferItem: transferOutfitItem } = useOutfitInventoryMutations(playthroughId);
+  const [selectedKey, setSelectedKey] = useState('');
   const [targetId, setTargetId] = useState(() => detectMentionedParticipant(draft, participants));
   const [description, setDescription] = useState('');
 
+  const itemEntries = (inventory ?? []).map((e) => ({ kind: 'item', key: `item:${e.item_id}`, id: e.item_id, name: e.name, quantity: e.quantity }));
+  const outfitEntries = command.transfers_to_target
+    ? (outfitInventory ?? []).map((e) => ({
+        kind: 'outfit',
+        key: `outfit:${e.outfit_master_id}`,
+        id: e.outfit_master_id,
+        name: e.name,
+        quantity: e.quantity,
+      }))
+    : [];
+  const entries = [...itemEntries, ...outfitEntries];
+
   async function submit() {
-    const entry = inventory?.find((e) => e.item_id === Number(itemId));
+    const entry = entries.find((e) => e.key === selectedKey);
     if (!entry) return;
     const target = participants.find((p) => p.character_id === Number(targetId));
 
     if (command.transfers_to_target) {
       if (!target) return;
-      await transferItem.mutateAsync({ itemId: entry.item_id, quantity: 1, toCharacterId: target.character_id });
+      if (entry.kind === 'outfit') {
+        await transferOutfitItem.mutateAsync({ outfitMasterId: entry.id, quantity: 1, toCharacterId: target.character_id });
+      } else {
+        await transferItem.mutateAsync({ itemId: entry.id, quantity: 1, toCharacterId: target.character_id });
+      }
       onSend(`『${entry.name}』を@${target.name}に${command.label}`);
       onClose();
       return;
     }
 
     if (command.consumes_item) {
-      await useItem.mutateAsync({ itemId: entry.item_id, quantity: 1 });
+      await useItem.mutateAsync({ itemId: entry.id, quantity: 1 });
     }
     const targetText = target ? `@${target.name}に` : '';
     const text = `『${entry.name}』を${targetText}${command.label}${description ? `：${description}` : ''}`;
@@ -402,15 +422,15 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
           閉じる
         </button>
       </div>
-      {inventory?.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>持ち物がありません</p>}
-      {inventory?.length > 0 && (
+      {entries.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>持ち物がありません</p>}
+      {entries.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label>
             <span style={{ fontSize: 11, color: '#888', display: 'block' }}>アイテム</span>
-            <select style={{ width: '100%' }} value={itemId} onChange={(e) => setItemId(e.target.value)}>
+            <select style={{ width: '100%' }} value={selectedKey} onChange={(e) => setSelectedKey(e.target.value)}>
               <option value="">選択してください</option>
-              {inventory.map((entry) => (
-                <option key={entry.item_id} value={entry.item_id}>
+              {entries.map((entry) => (
+                <option key={entry.key} value={entry.key}>
                   {entry.name} ×{entry.quantity}
                 </option>
               ))}
@@ -439,7 +459,7 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
             </label>
           )}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={submit} disabled={!itemId || (command.transfers_to_target && !targetId)}>
+            <button type="button" onClick={submit} disabled={!selectedKey || (command.transfers_to_target && !targetId)}>
               {command.label}
             </button>
           </div>
@@ -449,23 +469,22 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
   );
 }
 
-// 「着る」パネル(実装順6)。ItemActionPanelと違い、対象を先に選ぶ——プレイヤーは
-// characters行を持たずoutfitsの対象になれないため、対象は常にNPC。選んだ対象
-// "自身の"所持品(渡した衣装アイテムはその時点で相手の手元にある)から着られる
-// もの(outfit_master_id が設定されたもの)だけを絞り込んで見せる。
+// 「着る」パネル(実装順6、0096で保有衣装専用経済に置き換え)。ItemActionPanelと
+// 違い、対象を先に選ぶ——プレイヤーはcharacters行を持たずoutfitsの対象になれ
+// ないため、対象は常にNPC。選んだ対象"自身の"保有衣装(渡した衣装はその時点で
+// 相手の手元にある、playthrough_outfit_inventory)を一覧する——items経由の
+// outfit_master_idは見ないため、全件がそのまま着られるもの。
 function ItemWearPanel({ command, playthroughId, sessionId, participants, onClose, onSend }) {
   const [targetId, setTargetId] = useState('');
-  const { data: inventory } = useInventory(playthroughId, targetId ? Number(targetId) : null);
-  const { wearItem } = useRoomSessionMutations(sessionId);
-  const [itemId, setItemId] = useState('');
-
-  const wearableItems = (inventory ?? []).filter((entry) => entry.outfit_master_id != null);
+  const { data: wearableItems } = useOutfitInventory(playthroughId, targetId ? Number(targetId) : null);
+  const { wearOutfit } = useRoomSessionMutations(sessionId);
+  const [outfitMasterId, setOutfitMasterId] = useState('');
 
   async function submit() {
-    const entry = wearableItems.find((e) => e.item_id === Number(itemId));
+    const entry = (wearableItems ?? []).find((e) => e.outfit_master_id === Number(outfitMasterId));
     const target = participants.find((p) => p.character_id === Number(targetId));
     if (!entry || !target) return;
-    await wearItem.mutateAsync({ characterId: target.character_id, itemId: entry.item_id });
+    await wearOutfit.mutateAsync({ characterId: target.character_id, outfitMasterId: entry.outfit_master_id });
     onSend(`@${target.name}が『${entry.name}』を${command.label}`);
     onClose();
   }
@@ -486,7 +505,7 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
             value={targetId}
             onChange={(e) => {
               setTargetId(e.target.value);
-              setItemId('');
+              setOutfitMasterId('');
             }}
           >
             <option value="">対象を選択してください</option>
@@ -500,13 +519,13 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
         {targetId && (
           <label>
             <span style={{ fontSize: 11, color: '#888', display: 'block' }}>着せる衣装</span>
-            {wearableItems.length === 0 ? (
+            {(wearableItems ?? []).length === 0 ? (
               <p style={{ fontSize: 12, color: '#888' }}>着られる持ち物がありません</p>
             ) : (
-              <select style={{ width: '100%' }} value={itemId} onChange={(e) => setItemId(e.target.value)}>
+              <select style={{ width: '100%' }} value={outfitMasterId} onChange={(e) => setOutfitMasterId(e.target.value)}>
                 <option value="">選択してください</option>
                 {wearableItems.map((entry) => (
-                  <option key={entry.item_id} value={entry.item_id}>
+                  <option key={entry.outfit_master_id} value={entry.outfit_master_id}>
                     {entry.name}
                   </option>
                 ))}
@@ -515,7 +534,7 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
           </label>
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={submit} disabled={!targetId || !itemId}>
+          <button type="button" onClick={submit} disabled={!targetId || !outfitMasterId}>
             {command.label}
           </button>
         </div>

@@ -9,6 +9,8 @@ export const roomSessionsApi = {
     api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, { is_accompanying: isAccompanying }),
   sellItem: (id, itemId) => api.post(`/room-sessions/${id}/sell-item`, { item_id: itemId }),
   wearItem: (id, characterId, itemId) => api.post(`/room-sessions/${id}/wear-item`, { character_id: characterId, item_id: itemId }),
+  wearOutfit: (id, characterId, outfitMasterId) =>
+    api.post(`/room-sessions/${id}/wear-outfit`, { character_id: characterId, outfit_master_id: outfitMasterId }),
   transformRequest: (id, characterId, transformationId) =>
     api.post(`/room-sessions/${id}/transform-request`, { character_id: characterId, transformation_id: transformationId }),
   listPickupItems: (id) => api.get(`/room-sessions/${id}/pickup-items`),

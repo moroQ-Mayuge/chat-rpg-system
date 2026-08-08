@@ -15,6 +15,12 @@ export const playthroughsApi = {
   useInventoryItem: (id, itemId, quantity) => api.post(`/playthroughs/${id}/inventory/use`, { item_id: itemId, quantity }),
   transferInventoryItem: (id, itemId, quantity, toCharacterId) =>
     api.post(`/playthroughs/${id}/inventory/transfer`, { item_id: itemId, quantity, to_character_id: toCharacterId }),
+  listOutfitInventory: (id, ownerCharacterId) =>
+    api.get(`/playthroughs/${id}/outfit-inventory${ownerCharacterId != null ? `?owner_character_id=${ownerCharacterId}` : ''}`),
+  addOutfitInventoryItem: (id, outfitMasterId, quantity) =>
+    api.post(`/playthroughs/${id}/outfit-inventory`, { outfit_master_id: outfitMasterId, quantity }),
+  transferOutfitInventoryItem: (id, outfitMasterId, quantity, toCharacterId) =>
+    api.post(`/playthroughs/${id}/outfit-inventory/transfer`, { outfit_master_id: outfitMasterId, quantity, to_character_id: toCharacterId }),
   listMemories: (id) => api.get(`/playthroughs/${id}/memories`),
   addMemory: (id, data) => api.post(`/playthroughs/${id}/memories`, data),
   updateMemory: (id, memoryId, data) => api.put(`/playthroughs/${id}/memories/${memoryId}`, data),

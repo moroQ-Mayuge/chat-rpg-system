@@ -41,23 +41,33 @@ export function getMaster(id) {
   return parseGarmentOperations(db.prepare('SELECT * FROM outfit_masters WHERE id = ?').get(id));
 }
 
+// OUTFIT_GRANTタグの名前解決用。衣装マスタは名前だけで一意に解決する厳選プリセット
+// (LLMが即興で作れる対象ではない)。
+export function getMasterByName(name) {
+  return parseGarmentOperations(db.prepare('SELECT * FROM outfit_masters WHERE name = ?').get(name));
+}
+
 export function createMaster(data) {
   const columns = MASTER_FIELDS.join(', ');
   const placeholders = MASTER_FIELDS.map(() => '?').join(', ');
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
   const result = db
-    .prepare(`INSERT INTO outfit_masters (${columns}, garment_operations, slot) VALUES (${placeholders}, ?, ?)`)
-    .run(...values, JSON.stringify(data.garment_operations ?? {}), data.slot ?? 'normal');
+    .prepare(
+      `INSERT INTO outfit_masters (${columns}, garment_operations, slot, buy_price, sell_price) VALUES (${placeholders}, ?, ?, ?, ?)`,
+    )
+    .run(...values, JSON.stringify(data.garment_operations ?? {}), data.slot ?? 'normal', data.buy_price ?? null, data.sell_price ?? null);
   return getMaster(result.lastInsertRowid);
 }
 
 export function updateMaster(id, data) {
   const setClause = MASTER_FIELDS.map((f) => `${f} = ?`).join(', ');
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
-  db.prepare(`UPDATE outfit_masters SET ${setClause}, garment_operations = ?, slot = ? WHERE id = ?`).run(
+  db.prepare(`UPDATE outfit_masters SET ${setClause}, garment_operations = ?, slot = ?, buy_price = ?, sell_price = ? WHERE id = ?`).run(
     ...values,
     JSON.stringify(data.garment_operations ?? {}),
     data.slot ?? 'normal',
+    data.buy_price ?? null,
+    data.sell_price ?? null,
     id,
   );
   return getMaster(id);

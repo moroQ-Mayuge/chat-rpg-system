@@ -22,6 +22,7 @@ const EMOTION_PATTERN = /\[EMOTION:([a-zA-Z0-9_]+)\]\s*$/;
 const EMOTION_LOOSE_PATTERN = /\[([A-Za-z0-9_ .-]+):([a-zA-Z0-9_]+)\]\s*$/;
 const EMOTION_KEY_ONLY_PATTERN = /^EMOTION:([a-zA-Z0-9_]+)$/i;
 const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
+const OUTFIT_GRANT_PATTERN = /^OUTFIT_GRANT:\s*(.+)$/;
 const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
 
 // Models garble these fixed keywords surprisingly often, spelling NARRATION as
@@ -79,6 +80,7 @@ function matchPayloadTag(tag, keyword) {
 //   { type: 'scene_change', description }
 //   { type: 'narration', text }
 //   { type: 'item_grant', itemName, categoryName, description }
+//   { type: 'outfit_grant', outfitMasterName, description }
 //   { type: 'stat_change', characterName, axisName, delta }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
@@ -110,6 +112,10 @@ export function parseScriptLine(rawLine) {
         const [itemName, categoryName] = itemPayload.split('|').map((s) => s.trim());
         return { type: 'item_grant', itemName, categoryName: categoryName || null, description: '' };
       }
+      const outfitPayload = bare[1].match(OUTFIT_GRANT_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'OUTFIT_GRANT');
+      if (outfitPayload) {
+        return { type: 'outfit_grant', outfitMasterName: outfitPayload.trim(), description: '' };
+      }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
     if (alt) {
@@ -136,6 +142,12 @@ export function parseScriptLine(rawLine) {
     // so a line missing it is still handled rather than misparsed.
     const [itemName, categoryName] = itemGrantPayload.split('|').map((s) => s.trim());
     return { type: 'item_grant', itemName, categoryName: categoryName || null, description: rest.trim() };
+  }
+
+  const outfitGrantPayload = tag.match(OUTFIT_GRANT_PATTERN)?.[1] ?? matchPayloadTag(tag, 'OUTFIT_GRANT');
+  if (outfitGrantPayload) {
+    // 衣装マスタは名前だけで解決する厳選プリセット(ITEM_GRANTと違いカテゴリ指定は無い)。
+    return { type: 'outfit_grant', outfitMasterName: outfitGrantPayload.trim(), description: rest.trim() };
   }
 
   const statChangePayload = tag.match(STAT_CHANGE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'STAT_CHANGE');

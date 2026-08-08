@@ -51,6 +51,10 @@ export function useRoomSessionMutations(id) {
       mutationFn: ({ characterId, itemId }) => roomSessionsApi.wearItem(id, characterId, itemId),
       onSuccess: invalidate,
     }),
+    wearOutfit: useMutation({
+      mutationFn: ({ characterId, outfitMasterId }) => roomSessionsApi.wearOutfit(id, characterId, outfitMasterId),
+      onSuccess: invalidate,
+    }),
     transformRequest: useMutation({
       mutationFn: ({ characterId, transformationId }) => roomSessionsApi.transformRequest(id, characterId, transformationId),
       onSuccess: invalidate,

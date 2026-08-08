@@ -11,13 +11,14 @@ import {
   updateParticipantOutfit,
   updateParticipantTransformation,
 } from '../db/repositories/roomSessionsRepo.js';
-import { wearMasterAsCharacter } from '../db/repositories/outfitMastersRepo.js';
+import { wearMasterAsCharacter, getMasterByName } from '../db/repositories/outfitMastersRepo.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem, getItem, listPickupItemsForSession, markItemPickedUp } from '../db/repositories/itemsRepo.js';
 import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
 import { addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
+import { addOutfitToInventory, hasOutfit } from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
@@ -262,6 +263,23 @@ roomSessionsRouter.post('/:id/wear-item', (req, res) => {
   if (!item?.outfit_master_id) return res.status(400).json({ error: 'not_an_outfit_item' });
 
   const outfit = wearMasterAsCharacter(character_id, item.outfit_master_id);
+  updateParticipantOutfit(req.params.id, character_id, outfit.id);
+  broadcast(req.params.id, { type: 'participants_changed' });
+  res.json({ outfit });
+});
+
+// 衣装マスタ専用の所持経済版(0096)。itemsを介さずplaythrough_outfit_inventoryを
+// 直接見る——対象NPCがそのマスタを保有していなければ拒否する。
+roomSessionsRouter.post('/:id/wear-outfit', (req, res) => {
+  const { character_id, outfit_master_id } = req.body;
+  if (!character_id || !outfit_master_id) return res.status(400).json({ error: 'character_id_and_outfit_master_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!hasOutfit(session.playthrough_id, outfit_master_id, character_id)) {
+    return res.status(400).json({ error: 'not_held_by_target' });
+  }
+
+  const outfit = wearMasterAsCharacter(character_id, outfit_master_id);
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });
@@ -523,6 +541,40 @@ async function generateReply(
       if (!found) return; // 既にこの部屋で見つけてある
       const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
       broadcast(sessionId, { type: 'message_complete', message });
+      return;
+    }
+
+    if (parsed.type === 'outfit_grant') {
+      // OUTFIT_GRANTは買い物モード限定(promptBuilder.jsのシステムプロンプト指示も
+      // 買い物モード時のみ出す)。衣装マスタはitemsのfindOrCreateWorldItemのような
+      // 即興作成をしない厳選プリセットのため、名前が一致しなければ「売っていない」
+      // 扱いにする——ITEM_GRANTのカテゴリ引数に相当するものが無いのはこのため。
+      const master = getMasterByName(parsed.outfitMasterName);
+      if (!master || !session.room_is_shop || !world.currency_enabled || master.buy_price == null) {
+        const message = createMessage(sessionId, {
+          sender_type: 'narration',
+          content: `『${parsed.outfitMasterName}』は売り物ではないようだ。`,
+        });
+        broadcast(sessionId, { type: 'message_complete', message });
+        return;
+      }
+      const currentMoney = getPlaythrough(session.playthrough_id).money;
+      if (master.buy_price > currentMoney) {
+        const message = createMessage(sessionId, {
+          sender_type: 'narration',
+          content: `『${master.name}』（${master.buy_price}${world.currency_unit}）を買うには所持金が足りなかった。`,
+        });
+        broadcast(sessionId, { type: 'message_complete', message });
+        return;
+      }
+      const money = adjustMoney(session.playthrough_id, -master.buy_price);
+      addOutfitToInventory(session.playthrough_id, master.id);
+      const message = createMessage(sessionId, {
+        sender_type: 'narration',
+        content: `『${master.name}』を${master.buy_price}${world.currency_unit}で購入した。（所持金 ${money}${world.currency_unit}）`,
+      });
+      broadcast(sessionId, { type: 'message_complete', message });
+      broadcast(sessionId, { type: 'money_changed', money });
       return;
     }
 
