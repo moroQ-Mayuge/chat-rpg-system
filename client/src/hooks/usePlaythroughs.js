@@ -72,6 +72,44 @@ export function useCharacterMemoryMutations(playthroughId) {
   };
 }
 
+export function useRelationshipValues(playthroughId, enabled = true) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'relationships'],
+    queryFn: () => playthroughsApi.listRelationships(playthroughId),
+    enabled: playthroughId != null && enabled,
+  });
+}
+
+export function useRelationshipMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'relationships'] });
+  return {
+    update: useMutation({
+      mutationFn: ({ characterId, axisId, value }) => playthroughsApi.updateRelationship(playthroughId, characterId, axisId, value),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
+export function useImpressionValues(playthroughId, enabled = true) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'impressions'],
+    queryFn: () => playthroughsApi.listImpressions(playthroughId),
+    enabled: playthroughId != null && enabled,
+  });
+}
+
+export function useImpressionMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'impressions'] });
+  return {
+    update: useMutation({
+      mutationFn: ({ characterId, fieldKey, value }) => playthroughsApi.updateImpression(playthroughId, characterId, fieldKey, value),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
 export function useInventoryMutations(playthroughId) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'inventory'] });

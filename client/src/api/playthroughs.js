@@ -19,5 +19,11 @@ export const playthroughsApi = {
   addMemory: (id, data) => api.post(`/playthroughs/${id}/memories`, data),
   updateMemory: (id, memoryId, data) => api.put(`/playthroughs/${id}/memories/${memoryId}`, data),
   removeMemory: (id, memoryId) => api.del(`/playthroughs/${id}/memories/${memoryId}`),
+  listRelationships: (id) => api.get(`/playthroughs/${id}/relationships`),
+  updateRelationship: (id, characterId, relationshipAxisId, value) =>
+    api.put(`/playthroughs/${id}/relationships`, { character_id: characterId, relationship_axis_id: relationshipAxisId, value }),
+  listImpressions: (id) => api.get(`/playthroughs/${id}/impressions`),
+  updateImpression: (id, characterId, fieldKey, value) =>
+    api.put(`/playthroughs/${id}/impressions`, { character_id: characterId, field_key: fieldKey, value }),
   materializeChild: (id, pregnancyId) => api.post(`/playthroughs/${id}/pregnancies/${pregnancyId}/child`, {}),
 };

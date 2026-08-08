@@ -16,6 +16,14 @@ import {
   deleteMemory,
   formatOccurredLabel,
 } from '../db/repositories/characterMemoriesRepo.js';
+import {
+  listValuesForPlaythrough as listRelationshipValuesForPlaythrough,
+  adjustValue as adjustRelationshipValue,
+} from '../db/repositories/relationshipStatesRepo.js';
+import {
+  listValuesForPlaythrough as listImpressionValuesForPlaythrough,
+  setImpressionValue,
+} from '../db/repositories/characterImpressionStatesRepo.js';
 import { materializeChild } from '../services/childCharacter.js';
 import { exportPlaythroughBundle } from '../services/contentBundle/index.js';
 
@@ -155,4 +163,29 @@ playthroughsRouter.put('/:id/memories/:memoryId', (req, res) => {
 
 playthroughsRouter.delete('/:id/memories/:memoryId', (req, res) => {
   res.json(deleteMemory(req.params.memoryId));
+});
+
+// 開発デバッグ用の直接上書きエンドポイント(記憶パネルと同じ場所に並ぶ
+// 「関係・印象」パネルから叩く)。書き込みは既存のイベントアクション
+// (change_relationship/set_character_impression)と同じ経路
+// (adjustValue/setImpressionValue)をそのまま使う——新しい書き込みロジックは無い。
+playthroughsRouter.get('/:id/relationships', (req, res) => {
+  res.json(listRelationshipValuesForPlaythrough(req.params.id));
+});
+playthroughsRouter.put('/:id/relationships', (req, res) => {
+  const { character_id, relationship_axis_id, value } = req.body;
+  if (!character_id || !relationship_axis_id || value == null) {
+    return res.status(400).json({ error: 'character_id_axis_id_value_required' });
+  }
+  const current_value = adjustRelationshipValue(req.params.id, character_id, relationship_axis_id, 'set', Number(value));
+  res.json({ character_id, relationship_axis_id, current_value });
+});
+
+playthroughsRouter.get('/:id/impressions', (req, res) => {
+  res.json(listImpressionValuesForPlaythrough(req.params.id));
+});
+playthroughsRouter.put('/:id/impressions', (req, res) => {
+  const { character_id, field_key, value } = req.body;
+  if (!character_id || !field_key || value == null) return res.status(400).json({ error: 'character_id_field_key_value_required' });
+  res.json(setImpressionValue(req.params.id, character_id, field_key, value));
 });

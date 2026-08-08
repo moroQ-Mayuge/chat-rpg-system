@@ -44,6 +44,22 @@ export function getValue(playthroughId, characterId, axisId, roomSessionId, room
   return getAxis(axisId)?.default_value ?? 0;
 }
 
+// そのルートの全キャラ分の現在の関係値を一括取得(記憶パネルの
+// listMemoriesForPlaythroughと同形)。モブはplaythrough_idスコープを
+// 使わない(scopeColumns参照)ため、このWHERE句だけで自然に除外される。
+export function listValuesForPlaythrough(playthroughId) {
+  return db
+    .prepare(
+      `SELECT rs.character_id, rs.relationship_axis_id, rs.current_value,
+              ra.name AS axis_name, ra.min_value, ra.max_value
+       FROM relationship_states rs
+       JOIN relationship_axes ra ON ra.id = rs.relationship_axis_id
+       WHERE rs.playthrough_id = ?
+       ORDER BY rs.character_id ASC, ra.id ASC`,
+    )
+    .all(playthroughId);
+}
+
 function clamp(value, axis) {
   return Math.max(axis.min_value, Math.min(axis.max_value, value));
 }

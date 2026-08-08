@@ -31,6 +31,16 @@ export function listImpressionValues(playthroughId, characterId, roomSessionId, 
     .all(characterId, playthrough_id, room_session_id, room_session_character_id);
 }
 
+// そのルートの全キャラ分の現在の印象フィールド値を一括取得
+// (relationshipStatesRepo.jsのlistValuesForPlaythroughと同形)。
+export function listValuesForPlaythrough(playthroughId) {
+  return db
+    .prepare(
+      'SELECT character_id, field_key, value FROM character_impression_states WHERE playthrough_id = ? ORDER BY character_id ASC, id ASC',
+    )
+    .all(playthroughId);
+}
+
 export function getImpressionValue(playthroughId, characterId, fieldKey, roomSessionId, roomSessionCharacterId) {
   const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
     characterId,

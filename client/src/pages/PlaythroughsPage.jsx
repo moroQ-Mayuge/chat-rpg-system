@@ -8,6 +8,10 @@ import {
   usePlaythroughMutations,
   useCharacterMemories,
   useCharacterMemoryMutations,
+  useRelationshipValues,
+  useRelationshipMutations,
+  useImpressionValues,
+  useImpressionMutations,
 } from '../hooks/usePlaythroughs.js';
 import { useCharacters } from '../hooks/useCharacters.js';
 import { playthroughsApi } from '../api/playthroughs.js';
@@ -224,6 +228,91 @@ function MemoriesPanel({ playthrough }) {
   );
 }
 
+// 開発デバッグ用の直接上書きパネル。relationship_states/character_impression_states
+// は本来イベントアクション(change_relationship/set_character_impression)や
+// LLM自動更新経由でしか変わらないが、今そのルートで各キャラの値がどうなって
+// いるかを確認し、開発中に直接いじれる場所が無かった。MemoriesPanelと同じ
+// 開閉トグル+キャラ別グルーピングのUIパターンをそのまま流用する。
+function RelationshipsAndImpressionsPanel({ playthrough }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data: relationships } = useRelationshipValues(playthrough.id, expanded);
+  const { data: impressions } = useImpressionValues(playthrough.id, expanded);
+  const { data: characters } = useCharacters();
+  const { update: updateRelationship } = useRelationshipMutations(playthrough.id);
+  const { update: updateImpression } = useImpressionMutations(playthrough.id);
+
+  const nameFor = (id) => characters?.find((c) => c.id === id)?.name ?? `#${id}`;
+
+  const relationshipsByCharacter = new Map();
+  for (const r of relationships ?? []) {
+    if (!relationshipsByCharacter.has(r.character_id)) relationshipsByCharacter.set(r.character_id, []);
+    relationshipsByCharacter.get(r.character_id).push(r);
+  }
+  const impressionsByCharacter = new Map();
+  for (const i of impressions ?? []) {
+    if (!impressionsByCharacter.has(i.character_id)) impressionsByCharacter.set(i.character_id, []);
+    impressionsByCharacter.get(i.character_id).push(i);
+  }
+  const characterIds = [...new Set([...relationshipsByCharacter.keys(), ...impressionsByCharacter.keys()])];
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button style={{ fontSize: 11 }} onClick={() => setExpanded((e) => !e)}>
+        {expanded ? '関係・印象を閉じる ▲' : '関係・印象 ▼'}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: 8, border: '1px solid #ddd', borderRadius: 6, padding: 10, background: '#fafafa' }}>
+          <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+            開発・デバッグ用に直接編集できます。イベント等の通常の変更経路をバイパスします。
+          </p>
+
+          {characterIds.map((characterId) => (
+            <div key={characterId} style={{ marginBottom: 10 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 'bold' }}>{nameFor(characterId)}</p>
+              {(relationshipsByCharacter.get(characterId) ?? []).map((r) => (
+                <div key={r.relationship_axis_id} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                  <span style={{ fontSize: 11, color: '#666', width: 140, flexShrink: 0 }}>
+                    {r.axis_name}（{r.min_value}〜{r.max_value}）
+                  </span>
+                  <input
+                    type="number"
+                    min={r.min_value}
+                    max={r.max_value}
+                    style={{ width: 70, fontSize: 12 }}
+                    defaultValue={r.current_value}
+                    onBlur={(e) => {
+                      const value = Number(e.target.value);
+                      if (value !== r.current_value) {
+                        updateRelationship.mutate({ characterId, axisId: r.relationship_axis_id, value });
+                      }
+                    }}
+                  />
+                </div>
+              ))}
+              {(impressionsByCharacter.get(characterId) ?? []).map((i) => (
+                <div key={i.field_key} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                  <span style={{ fontSize: 11, color: '#666', width: 140, flexShrink: 0 }}>{i.field_key}</span>
+                  <input
+                    style={{ flex: 1, fontSize: 12 }}
+                    defaultValue={i.value}
+                    onBlur={(e) => {
+                      if (e.target.value !== i.value) {
+                        updateImpression.mutate({ characterId, fieldKey: i.field_key, value: e.target.value });
+                      }
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+          {characterIds.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ関係・印象の値がありません</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PlaythroughsPage() {
   const { worldId } = useParams();
   const navigate = useNavigate();
@@ -318,6 +407,7 @@ export default function PlaythroughsPage() {
             )}
             {world && <ProtagonistSettingsPanel playthrough={p} world={world} />}
             {world?.memory_editing_visible && <MemoriesPanel playthrough={p} />}
+            {world?.memory_editing_visible && <RelationshipsAndImpressionsPanel playthrough={p} />}
           </div>
         ))}
         {playthroughs.length === 0 && <p>まだルートがありません</p>}
