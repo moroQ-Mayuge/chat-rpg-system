@@ -14,6 +14,7 @@ import { getWorld } from './worldsRepo.js';
 import { cyclePhaseFor, cycleDayFor } from '../../services/fertilityCycle.js';
 import { getActivePregnancy, listAwaitingChildAppearance } from './characterPregnanciesRepo.js';
 import { pregnancyStateFor, childGrowthStateFor } from '../../services/pregnancy.js';
+import { resetRoomItemsIfEnabled } from '../../services/itemDiscovery.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -280,6 +281,7 @@ export function getRoomSession(id) {
 export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   const playthrough = getPlaythrough(playthroughId);
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(roomTemplateId);
+  resetRoomItemsIfEnabled(playthroughId, roomTemplateId);
 
   const result = db
     .prepare(

@@ -85,3 +85,21 @@ function stockRoomIfUndiscovered(playthroughId, roomTemplateId) {
 
   return chosen.map((item) => makeItemAvailable(playthroughId, roomTemplateId, item.id, false)).filter(Boolean);
 }
+
+// 部屋ごとに「セッション毎にアイテムをリセットする」を選べるようにする
+// (不具合報告2026-08-06項目3)。ONの部屋では新しい部屋セッションが作られる
+// たびに永続プール(available_items/discoveries)をまとめて消し、
+// isRoomDiscoveredを「未探索」に戻す——次の探索で改めて3〜5件が抽選される。
+// 売店(is_shop)はそもそもこれらのテーブルを使わないため対象外(何もしない)。
+export function resetRoomItemsIfEnabled(playthroughId, roomTemplateId) {
+  const template = db.prepare('SELECT reset_items_per_session FROM room_templates WHERE id = ?').get(roomTemplateId);
+  if (!template?.reset_items_per_session) return;
+  db.prepare('DELETE FROM playthrough_room_available_items WHERE playthrough_id = ? AND room_template_id = ?').run(
+    playthroughId,
+    roomTemplateId,
+  );
+  db.prepare('DELETE FROM playthrough_room_discoveries WHERE playthrough_id = ? AND room_template_id = ?').run(
+    playthroughId,
+    roomTemplateId,
+  );
+}

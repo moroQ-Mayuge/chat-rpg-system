@@ -40,6 +40,7 @@ const emptyForm = {
   is_place: false,
   is_shop: false,
   suppress_auto_population: false,
+  reset_items_per_session: false,
 };
 
 // Room master data now: what a room IS, shared across every World that
@@ -85,6 +86,7 @@ export default function RoomTemplateEditPage() {
       is_place: Boolean(existing.is_place),
       is_shop: Boolean(existing.is_shop),
       suppress_auto_population: Boolean(existing.suppress_auto_population),
+      reset_items_per_session: Boolean(existing.reset_items_per_session),
     });
   }, [existing]);
 
@@ -140,6 +142,7 @@ export default function RoomTemplateEditPage() {
       is_place: form.is_place,
       is_shop: form.is_shop,
       suppress_auto_population: form.suppress_auto_population,
+      reset_items_per_session: form.reset_items_per_session,
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -490,6 +493,14 @@ export default function RoomTemplateEditPage() {
                 onChange={(e) => setForm({ ...form, suppress_auto_population: e.target.checked })}
               />
               自動でキャラが現れない部屋にする（同行中のキャラのみ表示・タグ一致やランダム出現は無効）
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.reset_items_per_session}
+                onChange={(e) => setForm({ ...form, reset_items_per_session: e.target.checked })}
+              />
+              部屋のアイテムをセッション毎にリセットする（売店には影響しません。入室のたびに探索候補が新しく抽選し直されます）
             </label>
           </div>
 

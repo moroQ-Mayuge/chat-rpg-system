@@ -65,9 +65,9 @@ export function createRoomTemplate(data) {
     .prepare(
       `INSERT INTO room_templates
         (worldview_mode, name, initial_situation, location_text, location_tags,
-         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place, is_shop, suppress_auto_population)
+         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, is_place, is_shop, suppress_auto_population, reset_items_per_session)
        VALUES (@worldview_mode, @name, @initial_situation, @location_text, @location_tags,
-         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place, @is_shop, @suppress_auto_population)`,
+         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @is_place, @is_shop, @suppress_auto_population, @reset_items_per_session)`,
     )
     .run({
       worldview_mode: data.worldview_mode ?? 'inherit',
@@ -84,6 +84,7 @@ export function createRoomTemplate(data) {
       is_place: data.is_place ? 1 : 0,
       is_shop: data.is_shop ? 1 : 0,
       suppress_auto_population: data.suppress_auto_population ? 1 : 0,
+      reset_items_per_session: data.reset_items_per_session ? 1 : 0,
     });
   const id = result.lastInsertRowid;
   replaceSlotsForRoom(id, data.slots);
@@ -99,7 +100,7 @@ export function updateRoomTemplate(id, data) {
        initial_situation = @initial_situation, location_text = @location_text, location_tags = @location_tags,
        atmosphere_text = @atmosphere_text, atmosphere_tags = @atmosphere_tags, worldview = @worldview,
        turns_per_time_slot = @turns_per_time_slot, attribute_tags = @attribute_tags, is_place = @is_place, is_shop = @is_shop,
-       suppress_auto_population = @suppress_auto_population
+       suppress_auto_population = @suppress_auto_population, reset_items_per_session = @reset_items_per_session
      WHERE id = @id`,
   ).run({
     id,
@@ -116,6 +117,7 @@ export function updateRoomTemplate(id, data) {
     is_place: data.is_place ? 1 : 0,
     is_shop: data.is_shop ? 1 : 0,
     suppress_auto_population: data.suppress_auto_population ? 1 : 0,
+    reset_items_per_session: data.reset_items_per_session ? 1 : 0,
   });
   replaceSlotsForRoom(id, data.slots);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
