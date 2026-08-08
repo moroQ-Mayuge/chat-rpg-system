@@ -119,9 +119,9 @@ const TRANSFORMATION_SKILL_FIELDS = [
 ];
 
 // 実装上はcharacter_impression_defaultsの自由記述配列の一部だが、実データでは
-// ほぼ全キャラが持つ事実上の標準フィールド(タブ名「あなたとの関係・印象」も
-// この2つを指す)。エディタ上は他の固定フィールドと同じ専用UIで常に表示し、
-// 削除不可にする。
+// ほぼ全キャラが持つ事実上の標準フィールド。エディタ上は他の固定フィールドと
+// 同じ専用UIで常に表示し、削除不可にする。タブ名の「その他任意追加要素」が
+// 下部の自由記述リスト(標準2項目以外のキャラ固有フィールド)を指す。
 const STANDARD_IMPRESSION_FIELD_KEYS = ['あなたとの関係', 'あなたの印象'];
 const DEFAULT_IMPRESSION_DEFAULTS = STANDARD_IMPRESSION_FIELD_KEYS.map((field_key) => ({ field_key, default_value: '' }));
 
@@ -793,7 +793,7 @@ export default function CharactersPage() {
                 ['appearance', '外見・衣装'],
                 ['personality', '性格・口調'],
                 ['relationships', '関係性初期値'],
-                ['impressions', 'あなたとの関係・印象'],
+                ['impressions', 'あなたとの関係・印象・その他任意追加要素'],
                 ['transformations', '変身'],
               ].map(([key, label]) => (
                 <button
