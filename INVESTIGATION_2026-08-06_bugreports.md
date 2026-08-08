@@ -44,15 +44,19 @@
 
 ## 3. 部屋アイテムが場面をまたいでリセットされない／売店以外は毎セッション初期出現させたい
 
-**状態: 調査完了。結論＝(a)仕様通りの永続動作（バグではなく要望）。対応方針は未定（ユーザー判断待ち）。**
+**状態: 実装完了・コミット済み（2026-08-08、コミット`5ac77a1`）。**
+
+`room_templates.reset_items_per_session`（`is_shop`/`suppress_auto_population`と同型のON/OFFフラグ、migration 0095）を新設。ONの部屋では`createRoomSession`（新しい部屋セッション作成時）のたびに`itemDiscovery.js`の新関数`resetRoomItemsIfEnabled`が`playthrough_room_available_items`/`playthrough_room_discoveries`をまとめて削除——`isRoomDiscovered`が「未探索」に戻り、次の「しらべる」で3〜5件が改めて抽選される。OFF（既定）の部屋は従来通り恒久のまま。売店はそもそもこれらのテーブルを使わないため対象外（何もしない、実害も無い）。`RoomTemplateEditPage.jsx`に他のフラグと並ぶチェックボックスUIを追加。
+
+**検証**: 直接スクリプトで実データ相当のfixture（部屋テンプレート2件・ON/OFF）を作り、`exploreRoom`→`createRoomSession`→再`exploreRoom`のサイクルを確認——ON側は削除後に再抽選、OFF側は不変（回帰なし）。ブラウザでもチェックボックスのON/OFF切り替え・保存・DB永続化・再読み込みでの復元を確認。テストデータは全て削除済み。
+
+**旧調査メモ（実装前の状態、参考として保持）**: 以下は調査完了時点（実装前）の記録。
 
 - `playthrough_room_available_items`／`playthrough_room_discoveries`は共に`(playthrough_id, room_template_id)`単位（`room_session_id`列自体が存在しない）。マイグレーション`0072_room_item_discovery.sql`のコメントに「抽選は発見時の1度きりで、以降その顔ぶれが常設される」と明記——**これは意図した恒久仕様**。`room_session_picked_items`（`0071`、`room_session_id`キー）だけがセッション毎にリセットされる設計で、これは「一度拾った物がまた拾えるようになる」ためのテーブルであり、「そもそも部屋に何があるか」はリセットしない。
 - `itemDiscovery.js`の`stockRoomIfUndiscovered`は`isRoomDiscovered`で「そのルートでそのroom_templateが初探索済みか」を確認し、済みなら即return——2回目以降の入室では3〜5件の初期抽選自体が最初から走らない。「リセットされない」のはバグでなく仕様通りの動作。
 - **売店（`is_shop`）は構造的に完全に別系統**：`promptBuilder.js`が`room_template_item_categories`＋`buy_price`付き商品を**毎ターン再計算**して見せているだけで、`playthrough_room_available_items`等を一切読み書きしない。つまり「売店を除いて」の除外は現状のアーキテクチャ上すでに自動的に成立している——売店側は今回の要望に対して特別扱いする必要が無い。
 - `createRoomSession`（新規セッション作成時）を含め、コードベース全体で`playthrough_room_available_items`/`playthrough_room_discoveries`への`DELETE`は1件も存在しない。「リセット処理が壊れている」のではなく「そもそも実装されていない」。
 - `grant_random_item`イベントアクションはプレイヤーの所持品に直接付与するのみで部屋の在庫状態には一切触れない（混同の原因ではない）。一方、非売店での`[ITEM_GRANT]`（LLMのアイテム付与タグ）は`makeItemAvailable`経由で部屋に置くだけで即座に所持品には入らない（拾う操作が必要）——これは仕様上の体験（「渡されたのに持ってない」という戸惑い）であり、部屋/セッションの取り違えではない。
-
-**対応方針（案、未決定）**: リセット機構自体が存在しないため、新規に「セッション毎に`playthrough_room_available_items`/`playthrough_room_discoveries`を再抽選/クリアする」仕組みを追加する必要がある。`is_shop`/`suppress_auto_population`と同様の`room_templates`側フラグ（例：`reset_items_per_session`的な列）で部屋ごとにON/OFFする形が既存パターンと整合的。
 
 ---
 
@@ -106,8 +110,8 @@
 |---|---|---|---|
 | 1 | `${player}`が別`@キャラ`に置き換わる | バグ | **実装完了**（許可リストにプレイヤーを追加＋隣接するWorld既定名フォールバック漏れも修正。`${player.属性}`未実装／`llm_judge`の`${target1}`バグは対象外のまま） |
 | 2 | 変身キャラ機構の追加 | 新機能 | **実装完了**（4段階すべてコミット済み） |
-| 3 | 部屋アイテムが場面をまたいでリセットされない | 仕様通り（バグではない） | 恒久仕様と判明、リセット機構自体が未実装（新規追加が必要） |
+| 3 | 部屋アイテムが場面をまたいでリセットされない | 新機能（元の恒久動作はバグではない） | **実装完了**（`room_templates.reset_items_per_session`フラグ新設、売店は元々対象外） |
 | 4 | 子供キャラ生成時に要素がほぼ空 | バグ | **実装完了**（「詳細をLLMで生成」操作を新設。`child_gender`未使用は意図的な既存仕様のため今回は対象外） |
 | 5 | 母の名前の洋風/和風判定・表記ルール整理 | 新機能 | **実装完了**（正規表現判定＋ミドルネーム対応、洋名プールをカタカナ・「・」区切りに統一） |
 
-全項目、まだ実装・修正には着手していません。次は対応方針の検討（どれから着手するか、実装順の決定）に進めます。
+**5件全項目、実装・コミット完了（2026-08-08）。** 本バッチはこれで一区切り。次は衣装関連リワークの最終段（既存データ整理、[[outfit_spec_revision_2026_08_02]]のステップ10）に戻る予定。
