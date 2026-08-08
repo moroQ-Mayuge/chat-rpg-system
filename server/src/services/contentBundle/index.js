@@ -20,6 +20,7 @@ import {
 } from './worldSystemsBundle.js';
 import { exportEventDefinitionJson } from '../eventPortability.js';
 import { collectPlaythroughEntry, importPlaythroughEntry } from './playthroughBundle.js';
+import { collectOutfitMasterEntries, importOutfitMasterEntries } from './outfitMasterBundle.js';
 
 function emptyManifest() {
   return {
@@ -33,6 +34,7 @@ function emptyManifest() {
     axis_status_triggers: [],
     event_definitions: [],
     playthroughs: [],
+    outfit_masters: [],
   };
 }
 
@@ -103,6 +105,15 @@ export async function exportEventDefinitionsBundle(eventIds) {
   return buildZip(manifest, []);
 }
 
+// User-picked (checkbox-selected) outfit masters, same shape as
+// exportEventDefinitionsBundle above -- no images to collect (see
+// outfitMasterBundle.js).
+export async function exportOutfitMastersBundle(masterIds) {
+  const manifest = emptyManifest();
+  manifest.outfit_masters = collectOutfitMasterEntries(masterIds);
+  return buildZip(manifest, []);
+}
+
 // Single shared entry point for all bundle kinds (character-only, world,
 // room-template) — the importer only cares about which manifest arrays are
 // populated, not which export button produced the zip. Import order matters:
@@ -115,6 +126,12 @@ export async function importBundle(zipBuffer, options = {}) {
   const warnings = [];
 
   const { created: worlds } = await importWorldEntries(manifest.worlds ?? [], readImage, warnings);
+
+  // outfit_masters are name-resolved by characterBundle.js's resolveOutfitMasterId
+  // when characters are imported below, so they need to exist first (matters
+  // once a bundle ever combines both; a standalone outfit-masters bundle
+  // doesn't care about ordering).
+  const outfitMasters = importOutfitMasterEntries(manifest.outfit_masters ?? []);
 
   let worldIdForRooms = worlds[0]?.id ?? options.targetWorldId ?? null;
   if ((manifest.room_templates ?? []).length > 0 && worldIdForRooms == null) {
@@ -173,6 +190,7 @@ export async function importBundle(zipBuffer, options = {}) {
       character_statuses: characterStatuses,
       event_definitions_count: eventDefinitionsCreated,
       playthroughs,
+      outfit_masters: outfitMasters,
     },
     warnings,
   };

@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllOutfitMasters, useOutfitMasterMutations, useOutfitMasterWorlds, useOutfitMasterWorldMutations } from '../hooks/useOutfitMasters.js';
 import OutfitTagCategoryEditor, { OUTFIT_TAG_FIELDS } from '../components/ui/OutfitTagCategoryEditor.jsx';
+import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 
 const emptyForm = {
   name: '',
@@ -31,6 +33,35 @@ export default function OutfitMastersPage() {
   const { create, update, remove } = useOutfitMasterMutations();
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [selectedExportIds, setSelectedExportIds] = useState(new Set());
+  const queryClient = useQueryClient();
+
+  function toggleExportSelected(id) {
+    setSelectedExportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleExportSelected() {
+    if (selectedExportIds.size === 0) return;
+    await contentBundleApi.exportOutfitMasters([...selectedExportIds]);
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const result = await contentBundleApi.import(file);
+      window.alert(formatBundleImportSummary(result));
+      queryClient.invalidateQueries({ queryKey: ['outfitMasters'] });
+    } catch (err) {
+      window.alert(`インポートに失敗しました: ${err.message}`);
+    }
+  }
 
   function startEdit(m) {
     setEditingId(m.id);
@@ -80,6 +111,17 @@ export default function OutfitMastersPage() {
       <p style={{ fontSize: 12, color: '#888' }}>
         キャラに依存しない共有の衣装定義です。キャラへの取り込み（完全コピー／参照）は別途キャラ編集画面から行います。
       </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        <button disabled={selectedExportIds.size === 0} onClick={handleExportSelected}>
+          選択した衣装マスタをエクスポート（{selectedExportIds.size}件）
+        </button>
+        <label>
+          <span style={{ display: 'inline-block', border: '1px solid #ddd', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 13 }}>
+            インポート（zip）
+          </span>
+          <input type="file" accept=".zip" style={{ display: 'none' }} onChange={handleImportFile} />
+        </label>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {masters.map((m) => (
           <div
@@ -93,7 +135,12 @@ export default function OutfitMastersPage() {
               borderRadius: 6,
             }}
           >
-            <span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={selectedExportIds.has(m.id)}
+                onChange={() => toggleExportSelected(m.id)}
+              />
               {m.name}
               {m.slot === 'underwear' && <span style={{ fontSize: 11, color: '#888' }}> [下着]</span>}
             </span>

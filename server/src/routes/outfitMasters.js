@@ -10,11 +10,27 @@ import {
   attachMasterToWorld,
   detachMasterFromWorld,
 } from '../db/repositories/outfitMastersRepo.js';
+import { exportOutfitMastersBundle } from '../services/contentBundle/index.js';
 
 export const outfitMastersRouter = Router();
 
 outfitMastersRouter.get('/', (req, res) => {
   res.json(req.query.world_id ? listMastersForWorld(req.query.world_id) : listAllMasters());
+});
+
+// Must be registered before '/:id' below -- "export-bundle" would otherwise
+// be captured as an :id value.
+outfitMastersRouter.get('/export-bundle', async (req, res) => {
+  const ids = (req.query.ids ?? '').split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n));
+  if (ids.length === 0) return res.status(400).json({ error: 'ids_required' });
+  try {
+    const zipBuffer = await exportOutfitMastersBundle(ids);
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', `attachment; filename="outfit-masters-bundle-${ids.length}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    res.status(500).json({ error: 'export_failed', message: err.message });
+  }
 });
 
 outfitMastersRouter.post('/', (req, res) => {

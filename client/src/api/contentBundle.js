@@ -31,6 +31,10 @@ export const contentBundleApi = {
     const { blob, filename } = await api.getBlob(`/event-definitions/export-bundle?ids=${ids.join(',')}`);
     triggerDownload(blob, filename);
   },
+  exportOutfitMasters: async (ids) => {
+    const { blob, filename } = await api.getBlob(`/outfit-masters/export-bundle?ids=${ids.join(',')}`);
+    triggerDownload(blob, filename);
+  },
   exportPlaythrough: async (id, { includeMessages } = {}) => {
     const params = new URLSearchParams();
     if (includeMessages) params.set('include_messages', '1');
@@ -54,6 +58,7 @@ export function formatBundleImportSummary({ created, warnings }) {
   if (created.room_templates.length > 0) parts.push(`部屋テンプレート: ${created.room_templates.map((r) => r.name).join('、')}`);
   if (created.characters.length > 0) parts.push(`キャラクター: ${created.characters.map((c) => c.name).join('、')}`);
   if (created.playthroughs?.length > 0) parts.push(`ルート: ${created.playthroughs.map((p) => p.name).join('、')}`);
+  if (created.outfit_masters?.length > 0) parts.push(`衣装マスタ: ${created.outfit_masters.map((m) => m.name).join('、')}`);
   let message = `インポートしました。\n\n${parts.join('\n')}`;
   if (warnings.length > 0) message += `\n\n警告:\n${warnings.join('\n')}`;
   return message;
