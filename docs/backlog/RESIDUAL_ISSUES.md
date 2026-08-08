@@ -2,7 +2,7 @@
 
 このセッションおよび過去セッションの記憶（`~/.claude/.../memory/`）に残っている、
 未実装・未設計・保留のままの項目をまとめたもの。**妊娠機能そのものに関する項目は
-含まない**（別途 `GUIDE_pregnancy_events.md` を参照）。
+含まない**（別途 [GUIDE_pregnancy_events.md](../guides/GUIDE_pregnancy_events.md) を参照）。
 
 ## A. 衣装・見た目
 

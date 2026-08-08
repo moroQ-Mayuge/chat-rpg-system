@@ -1,6 +1,6 @@
 # ChatRPG
 
-複数のAIキャラクターとチャットできる、完全ローカル動作の1人用Webアプリ。KoboldCpp（ローカルLLM＋ローカルStable Diffusion）を使い、会話に応じたシーン・表情画像を動的に生成する。詳しい仕様は [SPEC.md](SPEC.md) を参照。
+複数のAIキャラクターとチャットできる、完全ローカル動作の1人用Webアプリ。KoboldCpp（ローカルLLM＋ローカルStable Diffusion）を使い、会話に応じたシーン・表情画像を動的に生成する。詳しい仕様は [docs/SPEC.md](docs/SPEC.md) を参照。
 
 ## 必要なもの
 
@@ -95,7 +95,7 @@ npm run dev:client   # クライアントのみ起動
 
 ## 実装状況・ロードマップ
 
-[ROADMAP.md](ROADMAP.md) を参照（リリース済み／未リリース機能の一覧、未着手項目）。
+[docs/ROADMAP.md](docs/ROADMAP.md) を参照（リリース済み／未リリース機能の一覧、未着手項目）。
 
 ## 変更履歴
 
