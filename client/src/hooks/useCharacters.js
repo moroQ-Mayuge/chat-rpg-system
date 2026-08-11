@@ -54,6 +54,7 @@ export function useOutfitMutations(characterId) {
   return {
     create: useMutation({ mutationFn: (data) => outfitsApi.create(characterId, data), onSuccess: invalidate }),
     createFromMaster: useMutation({ mutationFn: (data) => outfitsApi.createFromMaster(characterId, data), onSuccess: invalidate }),
+    overwriteFromMaster: useMutation({ mutationFn: ({ id, data }) => outfitsApi.overwriteFromMaster(id, data), onSuccess: invalidate }),
     detachMaster: useMutation({ mutationFn: (id) => outfitsApi.detachMaster(id), onSuccess: invalidate }),
     promoteToMaster: useMutation({
       mutationFn: ({ id, data }) => outfitsApi.promoteToMaster(id, data),

@@ -121,6 +121,32 @@ export function instantiateMasterForCharacter(characterId, masterId, { name, lin
   });
 }
 
+// instantiateMasterForCharacter の「上書き」版。新規追加だと立ち絵/表情差分が
+// 別のoutfit行に紐づいてしまい、既存の生成済み画像との紐づけをやり直す必要が
+// 出てしまう(ユーザー要望)ため、既存のoutfit行のタグ内容だけをマスタの値で
+// 差し替える。standing_image_path/outfit_expression_imagesはupdateOutfitの
+// SET対象外なのでそのまま引き継がれる。is_default等の他フィールドも
+// getOutfit(outfitId)で読んだ既存値をそのまま維持する。
+export function overwriteOutfitFromMaster(outfitId, masterId, { name, link_mode = 'copy' } = {}) {
+  const master = getMaster(masterId);
+  const outfit = getOutfit(outfitId);
+  if (!master || !outfit) return null;
+  const isReference = link_mode === 'reference';
+  const tagValues = isReference
+    ? Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, '']))
+    : Object.fromEntries(OUTFIT_TAG_FIELDS.map((f) => [f, master[f]]));
+  return updateOutfit(outfitId, {
+    ...outfit,
+    name: name || master.name,
+    clothing_description: master.clothing_description,
+    equipment_description: master.equipment_description,
+    garment_operations: isReference ? {} : master.garment_operations,
+    outfit_master_id: master.id,
+    link_mode,
+    ...tagValues,
+  });
+}
+
 // PLAN_2026-08-02_outfit_spec_revision.md 実装順6: 「着る」用。同じマスタから
 // 既に取り込み済みの衣装インスタンスがあればそれを使い回す(毎回新規作成すると、
 // 着るたびに空の立ち絵/表情差分を持つ行が増えてしまう)。無ければ実装順4の

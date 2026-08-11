@@ -189,6 +189,7 @@ export default function CharactersPage() {
   const [activeOutfitId, setActiveOutfitId] = useState(null);
   const [masterPickerId, setMasterPickerId] = useState('');
   const [masterLinkMode, setMasterLinkMode] = useState('copy');
+  const [masterImportMode, setMasterImportMode] = useState('add');
   const [promoteFormOpen, setPromoteFormOpen] = useState(false);
   const [promoteName, setPromoteName] = useState('');
   const [activeTransformationId, setActiveTransformationId] = useState(null);
@@ -404,12 +405,38 @@ export default function CharactersPage() {
 
   async function addOutfitFromMaster() {
     if (!masterPickerId) return;
+    if (masterImportMode === 'overwrite') return handleOverwriteFromMaster();
     const outfit = await outfitMutations.createFromMaster.mutateAsync({
       outfit_master_id: Number(masterPickerId),
       link_mode: masterLinkMode,
     });
     setActiveOutfitId(outfit.id);
     setMasterPickerId('');
+  }
+
+  // 新規追加だと立ち絵/表情差分が別のoutfit行に紐づいてしまい、既存の生成済み
+  // 画像との紐づけがやり直しになる（ユーザー要望）。上書きは同じoutfit行の
+  // タグ内容だけをマスタの値に差し替えるので、standing_image_path/
+  // outfit_expression_imagesはそのまま引き継がれる。
+  async function handleOverwriteFromMaster() {
+    if (!masterPickerId || !activeOutfit) return;
+    const masterName = allMasters?.find((m) => m.id === Number(masterPickerId))?.name ?? '';
+    if (!window.confirm(`現在選択中の衣装「${activeOutfit.name}」の内容を「${masterName}」で上書きします。よろしいですか？`)) return;
+    await outfitMutations.overwriteFromMaster.mutateAsync({
+      id: activeOutfit.id,
+      data: { outfit_master_id: Number(masterPickerId), link_mode: masterLinkMode },
+    });
+    setMasterPickerId('');
+  }
+
+  async function handleDeleteOutfit(id) {
+    const outfit = form.outfits?.find((o) => o.id === id);
+    if (!outfit || outfit.is_default || (form.outfits?.length ?? 0) < 2) return;
+    if (!window.confirm(`衣装「${outfit.name}」を削除します。よろしいですか？（生成済みの画像も失われます）`)) return;
+    await outfitMutations.remove.mutateAsync(id);
+    if (activeOutfitId === id) {
+      setActiveOutfitId(form.outfits.find((o) => o.id !== id && o.is_default)?.id ?? form.outfits.find((o) => o.id !== id)?.id ?? null);
+    }
   }
 
   async function handleDetachMaster() {
@@ -968,19 +995,26 @@ export default function CharactersPage() {
                     <p style={{ fontSize: 13, fontWeight: 500 }}>衣装バリエーション</p>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
                       {form.outfits.map((o) => (
-                        <button
-                          key={o.id}
-                          onClick={() => setActiveOutfitId(o.id)}
-                          style={{
-                            fontSize: 12,
-                            padding: '4px 10px',
-                            borderRadius: 999,
-                            background: activeOutfitId === o.id ? '#dbeafe' : 'transparent',
-                          }}
-                        >
-                          {o.name}
-                          {Boolean(o.is_default) && ' (デフォルト)'}
-                        </button>
+                        <span key={o.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, background: activeOutfitId === o.id ? '#dbeafe' : 'transparent' }}>
+                          <button
+                            onClick={() => setActiveOutfitId(o.id)}
+                            style={{ fontSize: 12, padding: '4px 10px', background: 'transparent' }}
+                          >
+                            {o.name}
+                            {Boolean(o.is_default) && ' (デフォルト)'}
+                          </button>
+                          {/* デフォルト衣装、または衣装が1つしかない状態では削除不可（キャラは常に
+                              最低1つ・デフォルト1つを持つ必要がある） */}
+                          {!o.is_default && form.outfits.length >= 2 && (
+                            <button
+                              onClick={() => handleDeleteOutfit(o.id)}
+                              title="この衣装を削除"
+                              style={{ fontSize: 11, padding: '4px 8px', color: '#c00', background: 'transparent' }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
                       ))}
                       <button onClick={addOutfit}>+ 追加</button>
                     </div>
@@ -1002,8 +1036,21 @@ export default function CharactersPage() {
                         <input type="radio" checked={masterLinkMode === 'reference'} onChange={() => setMasterLinkMode('reference')} />
                         参照のみ
                       </label>
-                      <button onClick={addOutfitFromMaster} disabled={!masterPickerId}>
-                        + 追加
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <input type="radio" checked={masterImportMode === 'add'} onChange={() => setMasterImportMode('add')} />
+                        新規追加
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="選択中の衣装のタグ内容だけをマスタで置き換えます。立ち絵・表情差分の画像はそのまま引き継がれます">
+                        <input
+                          type="radio"
+                          checked={masterImportMode === 'overwrite'}
+                          onChange={() => setMasterImportMode('overwrite')}
+                          disabled={!activeOutfit}
+                        />
+                        選択中の衣装に上書き
+                      </label>
+                      <button onClick={addOutfitFromMaster} disabled={!masterPickerId || (masterImportMode === 'overwrite' && !activeOutfit)}>
+                        {masterImportMode === 'overwrite' ? '上書き' : '+ 追加'}
                       </button>
                     </div>
 
