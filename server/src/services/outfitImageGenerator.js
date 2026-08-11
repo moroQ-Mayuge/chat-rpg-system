@@ -43,7 +43,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
   const settings = getImageGenerationSettings('expression');
   const resolvedMode = mode || settings.default_mode;
   const prompt = buildPrompt(settings, {
-    character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null),
+    character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null, outfit.icon_excluded_fields ?? []),
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });

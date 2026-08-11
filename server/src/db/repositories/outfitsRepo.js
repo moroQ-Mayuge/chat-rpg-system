@@ -56,8 +56,23 @@ function parseGarmentOperations(outfit) {
   return { ...outfit, garment_operations };
 }
 
+// icon_excluded_fields (0098): OUTFIT_TAG_FIELDS names to leave out of
+// EXPRESSION icon generation specifically (standing images always use every
+// field) -- e.g. belongings/shoes rarely matter for a close-up face icon.
+// Parsed here for the same reason as garment_operations above.
+function parseIconExcludedFields(outfit) {
+  if (!outfit) return outfit;
+  let icon_excluded_fields;
+  try {
+    icon_excluded_fields = JSON.parse(outfit.icon_excluded_fields || '[]');
+  } catch {
+    icon_excluded_fields = [];
+  }
+  return { ...outfit, icon_excluded_fields };
+}
+
 export function getOutfit(id) {
-  return parseGarmentOperations(attachExpressionImages(db.prepare('SELECT * FROM outfits WHERE id = ?').get(id)));
+  return parseIconExcludedFields(parseGarmentOperations(attachExpressionImages(db.prepare('SELECT * FROM outfits WHERE id = ?').get(id))));
 }
 
 export function listOutfitsForCharacter(characterId) {
@@ -65,7 +80,8 @@ export function listOutfitsForCharacter(characterId) {
     .prepare('SELECT * FROM outfits WHERE character_id = ? ORDER BY is_default DESC, id ASC')
     .all(characterId)
     .map(attachExpressionImages)
-    .map(parseGarmentOperations);
+    .map(parseGarmentOperations)
+    .map(parseIconExcludedFields);
 }
 
 function unsetOtherDefaults(characterId, exceptOutfitId) {
@@ -81,8 +97,8 @@ export function createOutfit(characterId, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, overrides_underwear, ${tagColumns})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, overrides_underwear, icon_excluded_fields, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
     .run(
       characterId,
@@ -94,6 +110,7 @@ export function createOutfit(characterId, data) {
       data.outfit_master_id ?? null,
       data.link_mode ?? 'copy',
       data.overrides_underwear ? 1 : 0,
+      JSON.stringify(data.icon_excluded_fields ?? []),
       ...tagValues,
     );
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
@@ -111,7 +128,7 @@ export function updateOutfit(id, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
     `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?,
-       outfit_master_id = ?, link_mode = ?, overrides_underwear = ?, ${tagSetClause}
+       outfit_master_id = ?, link_mode = ?, overrides_underwear = ?, icon_excluded_fields = ?, ${tagSetClause}
      WHERE id = ?`,
   ).run(
     data.name,
@@ -122,6 +139,7 @@ export function updateOutfit(id, data) {
     data.outfit_master_id !== undefined ? data.outfit_master_id : outfit.outfit_master_id,
     data.link_mode !== undefined ? data.link_mode : outfit.link_mode,
     data.overrides_underwear !== undefined ? (data.overrides_underwear ? 1 : 0) : outfit.overrides_underwear,
+    JSON.stringify(data.icon_excluded_fields !== undefined ? data.icon_excluded_fields : JSON.parse(outfit.icon_excluded_fields || '[]')),
     ...tagValues,
     id,
   );

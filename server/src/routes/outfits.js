@@ -100,7 +100,11 @@ outfitsRouter.post('/outfits/:id/generate-standing-image', (req, res) => {
 outfitsRouter.post('/outfits/:id/generate-expression-image/:expressionTypeId', (req, res) => {
   enqueueImageJob(async () => {
     try {
-      const outfit = { ...getOutfit(req.params.id), ...tagOverridesFromBody(req.body) };
+      const outfit = {
+        ...getOutfit(req.params.id),
+        ...tagOverridesFromBody(req.body),
+        ...(req.body.icon_excluded_fields !== undefined ? { icon_excluded_fields: req.body.icon_excluded_fields } : {}),
+      };
       const expressionType = getExpressionType(req.params.expressionTypeId);
       const imagePath = await generateOutfitExpressionImage(outfit, expressionType, req.body.extra_hint, req.body.mode);
       res.json(setExpressionImage(req.params.id, req.params.expressionTypeId, imagePath));

@@ -45,13 +45,37 @@ const DISTURBANCE_STYLES = [
 // onFieldChange(key, value) / onGarmentOperationChange(key, style, checked):
 // same signatures as CharactersPage.jsx's updateActiveOutfitField/
 // updateGarmentOperation, so callers can pass those functions directly.
-export default function OutfitTagCategoryEditor({ values, onFieldChange, garmentOperations, onGarmentOperationChange }) {
+// showIconToggle/iconExcludedFields/onToggleIconField: per-Outfit "include in
+// generated EXPRESSION icon" checkbox (0098) -- expression icons are often
+// close-ups where belongings/shoes/etc. don't matter. Only CharactersPage.jsx
+// passes these (OutfitMastersPage.jsx has no expression-icon generation of
+// its own, so the checkbox stays hidden there). Only shown for a category
+// that actually has a value, per the request this was built for.
+export default function OutfitTagCategoryEditor({
+  values,
+  onFieldChange,
+  garmentOperations,
+  onGarmentOperationChange,
+  showIconToggle = false,
+  iconExcludedFields = [],
+  onToggleIconField,
+}) {
   return (
     <div>
       <p style={{ fontSize: 12, marginBottom: 4 }}>画像生成用danbooruタグ（カテゴリ別）</p>
       {OUTFIT_TAG_CATEGORIES.map(([key, label]) => (
         <details key={key} open={Boolean(values[key]?.trim())} style={{ marginBottom: 4 }}>
           <summary style={{ fontSize: 11, color: '#555', cursor: 'pointer' }}>{label}</summary>
+          {showIconToggle && Boolean(values[key]?.trim()) && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, margin: '4px 0' }}>
+              <input
+                type="checkbox"
+                checked={!iconExcludedFields.includes(key)}
+                onChange={(e) => onToggleIconField(key, !e.target.checked)}
+              />
+              表情アイコンに含める
+            </label>
+          )}
           {DISTURBABLE_FIELDS.includes(key) && (
             <p style={{ fontSize: 10, color: '#999', margin: '4px 0' }}>
               先頭のタグは主たる構造語として扱われます（例：shirt）。乱れ操作時にこの語だけが書き換わります。

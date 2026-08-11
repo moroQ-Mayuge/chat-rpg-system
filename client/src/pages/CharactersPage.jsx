@@ -488,6 +488,15 @@ export default function CharactersPage() {
     updateActiveOutfitField('garment_operations', { ...activeOutfit.garment_operations, [field]: next });
   }
 
+  // icon_excluded_fields (0098): which OUTFIT_TAG_FIELDS to leave out of
+  // EXPRESSION icon generation specifically (standing images always use
+  // every field — see handleGenerateStandingImage, which doesn't send this).
+  function toggleIconExcludedField(key, excluded) {
+    const current = activeOutfit.icon_excluded_fields ?? [];
+    const next = excluded ? [...new Set([...current, key])] : current.filter((k) => k !== key);
+    updateActiveOutfitField('icon_excluded_fields', next);
+  }
+
   function currentOutfitTags() {
     const source = resolveTagSource();
     return Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, source?.[key] ?? '']));
@@ -504,6 +513,7 @@ export default function CharactersPage() {
         is_default: Boolean(activeOutfit.is_default),
         overrides_underwear: Boolean(activeOutfit.overrides_underwear),
         garment_operations: activeOutfit.garment_operations ?? {},
+        icon_excluded_fields: activeOutfit.icon_excluded_fields ?? [],
         ...currentOutfitTags(),
       },
     });
@@ -554,7 +564,7 @@ export default function CharactersPage() {
         id: activeOutfit.id,
         expressionTypeId,
         mode: expressionGenMode || undefined,
-        tags: currentOutfitTags(),
+        tags: { ...currentOutfitTags(), icon_excluded_fields: activeOutfit.icon_excluded_fields ?? [] },
       });
     } catch (err) {
       setImageGenError(err.message);
@@ -584,7 +594,7 @@ export default function CharactersPage() {
           id: activeOutfit.id,
           expressionTypeId: et.id,
           mode: expressionGenMode || undefined,
-          tags: currentOutfitTags(),
+          tags: { ...currentOutfitTags(), icon_excluded_fields: activeOutfit.icon_excluded_fields ?? [] },
         });
       } catch (err) {
         setImageGenError(`${et.name}の生成で失敗したため中断しました: ${err.message}`);
@@ -1090,6 +1100,9 @@ export default function CharactersPage() {
                               onFieldChange={updateActiveOutfitField}
                               garmentOperations={activeOutfit.garment_operations}
                               onGarmentOperationChange={updateGarmentOperation}
+                              showIconToggle
+                              iconExcludedFields={activeOutfit.icon_excluded_fields ?? []}
+                              onToggleIconField={toggleIconExcludedField}
                             />
                           </>
                         )}
