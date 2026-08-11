@@ -808,7 +808,10 @@ export default function CharactersPage() {
 
             {activeTab === 'basic' && (
               <div>
-                {existing?.is_auto_created && (
+                {/* Boolean() は必須。is_auto_created は 0/1 の数値で来るので
+                    `existing?.is_auto_created && ...` は通常キャラの編集画面で
+                    "0" をそのまま描いてしまう（is_mobと同じ既知のパターン）。 */}
+                {Boolean(existing?.is_auto_created) && (
                   <div style={{ marginBottom: 10 }}>
                     <button onClick={handleGenerateChildDetails} disabled={generatingDetails}>
                       {generatingDetails ? '生成中...' : '詳細をLLMで生成（親の設定を参考に）'}
