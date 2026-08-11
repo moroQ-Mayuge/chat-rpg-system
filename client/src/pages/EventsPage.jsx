@@ -101,6 +101,7 @@ const ACTION_TYPES = [
   { value: 'set_timer', label: 'タイマーを張る（n日後）' },
   { value: 'clear_timer', label: 'タイマーを取り消す' },
   { value: 'time_skip', label: '時間跳躍（n日後・n年後）' },
+  { value: 'force_room_transfer', label: '強制部屋移動（例: 逮捕→留置場）' },
 ];
 
 function conditionDefaults(type) {
@@ -189,6 +190,8 @@ function actionDefaults(type) {
       return { amount: 1000, operation: 'subtract' };
     case 'set_scene_situation':
       return { text: '' };
+    case 'force_room_transfer':
+      return { target_room_template_id: null, carry_character_ids: [] };
     default:
       return {};
   }
@@ -682,7 +685,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, hasOutcomeBranch, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, roomTemplates, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -1126,6 +1129,34 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
         </div>
       )}
 
+      {action.action_type === 'force_room_transfer' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>移動先の部屋</span>
+            <select
+              value={p.target_room_template_id ?? ''}
+              onChange={(e) => setParams({ target_room_template_id: Number(e.target.value) || null })}
+            >
+              <option value="">選択してください</option>
+              {(roomTemplates ?? []).map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>同行させるキャラ（複数選択・任意）</span>
+            <select
+              multiple
+              value={(p.carry_character_ids ?? []).map(String)}
+              onChange={(e) => setParams({ carry_character_ids: Array.from(e.target.selectedOptions, (o) => Number(o.value)) })}
+            >
+              {charOptions}
+            </select>
+          </label>
+        </div>
+      )}
       {action.action_type === 'advance_time' && (
         <label>
           <span style={label11}>進める時間帯の数</span>
@@ -2334,6 +2365,7 @@ export default function EventsPage() {
                   outfitMasters={outfitMasters}
                   transformations={transformations}
                   statuses={statuses}
+                  roomTemplates={roomTemplates}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
                   onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}

@@ -22,6 +22,7 @@ import { executeSetTimer } from './setTimer.js';
 import { executeClearTimer } from './clearTimer.js';
 import { executeTimeSkip } from './timeSkip.js';
 import { executeTransformCharacter } from './transformCharacter.js';
+import { executeForceRoomTransfer } from './forceRoomTransfer.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -48,6 +49,7 @@ export const actionRegistry = {
   clear_timer: executeClearTimer,
   time_skip: executeTimeSkip,
   transform_character: executeTransformCharacter,
+  force_room_transfer: executeForceRoomTransfer,
 };
 
 export async function executeAction(action, execCtx) {
