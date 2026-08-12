@@ -167,6 +167,9 @@ function buildWarpConstraintBlock(world) {
 
 function buildSystemPrompt(session, participants, options = {}) {
   const emotionKeys = db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key);
+  // ポーズ機構(1-snoopy-raccoon.md): 未登録ならこの案内自体を出さない
+  // （EMOTIONと違い任意タグなので、空リストで無理に触れさせる必要が無い）。
+  const poseKeys = db.prepare('SELECT llm_tag_key FROM pose_masters').all().map((r) => r.llm_tag_key);
   // getPlaythrough() (not a raw world_id lookup) so its attachLabels() gives
   // us the human-readable time-slot/season/day-of-week labels alongside
   // current_weather -- previously fetched nowhere in this file, which is why
@@ -416,6 +419,9 @@ function buildSystemPrompt(session, participants, options = {}) {
       : null,
     statBlock ? '[STAT_CHANGE: キャラ名|軸名|符号付き整数]: 状態値が変化した場合のみ（任意）' : null,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
+    poseKeys.length > 0
+      ? `キャラクターの姿勢が明確に変化した場合（座る・立ち上がる・横になる等）のみ、セリフ末尾のEMOTIONタグの後に [POSE:ポーズキー] を追加してください。姿勢に変化が無いターンでは付けないでください（毎回付ける必要はありません）。ポーズキーは次のいずれかを使ってください：${poseKeys.join(', ')}`
+      : null,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
     departedNames.length > 0
       ? `特に、以下のキャラクターは既にこの場を離れており、絶対に発言・行動を書いてはいけません：${departedNames.join('、')}`

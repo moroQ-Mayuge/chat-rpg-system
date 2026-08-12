@@ -23,6 +23,7 @@ import { executeClearTimer } from './clearTimer.js';
 import { executeTimeSkip } from './timeSkip.js';
 import { executeTransformCharacter } from './transformCharacter.js';
 import { executeForceRoomTransfer } from './forceRoomTransfer.js';
+import { executeSetPose } from './setPose.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -50,6 +51,7 @@ export const actionRegistry = {
   time_skip: executeTimeSkip,
   transform_character: executeTransformCharacter,
   force_room_transfer: executeForceRoomTransfer,
+  set_pose: executeSetPose,
 };
 
 export async function executeAction(action, execCtx) {

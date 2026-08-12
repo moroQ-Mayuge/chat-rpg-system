@@ -6,6 +6,7 @@ import RoomTemplateEditPage from './pages/RoomTemplateEditPage.jsx';
 import RoomWorldConfigPage from './pages/RoomWorldConfigPage.jsx';
 import CharactersPage from './pages/CharactersPage.jsx';
 import ExpressionTypesPage from './pages/ExpressionTypesPage.jsx';
+import PoseMastersPage from './pages/PoseMastersPage.jsx';
 import RelationshipAxesPage from './pages/RelationshipAxesPage.jsx';
 import EventsPage from './pages/EventsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -57,6 +58,9 @@ export default function App() {
           <NavLink to="/expression-types" style={navLinkStyle}>
             表情マスター
           </NavLink>
+          <NavLink to="/pose-masters" style={navLinkStyle}>
+            ポーズマスタ
+          </NavLink>
           <NavLink to="/relationship-axes" style={navLinkStyle}>
             関係性軸
           </NavLink>
@@ -93,6 +97,7 @@ export default function App() {
           <Route path="/action-commands" element={<ActionCommandsPage />} />
           <Route path="/characters" element={<CharactersPage />} />
           <Route path="/expression-types" element={<ExpressionTypesPage />} />
+          <Route path="/pose-masters" element={<PoseMastersPage />} />
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />
           <Route path="/character-statuses" element={<CharacterStatusesPage />} />
           <Route path="/outfit-masters" element={<OutfitMastersPage />} />

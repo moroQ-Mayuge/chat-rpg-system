@@ -1,5 +1,7 @@
+import { db } from '../db/connection.js';
 import { OUTFIT_TAG_FIELDS } from '../db/repositories/outfitsRepo.js';
 import { listActiveStatuses } from '../db/repositories/characterStatusStatesRepo.js';
+import { composeWornOutfit } from './outfitComposition.js';
 
 export const CATEGORY_KEYS = OUTFIT_TAG_FIELDS;
 
@@ -248,4 +250,29 @@ export function resolveOutfitTags(
   }
 
   return null;
+}
+
+// Single entry point for "this room_session_characters row's image tags",
+// used by imagePromptBuilder.js's buildSceneTagParts and generateImage.js's
+// placeholder/leftover-tag paths (previously each duplicated the same
+// composeWornOutfit + getActiveOutfitStatusModifiers + resolveOutfitTags
+// call). Additionally folds in the participant's current pose's danbooru
+// tag (1-snoopy-raccoon.md pose feature) -- only for the bare/whole-outfit
+// reference (categoryKey == null), same rule resolveOutfitTags itself uses
+// for nudity tags: a specific category/range lookup (e.g. ${target1.hairstyle})
+// never includes them, since pose isn't a clothing category.
+export function resolveParticipantImageTags(participant, categoryKey, statusCtx, exposureTagSettings) {
+  const outfit = participant.current_outfit_id ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id) : null;
+  const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
+  const outfitTags = resolveOutfitTags(
+    composeWornOutfit(outfit?.character_id, outfit, statusCtx.playthroughId),
+    categoryKey,
+    suppressedFields,
+    disturbedFieldStyles,
+    tornFields,
+    exposureTagSettings,
+  );
+  if (categoryKey || !participant.current_pose_id) return outfitTags;
+  const pose = db.prepare('SELECT danbooru_tag FROM pose_masters WHERE id = ?').get(participant.current_pose_id);
+  return [outfitTags, pose?.danbooru_tag].filter(Boolean).join(', ');
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllPropCategories } from '../hooks/usePropCategories.js';
 import { useAllItemCategories } from '../hooks/useItemCategories.js';
+import { usePoseMasters } from '../hooks/usePoseMasters.js';
 import {
   useRoomTemplate,
   useRoomTemplateMutations,
@@ -37,6 +38,7 @@ const emptyForm = {
   turns_per_time_slot_enabled: false,
   turns_per_time_slot: 15,
   attribute_tags: [],
+  default_pose_id: null,
   is_place: false,
   is_shop: false,
   suppress_auto_population: false,
@@ -54,6 +56,7 @@ export default function RoomTemplateEditPage() {
   const { data: worlds } = useWorlds();
   const { data: propCategories } = useAllPropCategories();
   const { data: itemCategories } = useAllItemCategories();
+  const { data: poseMasters } = usePoseMasters();
   const { data: existing } = useRoomTemplate(isNew ? null : id);
   const { create, update, uploadBackgroundImage, generateBackgroundImage } = useRoomTemplateMutations();
   const { data: attachedWorlds } = useRoomWorlds(isNew ? null : id);
@@ -83,6 +86,7 @@ export default function RoomTemplateEditPage() {
       turns_per_time_slot: existing.turns_per_time_slot ?? 15,
       background_image_path: existing.background_image_path,
       attribute_tags: tagsToArray(existing.attribute_tags),
+      default_pose_id: existing.default_pose_id ?? null,
       is_place: Boolean(existing.is_place),
       is_shop: Boolean(existing.is_shop),
       suppress_auto_population: Boolean(existing.suppress_auto_population),
@@ -139,6 +143,7 @@ export default function RoomTemplateEditPage() {
       item_category_ids: form.item_category_ids,
       turns_per_time_slot: form.turns_per_time_slot_enabled ? form.turns_per_time_slot : null,
       attribute_tags: tagsToText(form.attribute_tags),
+      default_pose_id: form.default_pose_id,
       is_place: form.is_place,
       is_shop: form.is_shop,
       suppress_auto_population: form.suppress_auto_population,
@@ -292,6 +297,24 @@ export default function RoomTemplateEditPage() {
               onChange={(tags) => setForm({ ...form, attribute_tags: tags })}
               placeholder="例: 部活, 図書委員"
             />
+          </div>
+
+          <div>
+            <p style={{ marginBottom: 4 }}>この部屋に入った時の初期ポーズ</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              新しい部屋セッションが始まる時、同席する各キャラのポーズをここで指定した状態から始めます（未指定＝ポーズなし）。部屋を移動すると常にリセットされます。
+            </p>
+            <select
+              value={form.default_pose_id ?? ''}
+              onChange={(e) => setForm({ ...form, default_pose_id: Number(e.target.value) || null })}
+            >
+              <option value="">指定なし</option>
+              {(poseMasters ?? []).map((pm) => (
+                <option key={pm.id} value={pm.id}>
+                  {pm.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

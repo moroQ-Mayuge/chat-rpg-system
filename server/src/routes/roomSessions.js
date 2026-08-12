@@ -10,6 +10,7 @@ import {
   setAccompanying,
   updateParticipantOutfit,
   updateParticipantTransformation,
+  updateParticipantPose,
 } from '../db/repositories/roomSessionsRepo.js';
 import { wearMasterAsCharacter, getMasterByName } from '../db/repositories/outfitMastersRepo.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
@@ -431,6 +432,9 @@ async function generateReply(
 
   const validEmotionKeys = new Set(db.prepare('SELECT llm_tag_key FROM expression_types').all().map((r) => r.llm_tag_key));
   const fallbackKey = fallbackEmotionKey();
+  // [POSE:xxx] is optional (see responseParser.js) -- an unrecognized key is
+  // simply ignored (no fallback/fold-into-text handling needed, unlike EMOTION).
+  const poseIdByLlmTagKey = new Map(db.prepare('SELECT id, llm_tag_key FROM pose_masters').all().map((r) => [r.llm_tag_key, r.id]));
   // Same disambiguation algorithm as promptBuilder.js's buildSystemPrompt,
   // applied to the same session.participants array — so if two participants
   // share a name, this Map's keys naturally match whatever the model was
@@ -637,6 +641,14 @@ async function generateReply(
         // dialogue text instead of discarding the line's content.
         content = `${content}（${parsed.emotionKey}）`;
       }
+    }
+
+    // [POSE:xxx] is optional and low-frequency by design (1-snoopy-raccoon.md) —
+    // only applied when present and recognized; absent or unknown keys leave
+    // the current pose untouched (no fold-into-text handling like EMOTION,
+    // since omitting it is the expected common case, not a format slip).
+    if (parsed.poseKey && poseIdByLlmTagKey.has(parsed.poseKey)) {
+      updateParticipantPose(sessionId, participant.character_id, poseIdByLlmTagKey.get(parsed.poseKey));
     }
 
     // A recognized character name with no actual dialogue after it (format

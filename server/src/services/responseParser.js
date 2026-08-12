@@ -21,6 +21,13 @@ const EMOTION_PATTERN = /\[EMOTION:([a-zA-Z0-9_]+)\]\s*$/;
 // ("[E_M_O_T_I_O_N:smile]"). Capture 1 is the keyword, 2 the key.
 const EMOTION_LOOSE_PATTERN = /\[([A-Za-z0-9_ .-]+):([a-zA-Z0-9_]+)\]\s*$/;
 const EMOTION_KEY_ONLY_PATTERN = /^EMOTION:([a-zA-Z0-9_]+)$/i;
+// Optional trailing pose tag, placed after EMOTION when present (e.g.
+// "[EMOTION:smile] [POSE:sitting]"). Unlike EMOTION this is never required —
+// the model only emits it when a character's pose actually changes (see
+// promptBuilder.js's system-prompt instruction), so there's no loose/garbled
+// fallback matching like EMOTION_LOOSE_PATTERN: an unrecognized/garbled
+// attempt is simply left as no pose change rather than being force-parsed.
+const POSE_PATTERN = /\[POSE:([a-zA-Z0-9_]+)\]\s*$/;
 const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 const OUTFIT_GRANT_PATTERN = /^OUTFIT_GRANT:\s*(.+)$/;
 const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
@@ -126,6 +133,7 @@ export function parseScriptLine(rawLine) {
         characterName: name.trim(),
         text: rest.trim(),
         emotionKey: emotionKeyMatch ? emotionKeyMatch[1] : bracketContent.trim() || null,
+        poseKey: null,
       };
     }
     return { type: 'narration', text: line, emotionKey: null };
@@ -167,19 +175,25 @@ export function parseScriptLine(rawLine) {
     return { type: 'narration', text: rest.trim(), emotionKey: null };
   }
 
+  // POSE (if present) sits to the right of EMOTION, so it's stripped first.
+  const poseMatch = rest.match(POSE_PATTERN);
+  const poseKey = poseMatch ? poseMatch[1] : null;
+  const restAfterPose = poseMatch ? rest.slice(0, poseMatch.index).trim() : rest;
+
   // Same garbling can hit the trailing emotion tag, which would otherwise
   // leave "[E_M_O_T_I_O_N:smile]" sitting in the dialogue text. The key itself
   // stays strict — an unknown one is folded into the line by roomSessions.js.
-  const emotionMatch = rest.match(EMOTION_PATTERN) ?? rest.match(EMOTION_LOOSE_PATTERN);
+  const emotionMatch = restAfterPose.match(EMOTION_PATTERN) ?? restAfterPose.match(EMOTION_LOOSE_PATTERN);
   const emotionKey = emotionMatch && (emotionMatch.length > 2 ? isTagLike(emotionMatch[1], 'EMOTION') : true)
     ? emotionMatch[emotionMatch.length - 1]
     : null;
-  const text = emotionMatch && emotionKey ? rest.slice(0, emotionMatch.index).trim() : rest.trim();
+  const text = emotionMatch && emotionKey ? restAfterPose.slice(0, emotionMatch.index).trim() : restAfterPose.trim();
   return {
     type: 'character',
     characterName: tag,
     text,
     emotionKey,
+    poseKey,
   };
 }
 

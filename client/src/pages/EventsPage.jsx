@@ -8,6 +8,7 @@ import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import { useAllItems } from '../hooks/useItems.js';
 import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
 import { useAllCharacterTransformations } from '../hooks/useCharacterTransformations.js';
+import { usePoseMasters } from '../hooks/usePoseMasters.js';
 import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
@@ -72,6 +73,7 @@ const CONDITION_TYPES = [
   { value: 'has_item', label: '所持アイテム' },
   { value: 'has_status', label: 'ステータス所持' },
   { value: 'has_outfit', label: '着用中の衣装' },
+  { value: 'has_pose', label: '現在のポーズ' },
   { value: 'has_money', label: '所持金' },
   { value: 'llm_judge', label: 'LLM判定' },
 ];
@@ -85,6 +87,7 @@ const ACTION_TYPES = [
   { value: 'change_relationship', label: '関係性パラメータ変更' },
   { value: 'change_outfit', label: '衣装変更' },
   { value: 'transform_character', label: '変身' },
+  { value: 'set_pose', label: 'ポーズ変更' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'make_item_available', label: 'アイテムを拾える状態にする' },
@@ -124,6 +127,8 @@ function conditionDefaults(type) {
       return { character_id: null, status_id: null, negate: false };
     case 'has_outfit':
       return { character_id: null, outfit_name: '', negate: false };
+    case 'has_pose':
+      return { character_id: null, pose_id: null, negate: false };
     case 'has_money':
       return { comparison: '>=', value: 1000 };
     case 'llm_judge':
@@ -159,6 +164,8 @@ function actionDefaults(type) {
       return { character_id: null, outfit_id: null, outfit_master_id: null };
     case 'transform_character':
       return { character_id: null, transformation_id: null };
+    case 'set_pose':
+      return { character_id: null, pose_id: null };
     case 'advance_time':
       return { slots: 1 };
     case 'make_item_available':
@@ -280,7 +287,7 @@ function PlaceholderReferenceDetails() {
   );
 }
 
-function ConditionEditor({ condition, characters, axes, items, statuses, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
+function ConditionEditor({ condition, characters, axes, items, statuses, poseMasters, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
   const [keywordDraft, setKeywordDraft] = useState('');
@@ -663,6 +670,48 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
         </div>
       )}
 
+      {condition.condition_type === 'has_pose' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 1 }}>
+            <span style={label11}>ポーズ</span>
+            <select value={p.pose_id ?? ''} onChange={(e) => setParams({ pose_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(poseMasters ?? []).map((pm) => (
+                <option key={pm.id} value={pm.id}>
+                  {pm.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>そのポーズでない場合に成立</span>
+          </label>
+          {p.character_id === 'mentioned' && (
+            <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
+          )}
+        </div>
+      )}
+
       {condition.condition_type === 'llm_judge' && (
         <div>
           <label>
@@ -685,7 +734,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, hasOutc
   );
 }
 
-function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, roomTemplates, hasOutcomeBranch, onChange, onRemove }) {
+function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, roomTemplates, poseMasters, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
   const charOptions = characters.map((c) => (
@@ -1122,6 +1171,37 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
               {(transformations ?? []).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.character_name}: {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {action.action_type === 'set_pose' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
+              {charOptions}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>ポーズ（未指定＝解除）</span>
+            <select value={p.pose_id ?? ''} onChange={(e) => setParams({ pose_id: Number(e.target.value) || null })}>
+              <option value="">指定なし（ポーズ解除）</option>
+              {(poseMasters ?? []).map((pm) => (
+                <option key={pm.id} value={pm.id}>
+                  {pm.name}
                 </option>
               ))}
             </select>
@@ -1735,6 +1815,7 @@ function ConditionGroupRow({
   axes,
   items,
   statuses,
+  poseMasters,
 }) {
   const treePrefix = depth === 0 ? '' : '　'.repeat(depth - 1) + '└ ';
   return (
@@ -1770,6 +1851,7 @@ function ConditionGroupRow({
           axes={axes}
           items={items}
           statuses={statuses}
+          poseMasters={poseMasters}
           hasOutcomeBranch
           fixedPhase="outcome"
           onChange={(next) => setConditions(conditions.map((c) => (c === condition ? next : c)))}
@@ -1871,6 +1953,7 @@ export default function EventsPage() {
   const { data: outfitMasters } = useAllOutfitMasters();
   const { data: transformations } = useAllCharacterTransformations();
   const { data: statuses } = useAllCharacterStatuses();
+  const { data: poseMasters } = usePoseMasters();
   const { data: worlds } = useWorlds();
   const { create, update, remove } = useEventDefinitionMutations();
   const { mobileListOpen, openList, closeList } = useMobileListToggle();
@@ -2173,6 +2256,7 @@ export default function EventsPage() {
                 axes={axes}
                 items={items}
                 statuses={statuses}
+                poseMasters={poseMasters}
               />
               {flattenOutcomeNodes(draft.outcome_nodes).map(({ node, depth }) => (
                 <ConditionGroupRow
@@ -2210,6 +2294,7 @@ export default function EventsPage() {
                   axes={axes}
                   items={items}
                   statuses={statuses}
+                  poseMasters={poseMasters}
                 />
               ))}
             </div>
@@ -2281,6 +2366,7 @@ export default function EventsPage() {
                   axes={axes}
                   items={items}
                   statuses={statuses}
+                  poseMasters={poseMasters}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   fixedPhase="trigger"
                   onChange={(next) =>
@@ -2366,6 +2452,7 @@ export default function EventsPage() {
                   transformations={transformations}
                   statuses={statuses}
                   roomTemplates={roomTemplates}
+                  poseMasters={poseMasters}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   onChange={(next) => setDraft({ ...draft, actions: draft.actions.map((a, idx) => (idx === i ? next : a)) })}
                   onRemove={() => setDraft({ ...draft, actions: draft.actions.filter((_, idx) => idx !== i) })}

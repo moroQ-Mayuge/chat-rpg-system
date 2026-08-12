@@ -4,8 +4,7 @@ import path from 'node:path';
 import { db } from '../db/connection.js';
 import { config } from '../config.js';
 import { generateChatCompletion } from './koboldClient.js';
-import { resolveOutfitTags, getActiveOutfitStatusModifiers } from './outfitTagCategories.js';
-import { composeWornOutfit } from './outfitComposition.js';
+import { resolveParticipantImageTags } from './outfitTagCategories.js';
 import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
@@ -80,14 +79,7 @@ export function buildSceneTagParts(session, participants) {
   const exposureTagSettings = getOutfitExposureTagSettings();
   const characterTags = participants
     .filter((p) => p.current_outfit_id)
-    .map((p) => {
-      const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
-      const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, {
-        playthroughId: session.playthrough_id,
-        roomSessionId: session.id,
-      });
-      return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, session.playthrough_id), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
-    })
+    .map((p) => resolveParticipantImageTags(p, null, { playthroughId: session.playthrough_id, roomSessionId: session.id }, exposureTagSettings))
     .filter(Boolean)
     .join(', ');
 

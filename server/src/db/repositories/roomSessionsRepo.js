@@ -159,7 +159,7 @@ function attachParticipants(session) {
   const allParticipants = db
     .prepare(
       `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name,
-              rsc.current_outfit_id, rsc.current_transformation_id, rsc.is_active, rsc.is_accompanying
+              rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
        LEFT JOIN character_transformations ct ON ct.id = rsc.current_transformation_id
@@ -330,13 +330,16 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(playthroughId, characterId);
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, ?, 1, ?)',
       )
       .run(
         sessionId,
         characterId,
         carryOver?.current_outfit_id ?? persisted?.outfit_id ?? defaultOutfit?.id ?? null,
         carryOver?.current_transformation_id ?? persistedTransformation?.transformation_id ?? null,
+        // ポーズはセッションをまたいで持ち越さない（playthrough単位の永続化テーブルは
+        // 意図的に作っていない）——常にこの部屋の初期ポーズから始まる。
+        template.default_pose_id ?? null,
         carryOver ? 1 : 0,
       );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
@@ -351,8 +354,10 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // — they're only present because they're accompanying the player.
   for (const carryOver of carryOverByCharacterId.values()) {
     const rscResult = db
-      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, is_active, is_accompanying) VALUES (?, ?, ?, 1, 1)')
-      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null);
+      .prepare(
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, 1)',
+      )
+      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, template.default_pose_id ?? null);
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
@@ -421,24 +426,28 @@ export function setCurrentSceneImage(id, generatedImageId) {
 // reactivates one who previously left. Also seeds relationship_states for the
 // playthrough if this is the character's first appearance in this route.
 export function addParticipant(sessionId, characterId, outfitId = null) {
-  const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
+  const session = db.prepare('SELECT playthrough_id, room_template_id FROM room_sessions WHERE id = ?').get(sessionId);
   const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(session.playthrough_id, characterId);
   const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
   const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(session.playthrough_id, characterId);
   const resolvedTransformationId = persistedTransformation?.transformation_id ?? null;
+  // 途中参加もこの部屋の初期ポーズから始まる（createRoomSessionと同じ方針）。
+  const resolvedPoseId = db.prepare('SELECT default_pose_id FROM room_templates WHERE id = ?').get(session.room_template_id)?.default_pose_id ?? null;
   const existing = db
     .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);
   let roomSessionCharacterId = existing?.id;
   if (existing) {
     db.prepare(
-      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, joined_at = datetime('now'), left_at = NULL
+      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, current_pose_id = ?, joined_at = datetime('now'), left_at = NULL
        WHERE id = ?`,
-    ).run(resolvedOutfitId, resolvedTransformationId, existing.id);
+    ).run(resolvedOutfitId, resolvedTransformationId, resolvedPoseId, existing.id);
   } else {
     const rscResult = db
-      .prepare('INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, is_active) VALUES (?, ?, ?, ?, 1)')
-      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId);
+      .prepare(
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active) VALUES (?, ?, ?, ?, ?, 1)',
+      )
+      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId, resolvedPoseId);
     roomSessionCharacterId = rscResult.lastInsertRowid;
   }
   ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);
@@ -477,5 +486,17 @@ export function updateParticipantTransformation(sessionId, characterId, transfor
     const session = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
     setPersistedTransformation(session.playthrough_id, characterId, transformationId);
   }
+  return getRoomSession(sessionId);
+}
+
+// outfit/transformationと違い、ポーズはplaythrough単位で持ち越さない（意図的な
+// 設計、1-snoopy-raccoon.md参照）——部屋を移動すれば常にその部屋のdefault_pose_id
+// にリセットされる。ここではセッション内の一時更新のみを行う。
+export function updateParticipantPose(sessionId, characterId, poseId) {
+  db.prepare('UPDATE room_session_characters SET current_pose_id = ? WHERE room_session_id = ? AND character_id = ?').run(
+    poseId,
+    sessionId,
+    characterId,
+  );
   return getRoomSession(sessionId);
 }

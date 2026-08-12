@@ -11,8 +11,7 @@ import { resolveStylePromptForWorld } from '../../../db/repositories/imageStyleP
 import { getImageGenerationSettings } from '../../../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
-import { resolveOutfitTags, getActiveOutfitStatusModifiers } from '../../outfitTagCategories.js';
-import { composeWornOutfit } from '../../outfitComposition.js';
+import { resolveParticipantImageTags } from '../../outfitTagCategories.js';
 import { getOutfitExposureTagSettings } from '../../../db/repositories/outfitExposureTagSettingsRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 import { resolveTargetToken } from '../placeholderResolution.js';
@@ -41,11 +40,7 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
     const { participant, categoryKey } = resolveTargetToken(token, candidateParticipants, participantsByName);
     if (!participant) return '';
     referencedIds.add(participant.character_id);
-    const outfit = participant.current_outfit_id
-      ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id)
-      : null;
-    const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(participant.character_id, statusCtx);
-    return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, statusCtx.playthroughId), categoryKey, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings) ?? '';
+    return resolveParticipantImageTags(participant, categoryKey, statusCtx, exposureTagSettings) ?? '';
   });
 
   return { text, referencedIds };
@@ -111,11 +106,7 @@ export async function executeGenerateImage(params, execCtx) {
         const leftoverTags = auto_append_unreferenced
           ? candidateParticipants
               .filter((p) => !referencedIds.has(p.character_id) && p.current_outfit_id)
-              .map((p) => {
-                const outfit = db.prepare('SELECT * FROM outfits WHERE id = ?').get(p.current_outfit_id);
-                const { suppressedFields, disturbedFieldStyles, tornFields } = getActiveOutfitStatusModifiers(p.character_id, statusCtx);
-                return resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, statusCtx.playthroughId), null, suppressedFields, disturbedFieldStyles, tornFields, exposureTagSettings);
-              })
+              .map((p) => resolveParticipantImageTags(p, null, statusCtx, exposureTagSettings))
               .filter(Boolean)
           : [];
 

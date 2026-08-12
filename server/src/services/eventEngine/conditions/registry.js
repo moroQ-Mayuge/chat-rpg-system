@@ -9,6 +9,7 @@ import { evaluateLlmJudge } from './llmJudge.js';
 import { evaluateHasStatus, matchingCharactersForHasStatus } from './hasStatus.js';
 import { evaluateHasOutfit, matchingCharactersForHasOutfit } from './hasOutfit.js';
 import { evaluateHasMoney } from './hasMoney.js';
+import { evaluateHasPose, matchingCharactersForHasPose } from './hasPose.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -22,6 +23,7 @@ export const conditionRegistry = {
   has_status: evaluateHasStatus,
   has_outfit: evaluateHasOutfit,
   has_money: evaluateHasMoney,
+  has_pose: evaluateHasPose,
 };
 
 // Only condition types that can name a specific character contribute to
@@ -37,6 +39,7 @@ const characterMatcherRegistry = {
   flag_state: matchingCharactersForFlagState,
   has_status: matchingCharactersForHasStatus,
   has_outfit: matchingCharactersForHasOutfit,
+  has_pose: matchingCharactersForHasPose,
   relationship_threshold: matchingCharactersForRelationshipThreshold,
 };
 
