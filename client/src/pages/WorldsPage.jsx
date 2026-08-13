@@ -19,6 +19,7 @@ const DEFAULT_STATUS_DISPLAY_SETTINGS = {
 const emptyForm = {
   name: '',
   worldview: '',
+  author_note: '',
   time_slot_labels: ['朝', '昼', '放課後', '夜'],
   weather_options: ['晴れ', '曇り', '雨'],
   season_labels: ['春', '夏', '秋', '冬'],
@@ -137,6 +138,7 @@ export default function WorldsPage() {
       setForm({
         name: world.name,
         worldview: world.worldview,
+        author_note: world.author_note ?? '',
         time_slot_labels: world.time_slot_labels,
         weather_options: world.weather_options,
         season_labels: world.season_labels,
@@ -411,6 +413,19 @@ export default function WorldsPage() {
               value={form.worldview}
               onChange={(e) => setForm({ ...form, worldview: e.target.value })}
             />
+          </label>
+
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            作者のメモ（最優先指示）
+            <textarea
+              style={{ display: 'block', width: '100%', height: 60 }}
+              placeholder="例：一人称視点、会話文中心、ライトな文体。グロテスクな描写はしない。"
+              value={form.author_note}
+              onChange={(e) => setForm({ ...form, author_note: e.target.value })}
+            />
+            <span style={{ fontSize: 11, color: '#888' }}>
+              文体・主なジャンル・表現方針など、最も優先度の高い指示です。会話履歴が伸びても薄れないよう、生成の直前に毎回差し込まれます（NovelAI等の「作者のメモ」に相当）。
+            </span>
           </label>
 
           <label style={{ display: 'block', marginBottom: 8 }}>

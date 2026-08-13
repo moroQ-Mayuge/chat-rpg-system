@@ -610,6 +610,15 @@ export async function buildMultiCharacterMessages(session, options = {}) {
     messages.push({ role: 'user', content: options.ephemeralUserTurn });
   }
 
+  // 作者のメモ(NovelAI等のAuthor's Noteに相当): 生成直前という高recency位置に
+  // 毎ターン挿入する最優先指示。buildSystemPrompt側の固定システムメッセージ
+  // (先頭・履歴が伸びるほど相対的に遠くなる)とは別に、末尾に都度差し込む。
+  const playthrough = getPlaythrough(session.playthrough_id);
+  const world = getWorld(playthrough.world_id);
+  if (world.author_note?.trim()) {
+    messages.push({ role: 'system', content: `[作者のメモ・最優先指示]\n${world.author_note.trim()}` });
+  }
+
   await trimToTokenBudget(messages, tokenBudget);
 
   return {

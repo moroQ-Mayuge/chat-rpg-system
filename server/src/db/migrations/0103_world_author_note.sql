@@ -1,0 +1,1 @@
+ALTER TABLE worlds ADD COLUMN author_note TEXT NOT NULL DEFAULT '';
