@@ -178,6 +178,13 @@ export default function CharactersPage() {
   const [selectedId, setSelectedId] = useState(null);
   const isNew = selectedId === 'new';
   const { data: existing } = useCharacter(isNew || selectedId == null ? null : selectedId);
+  // キャラ切り替え直後、新しいidのuseCharacterがまだ読み込み中の間はexistingが
+  // 一瞬undefinedになり(placeholderData未設定)、下のuseEffectはガードで
+  // formを直前のキャラのまま残す。この間にsave()が走ると「選択中のidは新キャラ
+  // だがformの中身は直前のキャラ」のまま送信され、素体タグ等を上書き消失させる
+  // (実際に踏んだ不具合、2026-08-14)。formが今のselectedIdと一致しているかを
+  // 明示的に見て、一致するまで保存を止める。
+  const formMatchesSelected = isNew || (existing != null && existing.id === selectedId);
   const { create, update, remove } = useCharacterMutations();
   const outfitMutations = useOutfitMutations(isNew ? null : selectedId);
   const { data: allMasters } = useAllOutfitMasters();
@@ -268,6 +275,7 @@ export default function CharactersPage() {
   }
 
   async function save() {
+    if (!formMatchesSelected) return;
     const payload = Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, form[key]]));
     payload.relationship_defaults = form.relationship_defaults;
     payload.impression_defaults = form.impression_defaults;
@@ -1455,8 +1463,8 @@ export default function CharactersPage() {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={save} disabled={!form.name}>
-                {isNew ? '作成' : '保存'}
+              <button onClick={save} disabled={!form.name || !formMatchesSelected}>
+                {isNew ? '作成' : formMatchesSelected ? '保存' : '読み込み中…'}
               </button>
             </div>
           </div>
