@@ -54,6 +54,7 @@ const emptyForm = {
   memory_prompt_limit: 5,
   memory_auto_extract_enabled: false,
   memory_editing_visible: true,
+  pose_enabled: false,
   cycle_enabled: false,
   cycle_length_days: 28,
   pregnancy_enabled: false,
@@ -169,6 +170,7 @@ export default function WorldsPage() {
         memory_prompt_limit: world.memory_prompt_limit ?? 5,
         memory_auto_extract_enabled: Boolean(world.memory_auto_extract_enabled),
         memory_editing_visible: Boolean(world.memory_editing_visible),
+        pose_enabled: Boolean(world.pose_enabled),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
         pregnancy_enabled: world.pregnancy_enabled ?? false,
@@ -679,6 +681,23 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               制作中は記憶を直接編集できると便利ですが、遊ぶユーザーに見せたくない場合はOFFにしてください。OFFにしても記憶の蓄積とプロンプトへの反映は通常どおり動きます。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>キャラのポーズ状態</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              座っている・立っている等の姿勢を管理し、部屋の初期ポーズ・イベントアクション「ポーズ変更」・LLMの任意の[POSE:xxx]タグ・画像生成タグに反映します（ポーズマスタ画面で登録）。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.pose_enabled}
+                onChange={(e) => setForm({ ...form, pose_enabled: e.target.checked })}
+              />
+              このWorldでキャラのポーズ状態を使用する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              OFFの間は部屋の初期ポーズが適用されず、イベントの「ポーズ変更」アクションとLLMの[POSE:xxx]タグも無視されます（画像生成にもポーズタグは含まれません）。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠しやすさの周期</h4>

@@ -434,7 +434,11 @@ async function generateReply(
   const fallbackKey = fallbackEmotionKey();
   // [POSE:xxx] is optional (see responseParser.js) -- an unrecognized key is
   // simply ignored (no fallback/fold-into-text handling needed, unlike EMOTION).
-  const poseIdByLlmTagKey = new Map(db.prepare('SELECT id, llm_tag_key FROM pose_masters').all().map((r) => [r.llm_tag_key, r.id]));
+  // Worldでpose_enabledがfalseの場合はMapを空にし、タグが来ても無視させる
+  // （worldsRepo.jsのpose_enabled、1-snoopy-raccoon.mdの追加トグル）。
+  const poseIdByLlmTagKey = world.pose_enabled
+    ? new Map(db.prepare('SELECT id, llm_tag_key FROM pose_masters').all().map((r) => [r.llm_tag_key, r.id]))
+    : new Map();
   // Same disambiguation algorithm as promptBuilder.js's buildSystemPrompt,
   // applied to the same session.participants array — so if two participants
   // share a name, this Map's keys naturally match whatever the model was

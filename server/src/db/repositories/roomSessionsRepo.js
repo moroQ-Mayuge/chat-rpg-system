@@ -282,6 +282,10 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   const playthrough = getPlaythrough(playthroughId);
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(roomTemplateId);
   resetRoomItemsIfEnabled(playthroughId, roomTemplateId);
+  // ポーズ機構がWorldで無効なら常にnull（1-snoopy-raccoon.mdの機構自体はグローバル
+  // だが、Worldごとの利用有無はこのフラグでゲートする）。
+  const poseEnabled = Boolean(getWorld(playthrough.world_id)?.pose_enabled);
+  const defaultPoseId = poseEnabled ? (template.default_pose_id ?? null) : null;
 
   const result = db
     .prepare(
@@ -338,8 +342,8 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
         carryOver?.current_outfit_id ?? persisted?.outfit_id ?? defaultOutfit?.id ?? null,
         carryOver?.current_transformation_id ?? persistedTransformation?.transformation_id ?? null,
         // ポーズはセッションをまたいで持ち越さない（playthrough単位の永続化テーブルは
-        // 意図的に作っていない）——常にこの部屋の初期ポーズから始まる。
-        template.default_pose_id ?? null,
+        // 意図的に作っていない）——常にこの部屋の初期ポーズから始まる（World側で無効なら常にnull）。
+        defaultPoseId,
         carryOver ? 1 : 0,
       );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
@@ -357,7 +361,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       .prepare(
         'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, 1)',
       )
-      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, template.default_pose_id ?? null);
+      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, defaultPoseId);
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
@@ -431,8 +435,12 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
   const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(session.playthrough_id, characterId);
   const resolvedTransformationId = persistedTransformation?.transformation_id ?? null;
-  // 途中参加もこの部屋の初期ポーズから始まる（createRoomSessionと同じ方針）。
-  const resolvedPoseId = db.prepare('SELECT default_pose_id FROM room_templates WHERE id = ?').get(session.room_template_id)?.default_pose_id ?? null;
+  // 途中参加もこの部屋の初期ポーズから始まる（createRoomSessionと同じ方針、World側で無効なら常にnull）。
+  const playthroughForPose = getPlaythrough(session.playthrough_id);
+  const posePermittedForParticipant = Boolean(getWorld(playthroughForPose.world_id)?.pose_enabled);
+  const resolvedPoseId = posePermittedForParticipant
+    ? db.prepare('SELECT default_pose_id FROM room_templates WHERE id = ?').get(session.room_template_id)?.default_pose_id ?? null
+    : null;
   const existing = db
     .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);

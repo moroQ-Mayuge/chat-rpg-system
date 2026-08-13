@@ -273,6 +273,13 @@ export function resolveParticipantImageTags(participant, categoryKey, statusCtx,
     exposureTagSettings,
   );
   if (categoryKey || !participant.current_pose_id) return outfitTags;
+  // 保険（1-snoopy-raccoon.md追加分）: セッション中にWorldのpose_enabledをOFFに
+  // 切り替えても current_pose_id は次の部屋移動までnullに戻らないため、ここでも
+  // 二重にゲートしておく。
+  const poseEnabled = db
+    .prepare('SELECT w.pose_enabled AS pose_enabled FROM playthroughs p JOIN worlds w ON w.id = p.world_id WHERE p.id = ?')
+    .get(statusCtx.playthroughId)?.pose_enabled;
+  if (!poseEnabled) return outfitTags;
   const pose = db.prepare('SELECT danbooru_tag FROM pose_masters WHERE id = ?').get(participant.current_pose_id);
   return [outfitTags, pose?.danbooru_tag].filter(Boolean).join(', ');
 }

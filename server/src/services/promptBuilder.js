@@ -419,7 +419,7 @@ function buildSystemPrompt(session, participants, options = {}) {
       : null,
     statBlock ? '[STAT_CHANGE: キャラ名|軸名|符号付き整数]: 状態値が変化した場合のみ（任意）' : null,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
-    poseKeys.length > 0
+    poseKeys.length > 0 && world.pose_enabled
       ? `キャラクターの姿勢が明確に変化した場合（座る・立ち上がる・横になる等）のみ、セリフ末尾のEMOTIONタグの後に [POSE:ポーズキー] を追加してください。姿勢に変化が無いターンでは付けないでください（毎回付ける必要はありません）。ポーズキーは次のいずれかを使ってください：${poseKeys.join(', ')}`
       : null,
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
