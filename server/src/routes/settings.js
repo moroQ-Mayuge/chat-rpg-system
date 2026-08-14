@@ -14,7 +14,7 @@ import {
 } from '../db/repositories/imageStylePresetsRepo.js';
 import { listImageFormats, setImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { listImageGenerationSettings, updateImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
-import { launchKoboldcpp, stopKoboldcpp } from '../services/koboldcppLauncher.js';
+import { launchKoboldcpp, stopKoboldcpp, readKoboldcppLog, clearKoboldcppLog } from '../services/koboldcppLauncher.js';
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { listModelFiles } from '../services/koboldcppModelFiles.js';
 import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
@@ -198,6 +198,14 @@ settingsRouter.post('/stop-koboldcpp', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+settingsRouter.get('/koboldcpp-log', (req, res) => {
+  res.json(readKoboldcppLog());
+});
+
+settingsRouter.delete('/koboldcpp-log', (req, res) => {
+  res.json(clearKoboldcppLog());
 });
 
 settingsRouter.get('/image-generation-settings', (req, res) => {

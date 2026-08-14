@@ -130,13 +130,20 @@ export function launchKoboldcpp() {
     if (settings.sd_offload_cpu) args.push('--sdoffloadcpu');
   }
 
-  fs.mkdirSync(path.dirname(config.koboldcppLogPath), { recursive: true });
-  const logFd = fs.openSync(config.koboldcppLogPath, 'a');
+  // ログ記録は設定でON/OFFできる（既定ON、従来の常時記録と同じ挙動）。OFFの
+  // 場合はfdを開かず標準出力・エラー出力を素通りで捨てる — koboldcpp.exe側で
+  // 出力量が多いと言われているため、常時記録が不要なユーザーはOFFにできる。
+  let stdio = ['ignore', 'ignore', 'ignore'];
+  if (settings.log_capture_enabled) {
+    fs.mkdirSync(path.dirname(config.koboldcppLogPath), { recursive: true });
+    const logFd = fs.openSync(config.koboldcppLogPath, 'a');
+    stdio = ['ignore', logFd, logFd];
+  }
 
   const child = spawn(exePath, args, {
     cwd: path.dirname(exePath),
     detached: true,
-    stdio: ['ignore', logFd, logFd],
+    stdio,
   });
   child.unref();
 
@@ -162,4 +169,37 @@ export async function stopKoboldcpp() {
     }
     throw err;
   }
+}
+
+// 突然落ちた場合の直前の出力を見るためのもの — ファイル全体を読み込むと
+// 長時間運用でどこまでも肥大化しうるので、末尾だけを効率よく読む
+// (fs.readFileSync せず、必要な範囲だけ fs.readSync する)。
+const MAX_LOG_READ_BYTES = 200_000;
+
+export function readKoboldcppLog() {
+  if (!fs.existsSync(config.koboldcppLogPath)) {
+    return { content: '', sizeBytes: 0, truncated: false, path: config.koboldcppLogPath };
+  }
+  const { size } = fs.statSync(config.koboldcppLogPath);
+  const readSize = Math.min(size, MAX_LOG_READ_BYTES);
+  const fd = fs.openSync(config.koboldcppLogPath, 'r');
+  try {
+    const buffer = Buffer.alloc(readSize);
+    fs.readSync(fd, buffer, 0, readSize, size - readSize);
+    return {
+      content: buffer.toString('utf8'),
+      sizeBytes: size,
+      truncated: size > MAX_LOG_READ_BYTES,
+      path: config.koboldcppLogPath,
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+export function clearKoboldcppLog() {
+  if (fs.existsSync(config.koboldcppLogPath)) {
+    fs.truncateSync(config.koboldcppLogPath, 0);
+  }
+  return { cleared: true };
 }

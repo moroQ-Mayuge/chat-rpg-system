@@ -11,6 +11,8 @@ import {
   useKoboldcppLaunchSettings,
   useKoboldcppLaunchSettingsMutations,
   useKoboldcppModelFiles,
+  useKoboldcppLog,
+  useKoboldcppLogMutations,
   useLlmGenerationSettings,
   useLlmGenerationSettingsMutations,
   useChatInputSettings,
@@ -645,6 +647,18 @@ function KoboldcppLaunchSettingsSection() {
         </p>
       </label>
 
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(form.log_capture_enabled)}
+          onChange={(e) => setForm({ ...form, log_capture_enabled: e.target.checked })}
+        />
+        起動ログをファイルに記録する
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        KoboldCppの標準出力・エラー出力を保存します。突然落ちた場合、下の「起動ログ」欄から直前の出力を確認できます（次回「KoboldCppを起動」時から反映）。
+      </p>
+
       <h4 style={{ margin: '12px 0 4px', fontSize: 13 }}>VRAM・量子化（画像生成側）</h4>
       <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
         量子化は画像側とLLM側で別のオプションなので、それぞれ個別に指定できます。なおKoboldCppに fp8/fp6/fp4 という指定は存在せず、画像側で選べるのは下記のq8/q4のみです。
@@ -1059,6 +1073,60 @@ function StopKoboldcppButton({ onStopped }) {
   );
 }
 
+// 起動ログのビューア。連続ポーリングはせず、押した時だけ取得する
+// (useKoboldcppLogがenabled: falseなので、ここでのrefetch()が唯一の取得契機)。
+function KoboldcppLogSection() {
+  const { data: log, isFetching, isFetched, refetch } = useKoboldcppLog();
+  const { clear } = useKoboldcppLogMutations();
+
+  async function handleClear() {
+    if (!window.confirm('起動ログを消去しますか？')) return;
+    await clear.mutateAsync();
+    refetch();
+  }
+
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #eee' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: 13, fontWeight: 500, margin: 0 }}>KoboldCpp起動ログ</p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => refetch()} disabled={isFetching}>
+            {isFetching ? '読み込み中...' : isFetched ? '更新' : '表示'}
+          </button>
+          {isFetched && (
+            <button onClick={handleClear} disabled={clear.isPending}>
+              消去
+            </button>
+          )}
+        </div>
+      </div>
+      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+        設定の「起動ログをファイルに記録する」がONの間の標準出力・エラー出力です。突然落ちた場合、直前の出力から原因を確認できます。
+      </p>
+      {isFetched && log && (
+        <>
+          {log.sizeBytes === 0 ? (
+            <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>ログはまだありません。</p>
+          ) : (
+            <>
+              {log.truncated && (
+                <p style={{ fontSize: 11, color: '#b91c1c', margin: '8px 0 4px' }}>
+                  ファイルが大きいため末尾のみ表示しています（全体: {formatMB(log.sizeBytes)}）。
+                </p>
+              )}
+              <textarea
+                readOnly
+                value={log.content}
+                style={{ width: '100%', height: 240, marginTop: 8, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre' }}
+              />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function formatMB(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
@@ -1225,6 +1293,8 @@ export default function SettingsPage() {
             {status.textModel.connected && (
               <StopKoboldcppButton onStopped={() => setTimeout(refetch, 1500)} />
             )}
+
+            <KoboldcppLogSection />
           </div>
 
           <div style={cardStyle}>

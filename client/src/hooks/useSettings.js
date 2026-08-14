@@ -51,6 +51,20 @@ export function useKoboldcppModelFiles() {
   return useQuery({ queryKey: ['koboldcppModelFiles'], queryFn: settingsApi.getKoboldcppModelFiles });
 }
 
+// enabled: false 既定 — ログは手動で「表示・更新」を押した時だけ取得する
+// (Settings画面を開くたびに毎回ログ本文を読みに行かないため)。
+export function useKoboldcppLog() {
+  return useQuery({ queryKey: ['koboldcppLog'], queryFn: settingsApi.getKoboldcppLog, enabled: false });
+}
+
+export function useKoboldcppLogMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['koboldcppLog'] });
+  return {
+    clear: useMutation({ mutationFn: settingsApi.clearKoboldcppLog, onSuccess: invalidate }),
+  };
+}
+
 export function useKoboldcppLaunchSettingsMutations() {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['koboldcppLaunchSettings'] });

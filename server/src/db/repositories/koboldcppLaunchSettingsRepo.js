@@ -19,12 +19,13 @@ export function updateLaunchSettings({
   gpu_layers,
   low_vram,
   quant_kv,
+  log_capture_enabled,
 }) {
   db.prepare(
     `UPDATE koboldcpp_launch_settings
      SET sd_quant = ?, llm_model_path = ?, sd_model_path = ?, sd_lora_path = ?, sd_lora_multiplier = ?,
          sd_architecture = ?, sd_vae_path = ?, sd_clip1_path = ?, context_size = ?,
-         sd_vram_limit_mb = ?, sd_offload_cpu = ?, gpu_layers = ?, low_vram = ?, quant_kv = ?
+         sd_vram_limit_mb = ?, sd_offload_cpu = ?, gpu_layers = ?, low_vram = ?, quant_kv = ?, log_capture_enabled = ?
      WHERE id = 1`,
   ).run(
     sd_quant,
@@ -41,6 +42,7 @@ export function updateLaunchSettings({
     gpu_layers ?? 999,
     low_vram ? 1 : 0,
     quant_kv || '',
+    log_capture_enabled ? 1 : 0,
   );
   return getLaunchSettings();
 }
