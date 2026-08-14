@@ -721,24 +721,28 @@ export default function CharactersPage() {
             </span>
           )}
         </span>
-        <span style={{ display: 'flex', gap: 4 }}>
+        <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           <button
-            style={{ fontSize: 11 }}
+            title="エクスポート"
+            aria-label="エクスポート"
+            style={{ fontSize: 14, padding: '2px 6px', lineHeight: 1 }}
             onClick={(e) => {
               e.stopPropagation();
               handleExportCharacter(c.id);
             }}
           >
-            エクスポート
+            ⬇
           </button>
           <button
-            style={{ fontSize: 11 }}
+            title="削除"
+            aria-label="削除"
+            style={{ fontSize: 14, padding: '2px 6px', lineHeight: 1, color: '#c00' }}
             onClick={(e) => {
               e.stopPropagation();
               handleDelete(c.id);
             }}
           >
-            削除
+            🗑
           </button>
         </span>
       </div>
