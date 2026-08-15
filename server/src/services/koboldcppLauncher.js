@@ -98,6 +98,10 @@ export function launchKoboldcpp() {
   // --gpulayers used to be hardcoded at 999 (full offload); the default is
   // still 999 so an untouched install launches exactly as before, but it's
   // now the main lever for capping LLM VRAM use.
+  // --blasbatchsize: プロンプト処理(BLAS)のバッチサイズ。大きいほど処理は速いが
+  // その分VRAMを使うため、ここが原因でkoboldcpp.exeが落ちるケースがある
+  // （ユーザー報告、2026-08-14）。koboldcpp本体の既定値である512を維持しつつ、
+  // 落ちる場合に下げられるようにする。
   const args = [
     '--model',
     llmModel,
@@ -107,6 +111,8 @@ export function launchKoboldcpp() {
     String(settings.context_size || 8192),
     '--gpulayers',
     String(settings.gpu_layers ?? 999),
+    '--blasbatchsize',
+    String(settings.blas_batch_size ?? 512),
   ];
   // LLM-side VRAM savers. Both are omitted unless explicitly set, since each
   // trades speed for memory.

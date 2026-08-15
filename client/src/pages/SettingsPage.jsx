@@ -716,6 +716,26 @@ function KoboldcppLaunchSettingsSection() {
       </label>
 
       <label style={{ display: 'block', marginTop: 8 }}>
+        <span style={{ fontSize: 11, color: '#888', display: 'block' }}>プロンプト処理のバッチサイズ</span>
+        <select
+          value={form.blas_batch_size ?? 512}
+          onChange={(e) => setForm({ ...form, blas_batch_size: Number(e.target.value) })}
+        >
+          <option value={-1}>-1（バッチ処理なし・最も軽い）</option>
+          <option value={32}>32</option>
+          <option value={64}>64</option>
+          <option value={128}>128</option>
+          <option value={256}>256</option>
+          <option value={512}>512（既定）</option>
+          <option value={1024}>1024</option>
+          <option value={2048}>2048</option>
+        </select>
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+          長い入力をまとめて処理する際のバッチサイズです。大きいほど処理は速いですが、その分VRAMを使うため、ここが原因でKoboldCppが落ちる場合は下げてみてください（--blasbatchsize）。
+        </p>
+      </label>
+
+      <label style={{ display: 'block', marginTop: 8 }}>
         <span style={{ fontSize: 11, color: '#888', display: 'block' }}>KVキャッシュの量子化</span>
         <select value={form.quant_kv ?? ''} onChange={(e) => setForm({ ...form, quant_kv: e.target.value })}>
           <option value="">指定なし</option>
