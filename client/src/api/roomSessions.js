@@ -3,6 +3,7 @@ import { api } from './client.js';
 export const roomSessionsApi = {
   get: (id) => api.get(`/room-sessions/${id}`),
   sendMessage: (id, content) => api.post(`/room-sessions/${id}/messages`, { content }),
+  craftItem: (id, content, craft) => api.post(`/room-sessions/${id}/messages`, { content, craft }),
   exit: (id) => api.post(`/room-sessions/${id}/exit`, {}),
   move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),
   setAccompanying: (id, characterId, isAccompanying) =>

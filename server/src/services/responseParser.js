@@ -31,6 +31,7 @@ const POSE_PATTERN = /\[POSE:([a-zA-Z0-9_]+)\]\s*$/;
 const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 const OUTFIT_GRANT_PATTERN = /^OUTFIT_GRANT:\s*(.+)$/;
 const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
+const CRAFT_RESULT_PATTERN = /^CRAFT_RESULT:\s*(.+)$/;
 
 // Models garble these fixed keywords surprisingly often, spelling NARRATION as
 // "NARR_N_A_T_I_O_N" and the like. Matching them strictly meant such a line
@@ -88,6 +89,7 @@ function matchPayloadTag(tag, keyword) {
 //   { type: 'narration', text }
 //   { type: 'item_grant', itemName, categoryName, description }
 //   { type: 'outfit_grant', outfitMasterName, description }
+//   { type: 'craft_result', itemName, categoryName, description }
 //   { type: 'stat_change', characterName, axisName, delta }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
@@ -123,6 +125,11 @@ export function parseScriptLine(rawLine) {
       if (outfitPayload) {
         return { type: 'outfit_grant', outfitMasterName: outfitPayload.trim(), description: '' };
       }
+      const craftPayload = bare[1].match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'CRAFT_RESULT');
+      if (craftPayload) {
+        const [itemName, categoryName] = craftPayload.split('|').map((s) => s.trim());
+        return { type: 'craft_result', itemName, categoryName: categoryName || null, description: '' };
+      }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
     if (alt) {
@@ -156,6 +163,14 @@ export function parseScriptLine(rawLine) {
   if (outfitGrantPayload) {
     // 衣装マスタは名前だけで解決する厳選プリセット(ITEM_GRANTと違いカテゴリ指定は無い)。
     return { type: 'outfit_grant', outfitMasterName: outfitGrantPayload.trim(), description: rest.trim() };
+  }
+
+  const craftResultPayload = tag.match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(tag, 'CRAFT_RESULT');
+  if (craftResultPayload) {
+    // "完成品名|カテゴリ名" — ITEM_GRANTと同じ形。roomSessions.js側でaddItemToInventoryへ
+    // 直接渡す(ITEM_GRANTの「その場に置く」は経由しない)。
+    const [itemName, categoryName] = craftResultPayload.split('|').map((s) => s.trim());
+    return { type: 'craft_result', itemName, categoryName: categoryName || null, description: rest.trim() };
   }
 
   const statChangePayload = tag.match(STAT_CHANGE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'STAT_CHANGE');

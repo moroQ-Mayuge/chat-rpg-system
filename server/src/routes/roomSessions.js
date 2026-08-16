@@ -18,7 +18,7 @@ import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } fr
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { findOrCreateWorldItem, getItem, listPickupItemsForSession, markItemPickedUp } from '../db/repositories/itemsRepo.js';
 import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo.js';
-import { addItemToInventory, removeItemFromInventory } from '../db/repositories/inventoryRepo.js';
+import { addItemToInventory, removeItemFromInventory, getHeldQuantity } from '../db/repositories/inventoryRepo.js';
 import { addOutfitToInventory, hasOutfit } from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
@@ -150,9 +150,36 @@ function isExplorationInput(content, session) {
 // request (no user action/speech). No user message row is created for it,
 // so nothing shows up as a player turn; generateReply() below feeds the LLM
 // call a minimal ephemeral turn instead (never persisted, never displayed).
+// 任意のreq.body.craft = { toolItemId, materials: [{itemId, quantity}] }:
+// クラフト(道具+複数材料)の材料消費はLLMの応答を待たず、ここで確定させる
+// (1-snoopy-raccoon.md)——衣装ショップ購入と違い、消費の要否・数量をLLMの
+// 判断に委ねない。不足があれば何も作らずメッセージ送信自体を拒否する。
 roomSessionsRouter.post('/:id/messages', (req, res) => {
   const content = (req.body.content ?? '').trim();
   const session = getRoomSession(req.params.id);
+  const craft = req.body.craft ?? null;
+
+  if (craft) {
+    if (getHeldQuantity(session.playthrough_id, craft.toolItemId) < 1) {
+      return res.status(400).json({ error: 'tool_not_held' });
+    }
+    // 同じitemIdが複数行にまたがっていても二重消費にならないよう、検証・消費の
+    // どちらも先に数量を合算してから行う(行ごとに独立して検証すると、行1つ1つは
+    // 保有数以下でも合計では超過している、という抜け道が生まれるため)。
+    const materialTotals = new Map();
+    for (const m of craft.materials ?? []) {
+      materialTotals.set(m.itemId, (materialTotals.get(m.itemId) ?? 0) + m.quantity);
+    }
+    for (const [itemId, quantity] of materialTotals) {
+      if (getHeldQuantity(session.playthrough_id, itemId) < quantity) {
+        return res.status(400).json({ error: 'insufficient_material', item_id: itemId });
+      }
+    }
+    for (const [itemId, quantity] of materialTotals) {
+      removeItemFromInventory(session.playthrough_id, itemId, quantity);
+    }
+  }
+
   const isContinuation = content.length === 0 || isContentOnlyMentions(content, session.participants);
 
   let message = null;
@@ -181,7 +208,7 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
     }
   }
 
-  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId).catch((err) => {
+  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId, Boolean(craft)).catch((err) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
@@ -398,6 +425,7 @@ async function generateReply(
   mentionedCharacterIds = null,
   isContinuation = false,
   mentionedInstanceByCharacterId = new Map(),
+  isCraftAttempt = false,
 ) {
   const session = getRoomSession(sessionId);
   // A messages array ending on role 'assistant' (i.e. no new user turn at
@@ -424,6 +452,7 @@ async function generateReply(
   const built = await buildMultiCharacterMessages(session, {
     ephemeralUserTurn,
     isSurroundingsCheck,
+    isCraftAttempt,
     responseTokenReserve: maxTokens ?? undefined,
   });
   if (!built) return;
@@ -583,6 +612,21 @@ async function generateReply(
       });
       broadcast(sessionId, { type: 'message_complete', message });
       broadcast(sessionId, { type: 'money_changed', money });
+      return;
+    }
+
+    if (parsed.type === 'craft_result') {
+      // 材料は選択して実行した時点で既に消費済み(下の/:id/messagesのcraft分岐)。
+      // ITEM_GRANTと違い「その場に置く」を経由せず直接持ち物へ渡す——プレイヤーが
+      // 自ら材料を消費して行った行為の結果であり、拾う手間を挟む理由が無いため。
+      const category = resolveCategoryOrFallback(worldId, parsed.categoryName);
+      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id);
+      addItemToInventory(session.playthrough_id, item.id);
+      const message = createMessage(sessionId, {
+        sender_type: 'narration',
+        content: `『${item.name}』が完成し、持ち物に加わった。`,
+      });
+      broadcast(sessionId, { type: 'message_complete', message });
       return;
     }
 

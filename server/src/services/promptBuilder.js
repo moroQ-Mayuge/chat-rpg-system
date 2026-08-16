@@ -417,6 +417,12 @@ function buildSystemPrompt(session, participants, options = {}) {
     isShopMode
       ? '[OUTFIT_GRANT: 衣装名]: 衣装リストにある衣装をプレイヤーが実際に購入した場合のみ使ってください（それ以外の衣装名は使えません）。'
       : null,
+    // クラフト機構(1-snoopy-raccoon.md): 材料は選択して実行した時点で既に
+    // 消費済みのため、「使い方が道具に対して無理筋だった時だけ」失敗として
+    // 誘導する——安易に「何も起きない」を選ばれると材料だけ失われる。
+    options.isCraftAttempt
+      ? `[CRAFT_RESULT: 完成品名|カテゴリ名]: 直前のプレイヤー発言にある道具・材料・使い方を踏まえ、実際に何が出来上がったかを描写した上で、必ずこの行を追加してください。指定された使い方がその道具では現実的に不可能な場合（例：オーブンで「煮る」）は、CRAFT_RESULTを付けず「それは無理そうだ」という趣旨の失敗として描写してください。それ以外（使い方として筋が通っている場合）は、組み合わせが極端に不合理でない限り多少不出来でも何かを完成させてください。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`
+      : null,
     statBlock ? '[STAT_CHANGE: キャラ名|軸名|符号付き整数]: 状態値が変化した場合のみ（任意）' : null,
     `感情キーは次のいずれかを使ってください：${emotionKeys.join(', ')}`,
     poseKeys.length > 0 && world.pose_enabled
@@ -598,7 +604,10 @@ export async function buildMultiCharacterMessages(session, options = {}) {
   const responseReserve = options.responseTokenReserve ?? DEFAULT_RESPONSE_RESERVE_TOKENS;
   const tokenBudget = Math.max(512, maxContext - responseReserve - SAFETY_MARGIN_TOKENS);
 
-  const systemPrompt = buildSystemPrompt(session, session.participants, { isSurroundingsCheck: options.isSurroundingsCheck });
+  const systemPrompt = buildSystemPrompt(session, session.participants, {
+    isSurroundingsCheck: options.isSurroundingsCheck,
+    isCraftAttempt: options.isCraftAttempt,
+  });
   const history = buildHistoryMessages(session.id, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];
 

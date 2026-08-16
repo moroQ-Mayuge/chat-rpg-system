@@ -469,6 +469,138 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
   );
 }
 
+// クラフト(1-snoopy-raccoon.md): 道具(所持品全体から1つ、消費しない)+材料
+// (is_consumableカテゴリのアイテムのみ、複数行・数量指定、消費する)+使い方
+// (自由記述、任意)を指定する。検証・消費はサーバ側(craft分岐)で確定するため、
+// ここでは選択とテキスト組み立てのみ——ItemActionPanelと同じ役割分担。
+function CraftPanel({ command, playthroughId, onClose, onCraft }) {
+  const { data: inventory } = useInventory(playthroughId);
+  const [toolKey, setToolKey] = useState('');
+  const [materialRows, setMaterialRows] = useState([{ key: '', quantity: 1 }]);
+  const [method, setMethod] = useState('');
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const toolEntries = inventory ?? [];
+  const materialEntries = (inventory ?? []).filter((e) => e.is_consumable);
+
+  function updateRow(index, patch) {
+    setMaterialRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setMaterialRows((rows) => [...rows, { key: '', quantity: 1 }]);
+  }
+  function removeRow(index) {
+    setMaterialRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  const tool = toolEntries.find((e) => String(e.item_id) === toolKey);
+  const validMaterials = materialRows
+    .map((r) => ({ ...r, entry: materialEntries.find((e) => String(e.item_id) === r.key) }))
+    .filter((r) => r.entry && r.quantity > 0);
+
+  async function submit() {
+    if (!tool || validMaterials.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const materialsText = validMaterials.map((r) => `${r.entry.name}×${r.quantity}`).join('、');
+      const text = `『${tool.name}』を使って${method ? `${method}、` : ''}${materialsText}でクラフトを試みる。`;
+      await onCraft(text, {
+        toolItemId: tool.item_id,
+        materials: validMaterials.map((r) => ({ itemId: r.entry.item_id, quantity: r.quantity })),
+        method,
+      });
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>{command.label}</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      {toolEntries.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>持ち物がありません</p>}
+      {toolEntries.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>道具</span>
+            <select style={{ width: '100%' }} value={toolKey} onChange={(e) => setToolKey(e.target.value)}>
+              <option value="">選択してください</option>
+              {toolEntries.map((entry) => (
+                <option key={entry.item_id} value={entry.item_id}>
+                  {entry.name} ×{entry.quantity}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div>
+            <span style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 2 }}>材料</span>
+            {materialEntries.length === 0 && <p style={{ fontSize: 11, color: '#888' }}>材料にできる持ち物がありません（消費型カテゴリのアイテムのみ選べます）</p>}
+            {materialRows.map((row, i) => {
+              const rowEntry = materialEntries.find((e) => String(e.item_id) === row.key);
+              return (
+                <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
+                  <select style={{ flex: 1 }} value={row.key} onChange={(e) => updateRow(i, { key: e.target.value })}>
+                    <option value="">選択してください</option>
+                    {materialEntries.map((entry) => (
+                      <option key={entry.item_id} value={entry.item_id}>
+                        {entry.name} ×{entry.quantity}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    max={rowEntry?.quantity ?? 1}
+                    style={{ width: 56 }}
+                    value={row.quantity}
+                    onChange={(e) => updateRow(i, { quantity: Math.max(1, Number(e.target.value) || 1) })}
+                  />
+                  {materialRows.length > 1 && (
+                    <button type="button" onClick={() => removeRow(i)} style={{ fontSize: 11 }}>
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" onClick={addRow} style={{ fontSize: 11 }}>
+              + 材料を追加
+            </button>
+          </div>
+
+          <label>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>使い方（任意）</span>
+            <input
+              style={{ width: '100%' }}
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              placeholder="例：じっくり煮込む"
+            />
+          </label>
+
+          {error && <p style={{ color: 'red', fontSize: 11 }}>エラー: {error}</p>}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={submit} disabled={!toolKey || validMaterials.length === 0 || submitting}>
+              {submitting ? '実行中...' : command.label}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 「着る」パネル(実装順6、0096で保有衣装専用経済に置き換え)。ItemActionPanelと
 // 違い、対象を先に選ぶ——プレイヤーはcharacters行を持たずoutfitsの対象になれ
 // ないため、対象は常にNPC。選んだ対象"自身の"保有衣装(渡した衣装はその時点で
@@ -653,7 +785,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: session, isLoading } = useRoomSession(id);
-  const { sendMessage, exit, move, setAccompanying, sellItem } = useRoomSessionMutations(id);
+  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -759,6 +891,13 @@ export default function ChatPage() {
 
   async function sendText(text) {
     await sendMessage.mutateAsync(text);
+  }
+
+  // クラフト(1-snoopy-raccoon.md): 材料の消費/tool_not_held・insufficient_material
+  // による拒否は/room-sessions/:id/messagesのcraft分岐がサーバ側で検証済み・確定済み
+  // ——ここは組み立てた申告文とcraft構造化データをそのまま渡すだけ。
+  async function sendCraft(text, craft) {
+    await craftItem.mutateAsync({ content: text, craft });
   }
 
   // Action-command keyword buttons used to discard whatever was typed in the
@@ -1141,6 +1280,14 @@ export default function ChatPage() {
         />
       )}
       {itemPanel?.command_type === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
+      {itemPanel?.command_type === 'craft' && (
+        <CraftPanel
+          command={itemPanel}
+          playthroughId={session.playthrough_id}
+          onClose={() => setItemPanel(null)}
+          onCraft={sendCraft}
+        />
+      )}
 
       <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, marginBottom: 4, flexShrink: 0, overflowX: 'auto' }}>
         <button

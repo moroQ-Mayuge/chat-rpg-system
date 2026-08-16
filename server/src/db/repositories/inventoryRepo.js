@@ -71,3 +71,12 @@ export function hasItem(playthroughId, itemId, ownerCharacterId = null) {
     .get(playthroughId, itemId, ownerCharacterId);
   return Boolean(row && row.quantity > 0);
 }
+
+// hasItemの「持っているかどうか」ではなく実数が要るケース向け(クラフトの
+// 「N個以上持っているか」検証など)。
+export function getHeldQuantity(playthroughId, itemId, ownerCharacterId = null) {
+  const row = db
+    .prepare('SELECT quantity FROM playthrough_inventory WHERE playthrough_id = ? AND item_id = ? AND owner_character_id IS ?')
+    .get(playthroughId, itemId, ownerCharacterId);
+  return row?.quantity ?? 0;
+}

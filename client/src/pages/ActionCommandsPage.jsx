@@ -28,6 +28,7 @@ const COMMAND_TYPE_LABELS = {
   item_wear: '着る',
   transform_request: '変身のお願い',
   free_text: '自由入力',
+  craft: 'クラフト',
 };
 
 // Known top-level categories from the 2026-07-16 taxonomy decision (PC98風
