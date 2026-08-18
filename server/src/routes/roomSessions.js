@@ -620,7 +620,10 @@ async function generateReply(
       // ITEM_GRANTと違い「その場に置く」を経由せず直接持ち物へ渡す——プレイヤーが
       // 自ら材料を消費して行った行為の結果であり、拾う手間を挟む理由が無いため。
       const category = resolveCategoryOrFallback(worldId, parsed.categoryName);
-      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id);
+      // 第5引数: 完成品が「使うと無くなる物か」のLLM判定(0108)。カテゴリ名の
+      // 選択任せだと未分類フォールバック時に必ず永続型になり、料理を作っても
+      // 消費されない、という実プレイでの指摘がそのまま起きる。
+      const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id, parsed.isConsumable);
       addItemToInventory(session.playthrough_id, item.id);
       const message = createMessage(sessionId, {
         sender_type: 'narration',

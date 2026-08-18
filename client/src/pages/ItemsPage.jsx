@@ -16,6 +16,8 @@ const emptyItemForm = {
   buy_price: '',
   sell_price: '',
   outfit_master_id: '',
+  // '' = カテゴリ設定に従う(null)、'1' = 消費型、'0' = 永続型 のアイテム個別上書き(0108)
+  is_consumable: '',
 };
 const emptyCategoryForm = { world_id: '', name: '', is_consumable: false };
 
@@ -46,7 +48,7 @@ function ItemCategoriesSection({ worlds }) {
     <div style={{ marginBottom: 24 }}>
       <h3>アイテムカテゴリ</h3>
       <p style={{ fontSize: 11, color: '#888' }}>
-        アイテムが消費型（使うと所持数が減る）かどうかは、個々のアイテムではなくカテゴリ単位で判定されます。動的にアイテムが生成される際も、このカテゴリ一覧からLLMが選びます。
+        アイテムが消費型（使うと所持数が減る）かどうかは、基本的にカテゴリ単位で決まります。動的にアイテムが生成される際も、このカテゴリ一覧からLLMが選びます。個々のアイテム側で「消費型／永続型」を明示した場合は、そちらがカテゴリ設定より優先されます（クラフトの完成品はLLMがこれを判定します）。
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {categories.map((c) => (
@@ -129,6 +131,7 @@ function ItemsSection({ worlds }) {
         buy_price: found.buy_price ?? '',
         sell_price: found.sell_price ?? '',
         outfit_master_id: found.outfit_master_id ?? '',
+        is_consumable: found.is_consumable == null ? '' : String(found.is_consumable),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +156,7 @@ function ItemsSection({ worlds }) {
       buy_price: form.buy_price === '' ? null : Number(form.buy_price),
       sell_price: form.sell_price === '' ? null : Number(form.sell_price),
       outfit_master_id: form.outfit_master_id ? Number(form.outfit_master_id) : null,
+      is_consumable: form.is_consumable === '' ? null : form.is_consumable === '1',
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -254,6 +258,18 @@ function ItemsSection({ worlds }) {
                         [{worldLabel(c.world_id, worlds)}] {c.name}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block' }}>消費型（このアイテム個別の指定）</span>
+                  <select
+                    style={{ width: '100%' }}
+                    value={form.is_consumable}
+                    onChange={(e) => setForm({ ...form, is_consumable: e.target.value })}
+                  >
+                    <option value="">カテゴリの設定に従う</option>
+                    <option value="1">消費型（「使う」で所持数が減る）</option>
+                    <option value="0">永続型（使っても減らない）</option>
                   </select>
                 </label>
               </div>

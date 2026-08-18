@@ -6,7 +6,8 @@ import { db } from '../connection.js';
 export function listInventoryForPlaythrough(playthroughId, ownerCharacterId = null) {
   return db
     .prepare(
-      `SELECT pi.*, i.name, i.description, i.image_tags, i.category_id, i.sell_price, i.outfit_master_id, ic.is_consumable
+      `SELECT pi.*, i.name, i.description, i.image_tags, i.category_id, i.sell_price, i.outfit_master_id,
+              COALESCE(i.is_consumable, ic.is_consumable, 0) AS is_consumable
        FROM playthrough_inventory pi
        JOIN items i ON i.id = pi.item_id
        LEFT JOIN item_categories ic ON ic.id = i.category_id

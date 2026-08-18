@@ -47,10 +47,12 @@ export function getItem(id) {
   return db.prepare('SELECT * FROM items WHERE id = ?').get(id);
 }
 
-export function createItem({ world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id }) {
+// is_consumable は nullable な「カテゴリ設定の上書き」(0108): null なら
+// item_categories.is_consumable に従う、1/0 でこのアイテム個別に決める。
+export function createItem({ world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id, is_consumable }) {
   const result = db
     .prepare(
-      'INSERT INTO items (world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO items (world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id, is_consumable) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .run(
       world_id ?? null,
@@ -61,6 +63,7 @@ export function createItem({ world_id, name, description, image_tags, category_i
       buy_price ?? null,
       sell_price ?? null,
       outfit_master_id ?? null,
+      is_consumable == null ? null : is_consumable ? 1 : 0,
     );
   return getItem(result.lastInsertRowid);
 }
@@ -73,15 +76,18 @@ export function createItem({ world_id, name, description, image_tags, category_i
 // whole point of keeping e.g. fantasy items out of a modern setting.
 // Find-or-create by exact name match so repeated grants of the same
 // LLM-invented name reuse one item row instead of duplicating it.
-export function findOrCreateWorldItem(worldId, name, description, categoryId) {
+// isConsumable はクラフト時にLLMが完成品ごとに判定した消費型フラグ(null =
+// 判定なし = カテゴリ設定に従う)。既存行が見つかった場合は上書きしない——
+// 同名で再度作られても最初の判定を維持する(find-or-createの既存方針どおり)。
+export function findOrCreateWorldItem(worldId, name, description, categoryId, isConsumable = null) {
   const existing = db.prepare('SELECT * FROM items WHERE world_id = ? AND name = ?').get(worldId, name);
   if (existing) return existing;
-  return createItem({ world_id: worldId, name, description, category_id: categoryId });
+  return createItem({ world_id: worldId, name, description, category_id: categoryId, is_consumable: isConsumable });
 }
 
-export function updateItem(id, { world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id }) {
+export function updateItem(id, { world_id, name, description, image_tags, category_id, buy_price, sell_price, outfit_master_id, is_consumable }) {
   db.prepare(
-    'UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ?, category_id = ?, buy_price = ?, sell_price = ?, outfit_master_id = ? WHERE id = ?',
+    'UPDATE items SET world_id = ?, name = ?, description = ?, image_tags = ?, category_id = ?, buy_price = ?, sell_price = ?, outfit_master_id = ?, is_consumable = ? WHERE id = ?',
   ).run(
     world_id ?? null,
     name,
@@ -91,6 +97,7 @@ export function updateItem(id, { world_id, name, description, image_tags, catego
     buy_price ?? null,
     sell_price ?? null,
     outfit_master_id ?? null,
+    is_consumable == null ? null : is_consumable ? 1 : 0,
     id,
   );
   return getItem(id);

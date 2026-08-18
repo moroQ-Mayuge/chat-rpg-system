@@ -304,6 +304,16 @@ function ItemCheckPanel({ playthroughId, onClose, isShop, currencyUnit, onSell }
         <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 0' }}>
           <p style={{ fontSize: 12, margin: 0 }}>
             {entry.name} ×{entry.quantity}
+            {/* Boolean()必須: is_consumableはSQLiteの0/1整数で来るため、素の
+                `entry.is_consumable && (...)` は永続型の行に "0" を描いてしまう。 */}
+            {Boolean(entry.is_consumable) && (
+              <span
+                title="「使う」と所持数が減ります"
+                style={{ marginLeft: 6, fontSize: 10, color: '#888', border: '1px solid #ccc', borderRadius: 4, padding: '0 4px' }}
+              >
+                消費型
+              </span>
+            )}
             {entry.description && <span style={{ color: '#888' }}> — {entry.description}</span>}
           </p>
           {isShop && entry.sell_price != null && (
@@ -376,7 +386,14 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
   const [targetId, setTargetId] = useState(() => detectMentionedParticipant(draft, participants));
   const [description, setDescription] = useState('');
 
-  const itemEntries = (inventory ?? []).map((e) => ({ kind: 'item', key: `item:${e.item_id}`, id: e.item_id, name: e.name, quantity: e.quantity }));
+  const itemEntries = (inventory ?? []).map((e) => ({
+    kind: 'item',
+    key: `item:${e.item_id}`,
+    id: e.item_id,
+    name: e.name,
+    quantity: e.quantity,
+    is_consumable: e.is_consumable,
+  }));
   const outfitEntries = command.transfers_to_target
     ? (outfitInventory ?? []).map((e) => ({
         kind: 'outfit',
@@ -405,7 +422,11 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
       return;
     }
 
-    if (command.consumes_item) {
+    // アイテム自身が消費型なら、コマンド側のconsumes_item設定に関わらず減らす
+    // ——アイテム画面が以前から「消費型（このカテゴリのアイテムは『使う』で
+    // 所持数が減る）」と説明していた挙動が未実装だったのを実装したもの。
+    // 衣装エントリはis_consumableを持たない(undefined=falsy)ので影響しない。
+    if (command.consumes_item || entry.is_consumable) {
       await useItem.mutateAsync({ itemId: entry.id, quantity: 1 });
     }
     const targetText = target ? `@${target.name}に` : '';
@@ -481,8 +502,11 @@ function CraftPanel({ command, playthroughId, onClose, onCraft }) {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // 道具・材料とも所持品全体から選べる。材料を消費型カテゴリに限定していた
+  // 時期があったが、「材料に選べるものが限定的すぎる」という指摘を受けて撤廃
+  // ——何を材料にできるかの判断はLLM側（と、それ以前にプレイヤー自身）に委ねる。
   const toolEntries = inventory ?? [];
-  const materialEntries = (inventory ?? []).filter((e) => e.is_consumable);
+  const materialEntries = inventory ?? [];
 
   function updateRow(index, patch) {
     setMaterialRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -544,7 +568,6 @@ function CraftPanel({ command, playthroughId, onClose, onCraft }) {
 
           <div>
             <span style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 2 }}>材料</span>
-            {materialEntries.length === 0 && <p style={{ fontSize: 11, color: '#888' }}>材料にできる持ち物がありません（消費型カテゴリのアイテムのみ選べます）</p>}
             {materialRows.map((row, i) => {
               const rowEntry = materialEntries.find((e) => String(e.item_id) === row.key);
               return (

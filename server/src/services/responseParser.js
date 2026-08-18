@@ -73,6 +73,16 @@ function isTagLike(rawTag, keyword) {
   return editDistance(normalized, target) <= TAG_FUZZ_MAX_DISTANCE;
 }
 
+// CRAFT_RESULTの3項目目(消費型/永続型)。省略・未知語は null = 「判定なし」で、
+// アイテムのカテゴリ設定にそのまま従わせる(itemsRepo.jsのis_consumable上書きが
+// nullable なのはこのため) —— 曖昧な語を勝手にどちらかへ倒さない。
+function parseConsumableWord(word) {
+  if (!word) return null;
+  if (word.includes('消費')) return true;
+  if (word.includes('永続')) return false;
+  return null;
+}
+
 // For the tags that carry a payload after a colon ("ITEM_GRANT: 鍵|道具"):
 // only the keyword half is matched loosely, the payload is passed through
 // untouched for the existing parsing below.
@@ -89,7 +99,7 @@ function matchPayloadTag(tag, keyword) {
 //   { type: 'narration', text }
 //   { type: 'item_grant', itemName, categoryName, description }
 //   { type: 'outfit_grant', outfitMasterName, description }
-//   { type: 'craft_result', itemName, categoryName, description }
+//   { type: 'craft_result', itemName, categoryName, isConsumable, description }
 //   { type: 'stat_change', characterName, axisName, delta }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
@@ -127,8 +137,14 @@ export function parseScriptLine(rawLine) {
       }
       const craftPayload = bare[1].match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'CRAFT_RESULT');
       if (craftPayload) {
-        const [itemName, categoryName] = craftPayload.split('|').map((s) => s.trim());
-        return { type: 'craft_result', itemName, categoryName: categoryName || null, description: '' };
+        const [itemName, categoryName, consumableName] = craftPayload.split('|').map((s) => s.trim());
+        return {
+          type: 'craft_result',
+          itemName,
+          categoryName: categoryName || null,
+          isConsumable: parseConsumableWord(consumableName),
+          description: '',
+        };
       }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
@@ -167,10 +183,17 @@ export function parseScriptLine(rawLine) {
 
   const craftResultPayload = tag.match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(tag, 'CRAFT_RESULT');
   if (craftResultPayload) {
-    // "完成品名|カテゴリ名" — ITEM_GRANTと同じ形。roomSessions.js側でaddItemToInventoryへ
+    // "完成品名|カテゴリ名|消費型" — ITEM_GRANTの2項目に、完成品が使うと無くなる
+    // 物かどうかのLLM判定を足した形。roomSessions.js側でaddItemToInventoryへ
     // 直接渡す(ITEM_GRANTの「その場に置く」は経由しない)。
-    const [itemName, categoryName] = craftResultPayload.split('|').map((s) => s.trim());
-    return { type: 'craft_result', itemName, categoryName: categoryName || null, description: rest.trim() };
+    const [itemName, categoryName, consumableName] = craftResultPayload.split('|').map((s) => s.trim());
+    return {
+      type: 'craft_result',
+      itemName,
+      categoryName: categoryName || null,
+      isConsumable: parseConsumableWord(consumableName),
+      description: rest.trim(),
+    };
   }
 
   const statChangePayload = tag.match(STAT_CHANGE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'STAT_CHANGE');
