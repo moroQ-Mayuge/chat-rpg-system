@@ -32,6 +32,18 @@ export function findCategoryByName(worldId, name) {
 export function resolveCategoryOrFallback(worldId, categoryName) {
   const matched = categoryName ? findCategoryByName(worldId, categoryName) : null;
   if (matched) return matched;
+  // 完全一致しない場合の部分一致(「食料品」→「食料」、「日用品」→「文房具・
+  // 日用品」等)。未分類へ落ちると is_consumable=0 が確定してしまい、料理を
+  // 作っても消耗品にならない一因になっていたため、名前がかすっている限りは
+  // 本来のカテゴリへ寄せる。最長一致を採って「食」のような短い部分一致が
+  // 無関係なカテゴリを拾うのを避ける。
+  if (categoryName) {
+    const needle = categoryName.trim();
+    const near = listCategoriesForWorld(worldId)
+      .filter((c) => c.name !== '未分類' && (c.name.includes(needle) || needle.includes(c.name)))
+      .sort((a, b) => b.name.length - a.name.length)[0];
+    if (near) return near;
+  }
   return db.prepare("SELECT * FROM item_categories WHERE world_id IS NULL AND name = '未分類'").get();
 }
 

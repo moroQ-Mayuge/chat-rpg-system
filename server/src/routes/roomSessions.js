@@ -624,10 +624,14 @@ async function generateReply(
       // 選択任せだと未分類フォールバック時に必ず永続型になり、料理を作っても
       // 消費されない、という実プレイでの指摘がそのまま起きる。
       const item = findOrCreateWorldItem(worldId, parsed.itemName, parsed.description, category.id, parsed.isConsumable);
-      addItemToInventory(session.playthrough_id, item.id);
+      const quantity = parsed.quantity ?? 1;
+      addItemToInventory(session.playthrough_id, item.id, quantity);
       const message = createMessage(sessionId, {
         sender_type: 'narration',
-        content: `『${item.name}』が完成し、持ち物に加わった。`,
+        content:
+          quantity > 1
+            ? `『${item.name}』が${quantity}個完成し、持ち物に加わった。`
+            : `『${item.name}』が完成し、持ち物に加わった。`,
       });
       broadcast(sessionId, { type: 'message_complete', message });
       return;

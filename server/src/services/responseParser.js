@@ -76,11 +76,68 @@ function isTagLike(rawTag, keyword) {
 // CRAFT_RESULTの3項目目(消費型/永続型)。省略・未知語は null = 「判定なし」で、
 // アイテムのカテゴリ設定にそのまま従わせる(itemsRepo.jsのis_consumable上書きが
 // nullable なのはこのため) —— 曖昧な語を勝手にどちらかへ倒さない。
-function parseConsumableWord(word) {
+//
+// 「消費型」だけを見ていた頃は、モデルが「消耗品」「使い切り」等と書くたびに
+// 判定なし扱いになり、料理が消耗品にならないケースが出ていた(実プレイでの
+// 指摘)。表記ゆれを広めに拾う。永続側を先に見るのは「消費しない」のような
+// 否定形で消費側に誤判定させないため。
+const PERMANENT_WORDS = ['永続', '永久', '恒久', '非消耗', '非消費', 'いいえ', 'no', 'false', 'permanent'];
+const CONSUMABLE_WORDS = ['消費', '消耗', '使い切り', '使いきり', '一回限り', '使うと無くな', '使うとなくな', 'はい', 'yes', 'true', 'consumable'];
+
+export function parseConsumableWord(word) {
   if (!word) return null;
-  if (word.includes('消費')) return true;
-  if (word.includes('永続')) return false;
+  const normalized = word.trim().toLowerCase();
+  if (!normalized) return null;
+  if (PERMANENT_WORDS.some((w) => normalized.includes(w))) return false;
+  if (CONSUMABLE_WORDS.some((w) => normalized.includes(w))) return true;
   return null;
+}
+
+// CRAFT_RESULTの4項目目(個数)。材料が大量な時や「クッキーが何枚も焼けた」等、
+// 複数個できるのが自然な場合にモデルが指定する。上限を掛けるのは、桁を誤った
+// 出力(1000個等)がそのまま所持数になるのを防ぐため。
+const MAX_CRAFT_QUANTITY = 99;
+
+export function parseCraftQuantity(word) {
+  if (!word) return 1;
+  const matched = word.match(/\d+/);
+  if (!matched) return 1;
+  const parsed = parseInt(matched[0], 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.min(parsed, MAX_CRAFT_QUANTITY);
+}
+
+// "完成品名|カテゴリ名|消費型|個数" — ITEM_GRANTの2項目に、消費型判定と個数を
+// 足した形。後ろ2つは省略可(個数の既定は1)。
+//
+// モデルがカテゴリ名を落として "完成品名|消費型" と書いてくることがあり、その
+// まま読むと消費型判定が丸ごと失われる(カテゴリ名として解釈され、実在しない
+// ので未分類=永続型に落ちる)。2項目目が消費型/永続型の語そのものなら、カテゴリ
+// ではなく判定として拾い直す。個数も同様に、どの位置に来ても数値だけの項目は
+// 個数として扱う。
+function parseCraftPayload(payload) {
+  const parts = payload.split('|').map((s) => s.trim());
+  const [itemName, ...rest] = parts;
+
+  let categoryName = null;
+  let isConsumable = null;
+  let quantity = 1;
+
+  for (const part of rest) {
+    if (!part) continue;
+    const consumable = parseConsumableWord(part);
+    if (consumable !== null) {
+      if (isConsumable === null) isConsumable = consumable;
+      continue;
+    }
+    if (/^\D*\d+\D*$/.test(part)) {
+      quantity = parseCraftQuantity(part);
+      continue;
+    }
+    if (categoryName === null) categoryName = part;
+  }
+
+  return { type: 'craft_result', itemName, categoryName, isConsumable, quantity };
 }
 
 // For the tags that carry a payload after a colon ("ITEM_GRANT: 鍵|道具"):
@@ -99,7 +156,7 @@ function matchPayloadTag(tag, keyword) {
 //   { type: 'narration', text }
 //   { type: 'item_grant', itemName, categoryName, description }
 //   { type: 'outfit_grant', outfitMasterName, description }
-//   { type: 'craft_result', itemName, categoryName, isConsumable, description }
+//   { type: 'craft_result', itemName, categoryName, isConsumable, quantity, description }
 //   { type: 'stat_change', characterName, axisName, delta }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
@@ -137,14 +194,7 @@ export function parseScriptLine(rawLine) {
       }
       const craftPayload = bare[1].match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'CRAFT_RESULT');
       if (craftPayload) {
-        const [itemName, categoryName, consumableName] = craftPayload.split('|').map((s) => s.trim());
-        return {
-          type: 'craft_result',
-          itemName,
-          categoryName: categoryName || null,
-          isConsumable: parseConsumableWord(consumableName),
-          description: '',
-        };
+        return { ...parseCraftPayload(craftPayload), description: '' };
       }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
@@ -183,17 +233,7 @@ export function parseScriptLine(rawLine) {
 
   const craftResultPayload = tag.match(CRAFT_RESULT_PATTERN)?.[1] ?? matchPayloadTag(tag, 'CRAFT_RESULT');
   if (craftResultPayload) {
-    // "完成品名|カテゴリ名|消費型" — ITEM_GRANTの2項目に、完成品が使うと無くなる
-    // 物かどうかのLLM判定を足した形。roomSessions.js側でaddItemToInventoryへ
-    // 直接渡す(ITEM_GRANTの「その場に置く」は経由しない)。
-    const [itemName, categoryName, consumableName] = craftResultPayload.split('|').map((s) => s.trim());
-    return {
-      type: 'craft_result',
-      itemName,
-      categoryName: categoryName || null,
-      isConsumable: parseConsumableWord(consumableName),
-      description: rest.trim(),
-    };
+    return { ...parseCraftPayload(craftResultPayload), description: rest.trim() };
   }
 
   const statChangePayload = tag.match(STAT_CHANGE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'STAT_CHANGE');

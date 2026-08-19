@@ -77,11 +77,22 @@ export function createItem({ world_id, name, description, image_tags, category_i
 // Find-or-create by exact name match so repeated grants of the same
 // LLM-invented name reuse one item row instead of duplicating it.
 // isConsumable はクラフト時にLLMが完成品ごとに判定した消費型フラグ(null =
-// 判定なし = カテゴリ設定に従う)。既存行が見つかった場合は上書きしない——
-// 同名で再度作られても最初の判定を維持する(find-or-createの既存方針どおり)。
+// 判定なし = カテゴリ設定に従う)。
+//
+// 既存行が未判定(NULL)のまま残っている場合だけ、今回の判定で埋める。同名の
+// アイテムが先にITEM_GRANT等で作られていると、クラフトで判定が出ても永久に
+// 反映されず「料理が消耗品扱いになったりならなかったり」する原因になっていた
+// (実プレイでの指摘)。既に明示的な1/0が入っている行は上書きしない——
+// アイテム画面での手動設定をLLMに壊させないため。
 export function findOrCreateWorldItem(worldId, name, description, categoryId, isConsumable = null) {
   const existing = db.prepare('SELECT * FROM items WHERE world_id = ? AND name = ?').get(worldId, name);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.is_consumable == null && isConsumable != null) {
+      db.prepare('UPDATE items SET is_consumable = ? WHERE id = ?').run(isConsumable ? 1 : 0, existing.id);
+      return getItem(existing.id);
+    }
+    return existing;
+  }
   return createItem({ world_id: worldId, name, description, category_id: categoryId, is_consumable: isConsumable });
 }
 
