@@ -39,3 +39,22 @@ export function withDisambiguatedNames(participants) {
     return { ...p, display_name: nameCount === 1 ? p.name : `${p.name}(${nameCount})` };
   });
 }
+
+// 「モデルが書いた[名前]:を実際の参加者へ解決する」規則。完全一致を優先し、
+// 外れた場合だけ部分一致へ落ちるが、候補が2人以上なら解決しない(取り違えるより
+// 未解決として扱う方が安全)。
+//
+// roomSessions.jsの本番処理と、modelEvalの採点器の両方がこれを使う——採点が
+// 「本番と同じ基準で話者を解決できたか」を測るものである以上、規則が2箇所に
+// 分かれていると採点結果が本番の挙動とずれてしまうため。
+export function buildParticipantResolver(participants) {
+  const byName = new Map(withDisambiguatedNames(participants).map((p) => [p.display_name, p]));
+  function resolve(name) {
+    if (byName.has(name)) return byName.get(name);
+    const candidates = [...byName.entries()].filter(
+      ([displayName]) => displayName.includes(name) || name.includes(displayName),
+    );
+    return candidates.length === 1 ? candidates[0][1] : null;
+  }
+  return { byName, resolve };
+}

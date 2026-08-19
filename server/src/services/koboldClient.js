@@ -124,6 +124,13 @@ export async function getMaxContextLength() {
   }
 }
 
+// モデル評価でkoboldcppを別モデルで再起動した直後は、TTLが切れるまで前モデルの
+// コンテキスト長を返してしまいプロンプトのサイズ計算がずれる。切替側から明示的に
+// 捨てられるようにする(modelEval/runner.jsのwaitForModelReadyが呼ぶ)。
+export function invalidateContextLengthCache() {
+  contextLengthCache = { value: null, at: 0 };
+}
+
 export async function countTokens(text) {
   try {
     const res = await fetch(`${config.koboldBaseUrl}/api/extra/tokencount`, {

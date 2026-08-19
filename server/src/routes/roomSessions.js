@@ -37,7 +37,7 @@ import { runEventEngine } from '../services/eventEngine/index.js';
 import { resolveStylePromptForWorld } from '../db/repositories/imageStylePresetsRepo.js';
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
-import { withDisambiguatedNames } from '../services/participantNaming.js';
+import { withDisambiguatedNames, buildParticipantResolver } from '../services/participantNaming.js';
 import { broadcast } from '../ws/rooms.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { adjustValue, getValue } from '../db/repositories/relationshipStatesRepo.js';
@@ -472,20 +472,10 @@ async function generateReply(
   // applied to the same session.participants array — so if two participants
   // share a name, this Map's keys naturally match whatever the model was
   // shown ("みお" / "みお(2)") instead of colliding on the bare name.
-  const participantsByName = new Map(withDisambiguatedNames(session.participants).map((p) => [p.display_name, p]));
-
-  // Safety net for when the model doesn't echo back the exact display_name
-  // (e.g. it shortens a longer/compound name to just part of it) — falls
-  // back to a substring match only when it resolves to exactly one
-  // participant, so an ambiguous partial name still falls through to the
-  // hallucinated-name handling below rather than guessing wrong.
-  function resolveParticipantFuzzy(name) {
-    if (participantsByName.has(name)) return participantsByName.get(name);
-    const candidates = [...participantsByName.entries()].filter(
-      ([displayName]) => displayName.includes(name) || name.includes(displayName),
-    );
-    return candidates.length === 1 ? candidates[0][1] : null;
-  }
+  // 完全一致優先＋一意な部分一致フォールバック。規則そのものは
+  // participantNaming.jsのbuildParticipantResolverに集約してある(モデル評価の
+  // 採点器が同じ基準で話者解決の成否を測るため)。
+  const { byName: participantsByName, resolve: resolveParticipantFuzzy } = buildParticipantResolver(session.participants);
 
   // The system prompt tells the model never to speak/act as the protagonist
   // by name, but small local models don't reliably follow negative

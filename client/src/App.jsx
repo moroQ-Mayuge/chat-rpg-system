@@ -10,6 +10,7 @@ import PoseMastersPage from './pages/PoseMastersPage.jsx';
 import RelationshipAxesPage from './pages/RelationshipAxesPage.jsx';
 import EventsPage from './pages/EventsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import ModelEvalPage from './pages/ModelEvalPage.jsx';
 import PlaythroughsPage from './pages/PlaythroughsPage.jsx';
 import RoomPickerPage from './pages/RoomPickerPage.jsx';
 import ChatPage from './pages/ChatPage.jsx';
@@ -73,6 +74,9 @@ export default function App() {
           <NavLink to="/events" style={navLinkStyle}>
             イベント
           </NavLink>
+          <NavLink to="/model-eval" style={navLinkStyle}>
+            モデル評価
+          </NavLink>
           <NavLink to="/settings" style={navLinkStyle}>
             設定
           </NavLink>
@@ -102,6 +106,7 @@ export default function App() {
           <Route path="/character-statuses" element={<CharacterStatusesPage />} />
           <Route path="/outfit-masters" element={<OutfitMastersPage />} />
           <Route path="/events" element={<EventsPage />} />
+          <Route path="/model-eval" element={<ModelEvalPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/worlds/:worldId/playthroughs" element={<PlaythroughsPage />} />
           <Route path="/playthroughs/:playthroughId/pick-room" element={<RoomPickerPage />} />
