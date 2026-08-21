@@ -1,6 +1,50 @@
 import { config } from '../config.js';
 import { getGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
 
+// ── GPU実行の直列化 ────────────────────────────────────────────
+// KoboldCppはLLMと画像生成を同一プロセス・同一VRAMで抱えている。両者が重なると
+// ピークVRAMが加算され、16GB級のカードでもSDXLサイズの画像生成中に落ちる。
+//
+// 実ログでの裏付け(24セッション分の起動ログを解析):
+//   ・14/24が画像生成中または直後に終了。うち5回は進捗バーの途中(例 19/25)で
+//     消えており、正常終了ではあり得ない
+//   ・ログ全体で唯一の明示エラーが「KCPP SD generate failed!」
+//   ・Windowsイベントログにクラッシュ記録もGPUのTDRも無い＝例外ではなく
+//     ネイティブ側でVRAM確保に失敗して即死している形
+// 発生条件も特定できている: roomSessions.jsは[SCENE_CHANGE]を受け取った時点、
+// つまり *LLMがまだストリーミング生成している最中* に画像ジョブを投入する。
+// imageQueue.jsは画像ジョブ同士しか直列化しないため、ここが唯一の防波堤になる。
+//
+// ロックをこの3関数(LLM生成・img2img・txt2img)に限定するのは意図的。
+// 画像ジョブ(generateSceneImage)は内部でsuggestSceneTags経由でLLMを呼ぶので、
+// ジョブ全体をロックするとLLM呼び出しが自分自身のロックを待ってデッドロックする。
+// この粒度なら両者は逐次に取得・解放されるだけで入れ子にならない。
+//
+// 軽量なgetModelStatus/countTokens/getMaxContextLengthは対象外(ブロックさせない)。
+let gpuChain = Promise.resolve();
+
+function runOnGpu(fn) {
+  const run = gpuChain.then(fn);
+  // 失敗しても後続を止めない(1回の生成失敗でキュー全体が固まらないように)
+  gpuChain = run.then(
+    () => {},
+    () => {},
+  );
+  return run;
+}
+
+// KoboldCppが落ちている時のfetch失敗は "fetch failed" としか出ず、画面にもその
+// まま出て原因が分からなかった。落ちた可能性に言及するメッセージへ言い換える。
+function describeConnectionError(err) {
+  const cause = err?.cause?.code ?? '';
+  if (cause === 'ECONNREFUSED' || cause === 'ECONNRESET' || cause === 'UND_ERR_SOCKET') {
+    return new Error(
+      `KoboldCppに接続できません（${config.koboldBaseUrl}）。生成中に停止した可能性があります。設定画面の「KoboldCpp起動ログ」で直前の出力を確認できます。`,
+    );
+  }
+  return err;
+}
+
 // Sole contact point with KoboldCpp. Uses the OpenAI-compatible /v1/chat/completions
 // endpoint rather than the raw /api/v1/generate endpoint: the raw endpoint applies no
 // chat template and produced incoherent completions when verified against the actual
@@ -36,59 +80,83 @@ export async function generateChatCompletion({
       ? getGenerationSettings()
       : null;
 
-  const res = await fetch(`${config.koboldBaseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'kobold',
-      messages,
-      max_tokens: maxTokens,
-      temperature: temperature ?? defaults.temperature,
-      rep_pen: repPen ?? defaults.rep_pen,
-      rep_pen_range: repPenRange ?? defaults.rep_pen_range,
-      top_p: topP ?? defaults.top_p,
-      top_k: topK ?? defaults.top_k,
-      min_p: minP ?? defaults.min_p,
-      stop,
-      stream,
-    }),
-  });
+  // ストリーミングではfetchはヘッダ受信で解決し、その後も本文が流れ続ける＝
+  // GPUを掴んだままになる。ロックは本文を読み切るまで保持しないと意味が無いので、
+  // 生成の全体をrunOnGpuの中に入れる。
+  return runOnGpu(async () => {
+    let res;
+    try {
+      res = await fetch(`${config.koboldBaseUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'kobold',
+          messages,
+          max_tokens: maxTokens,
+          temperature: temperature ?? defaults.temperature,
+          rep_pen: repPen ?? defaults.rep_pen,
+          rep_pen_range: repPenRange ?? defaults.rep_pen_range,
+          top_p: topP ?? defaults.top_p,
+          top_k: topK ?? defaults.top_k,
+          min_p: minP ?? defaults.min_p,
+          stop,
+          stream,
+        }),
+      });
+    } catch (err) {
+      throw describeConnectionError(err);
+    }
 
-  if (!res.ok) {
-    throw new Error(`KoboldCpp request failed: ${res.status} ${await res.text()}`);
-  }
+    if (!res.ok) {
+      throw new Error(`KoboldCpp request failed: ${res.status} ${await res.text()}`);
+    }
 
-  if (!stream) {
-    const data = await res.json();
-    return data.choices[0].message.content;
-  }
+    if (!stream) {
+      const data = await res.json();
+      return data.choices[0].message.content;
+    }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullText = '';
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice('data:'.length).trim();
-      if (payload === '[DONE]') continue;
-      const json = JSON.parse(payload);
-      const delta = json.choices?.[0]?.delta?.content;
-      if (delta) {
-        fullText += delta;
-        onToken?.(delta);
+    for (;;) {
+      let chunk;
+      try {
+        chunk = await reader.read();
+      } catch (err) {
+        // 生成の途中でKoboldCppが落ちるとここで切れる。それまでに受け取った分は
+        // 捨てずに返す(部分的でも表示できた方が、無言で消えるよりましなため)。
+        if (fullText) return fullText;
+        throw describeConnectionError(err);
+      }
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice('data:'.length).trim();
+        if (payload === '[DONE]') continue;
+        let json;
+        try {
+          json = JSON.parse(payload);
+        } catch {
+          // 壊れたSSEチャンクで生成全体を落とさない
+          continue;
+        }
+        const delta = json.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
+          onToken?.(delta);
+        }
       }
     }
-  }
 
-  return fullText;
+    return fullText;
+  });
 }
 
 export async function getModelStatus() {
@@ -164,29 +232,36 @@ export async function generateImage({
   samplerName = 'Euler a',
   denoisingStrength = 0.75,
 }) {
-  const res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/img2img`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      init_images: [initImageBase64],
-      mask: maskBase64,
-      prompt,
-      negative_prompt: negativePrompt,
-      steps,
-      cfg_scale: cfgScale,
-      width,
-      height,
-      sampler_name: samplerName,
-      denoising_strength: denoisingStrength,
-    }),
+  return runOnGpu(async () => {
+    let res;
+    try {
+      res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/img2img`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          init_images: [initImageBase64],
+          mask: maskBase64,
+          prompt,
+          negative_prompt: negativePrompt,
+          steps,
+          cfg_scale: cfgScale,
+          width,
+          height,
+          sampler_name: samplerName,
+          denoising_strength: denoisingStrength,
+        }),
+      });
+    } catch (err) {
+      throw describeConnectionError(err);
+    }
+
+    if (!res.ok) {
+      throw new Error(`KoboldCpp image request failed: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    return Buffer.from(data.images[0], 'base64');
   });
-
-  if (!res.ok) {
-    throw new Error(`KoboldCpp image request failed: ${res.status} ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  return Buffer.from(data.images[0], 'base64');
 }
 
 // Plain txt2img (no init image/mask) — used for generating a fresh Outfit
@@ -200,26 +275,33 @@ export async function generateTxt2Image({
   height,
   samplerName = 'Euler a',
 }) {
-  const res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/txt2img`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      negative_prompt: negativePrompt,
-      steps,
-      cfg_scale: cfgScale,
-      width,
-      height,
-      sampler_name: samplerName,
-    }),
+  return runOnGpu(async () => {
+    let res;
+    try {
+      res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/txt2img`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          negative_prompt: negativePrompt,
+          steps,
+          cfg_scale: cfgScale,
+          width,
+          height,
+          sampler_name: samplerName,
+        }),
+      });
+    } catch (err) {
+      throw describeConnectionError(err);
+    }
+
+    if (!res.ok) {
+      throw new Error(`KoboldCpp image request failed: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    return Buffer.from(data.images[0], 'base64');
   });
-
-  if (!res.ok) {
-    throw new Error(`KoboldCpp image request failed: ${res.status} ${await res.text()}`);
-  }
-
-  const data = await res.json();
-  return Buffer.from(data.images[0], 'base64');
 }
 
 export async function getSdModelStatus() {
