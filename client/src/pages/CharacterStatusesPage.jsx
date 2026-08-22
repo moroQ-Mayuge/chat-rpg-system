@@ -28,9 +28,10 @@ const DISTURBABLE_FIELDS = [
   ['underwear_lower', '下着：下半身'],
 ];
 
+// 表記は設定画面・衣装編集と揃える。pullは下方向、asideは横方向。
 const DISTURBANCE_STYLES = [
   ['open', '開く（ボタン式シャツ等）'],
-  ['pull', 'ずらす（チューブトップ等）'],
+  ['pull', 'ずり下げる（チューブトップ等）'],
   ['lift', 'たくし上げる（スカート等）'],
   ['aside', '横にずらす（首掛けワンピ等）'],
 ];

@@ -33,9 +33,12 @@ export const OUTFIT_TAG_FIELDS = OUTFIT_TAG_CATEGORIES.map(([key]) => key);
 // server/src/services/outfitTagCategories.js's garment_operations gating.
 export const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_upper', 'underwear_lower'];
 
+// 表記は設定画面(SettingsPage.jsxの露出タグ設定)と揃える。pullを「ずらす」と
+// だけ書くと方向が分からず、asideの「横にずらす」とも紛らわしいので、
+// 下方向であることを明示する。
 const DISTURBANCE_STYLES = [
   ['open', '開く'],
-  ['pull', 'ずらす'],
+  ['pull', 'ずり下げる'],
   ['lift', 'たくし上げる'],
   ['aside', '横にずらす'],
 ];
