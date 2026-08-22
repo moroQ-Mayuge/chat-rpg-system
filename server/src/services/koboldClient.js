@@ -33,6 +33,27 @@ function runOnGpu(fn) {
   return run;
 }
 
+// 直列化した以上、1本でも永久に返ってこない呼び出しがあるとチェーン全体が
+// 二度と進まなくなる＝以後あらゆる生成が沈黙する(「キャラ編集中にサーバーが
+// 応答しなくなる」の正体)。KoboldCppはプロセスが生きたまま応答だけ止まること
+// があり、Node のfetchには既定のタイムアウトが無いため、明示的に打ち切る。
+//
+// 値は「正常な生成を誤って殺さない」ことを優先した余裕のある上限。実測では
+// LLM生成が数秒、画像生成が数秒〜十数秒で、sdoffloadcpu有効時のモデル読み込み
+// を含めても遠く及ばない。
+const LLM_TIMEOUT_MS = 180_000;
+const IMAGE_TIMEOUT_MS = 300_000;
+
+function isTimeoutError(err) {
+  return err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.cause?.name === 'TimeoutError';
+}
+
+function describeTimeout(kind, ms) {
+  return new Error(
+    `KoboldCppが${Math.round(ms / 1000)}秒以内に応答しませんでした（${kind}）。処理を打ち切ります。プロセスは生きているが停止している可能性があるため、設定画面の「KoboldCpp起動ログ」を確認し、必要なら再起動してください。`,
+  );
+}
+
 // KoboldCppが落ちている時のfetch失敗は "fetch failed" としか出ず、画面にもその
 // まま出て原因が分からなかった。落ちた可能性に言及するメッセージへ言い換える。
 function describeConnectionError(err) {
@@ -89,6 +110,7 @@ export async function generateChatCompletion({
       res = await fetch(`${config.koboldBaseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
         body: JSON.stringify({
           model: 'kobold',
           messages,
@@ -104,7 +126,7 @@ export async function generateChatCompletion({
         }),
       });
     } catch (err) {
-      throw describeConnectionError(err);
+      throw isTimeoutError(err) ? describeTimeout('テキスト生成', LLM_TIMEOUT_MS) : describeConnectionError(err);
     }
 
     if (!res.ok) {
@@ -126,10 +148,11 @@ export async function generateChatCompletion({
       try {
         chunk = await reader.read();
       } catch (err) {
-        // 生成の途中でKoboldCppが落ちるとここで切れる。それまでに受け取った分は
-        // 捨てずに返す(部分的でも表示できた方が、無言で消えるよりましなため)。
+        // 生成の途中でKoboldCppが落ちる/応答が止まるとここで切れる。それまでに
+        // 受け取った分は捨てずに返す(部分的でも表示できた方が、無言で消えるより
+        // ましなため)。タイムアウトでも同様に打ち切ってロックを解放する。
         if (fullText) return fullText;
-        throw describeConnectionError(err);
+        throw isTimeoutError(err) ? describeTimeout('テキスト生成', LLM_TIMEOUT_MS) : describeConnectionError(err);
       }
       if (chunk.done) break;
       buffer += decoder.decode(chunk.value, { stream: true });
@@ -238,6 +261,7 @@ export async function generateImage({
       res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/img2img`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
         body: JSON.stringify({
           init_images: [initImageBase64],
           mask: maskBase64,
@@ -252,7 +276,7 @@ export async function generateImage({
         }),
       });
     } catch (err) {
-      throw describeConnectionError(err);
+      throw isTimeoutError(err) ? describeTimeout('画像生成', IMAGE_TIMEOUT_MS) : describeConnectionError(err);
     }
 
     if (!res.ok) {
@@ -281,6 +305,7 @@ export async function generateTxt2Image({
       res = await fetch(`${config.koboldBaseUrl}/sdapi/v1/txt2img`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
         body: JSON.stringify({
           prompt,
           negative_prompt: negativePrompt,
@@ -292,7 +317,7 @@ export async function generateTxt2Image({
         }),
       });
     } catch (err) {
-      throw describeConnectionError(err);
+      throw isTimeoutError(err) ? describeTimeout('画像生成', IMAGE_TIMEOUT_MS) : describeConnectionError(err);
     }
 
     if (!res.ok) {
