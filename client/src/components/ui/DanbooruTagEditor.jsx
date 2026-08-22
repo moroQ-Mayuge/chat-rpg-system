@@ -95,13 +95,22 @@ export default function DanbooruTagEditor({ value, onChange }) {
         onBlur={addChip}
         placeholder="+ タグ追加"
         className={styles.input}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
       />
       <p style={{ fontSize: 11, color: '#888', margin: '10px 0 4px' }}>最終タグプレビュー（直接編集可）</p>
+      {/* danbooruタグは英数字の機械タグなのでスペルチェック・自動補正は無意味なうえ、
+          文字が変わるたびにブラウザ側が再走査する。BackSpace長押しのような高頻度の
+          変更で負荷が跳ねる要因になるため、明示的に切っておく。 */}
       <textarea
         style={{ width: '100%', height: 44, fontSize: 12, boxSizing: 'border-box' }}
         value={previewText}
         onChange={(e) => setPreviewText(e.target.value)}
         onBlur={handlePreviewBlur}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
       />
       <p style={{ fontSize: 10, color: '#999', margin: '4px 0 0' }}>
         チップのON/OFFと双方向に同期。並び順や重み付け記法(tag:1.2)などの微調整はここで直接行う
