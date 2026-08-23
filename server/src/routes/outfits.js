@@ -20,6 +20,7 @@ import {
   createMasterFromOutfit,
 } from '../db/repositories/outfitMastersRepo.js';
 import { generateOutfitStandingImage, generateOutfitExpressionImage } from '../services/outfitImageGenerator.js';
+import { testGenerateOutfitPreview } from '../services/outfitImageTestGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 
 // Lets the character edit form generate a preview using whatever's currently
@@ -94,6 +95,23 @@ outfitsRouter.post('/outfits/:id/standing-image', upload.single('image'), (req, 
 outfitsRouter.post('/outfits/:id/expression-image/:expressionTypeId', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'image_required' });
   res.json(setExpressionImage(req.params.id, req.params.expressionTypeId, `/images/characters/${req.file.filename}`));
+});
+
+// 衣装編集中のテスト生成: どの衣装レコードにも紐付けない使い捨てプレビュー。
+// :idを取らず、bodyのタグ値だけで完結する（マスタ編集・未保存の新規衣装からも呼べる）。
+outfitsRouter.post('/outfits/test-generate-preview', (req, res) => {
+  enqueueImageJob(async () => {
+    try {
+      const outfit = {
+        character_id: req.body.character_id ?? null,
+        icon_excluded_fields: req.body.icon_excluded_fields ?? [],
+        ...tagOverridesFromBody(req.body),
+      };
+      res.json(await testGenerateOutfitPreview(outfit, req.body.extra_hint));
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
 });
 
 outfitsRouter.post('/outfits/:id/generate-standing-image', (req, res) => {

@@ -214,6 +214,9 @@ export default function CharactersPage() {
   const [expressionGenMode, setExpressionGenMode] = useState('');
   const [batchExpressionProgress, setBatchExpressionProgress] = useState(null);
   const [generatingDetails, setGeneratingDetails] = useState(false);
+  const [testPreview, setTestPreview] = useState(null);
+  const [isTestGenerating, setIsTestGenerating] = useState(false);
+  const [testGenError, setTestGenError] = useState(null);
 
   useEffect(() => {
     setPendingOutfitTags('');
@@ -605,6 +608,22 @@ export default function CharactersPage() {
       setImageGenError(err.message);
     } finally {
       setGeneratingImageTarget(null);
+    }
+  }
+
+  // どの衣装レコードにも書き込まない使い捨てプレビュー。保存前のタグ調整を
+  // 試すためのものなので、保存済みの立ち絵/表情アイコンには一切触れない。
+  async function handleTestGeneratePreview() {
+    if (!activeOutfit || !confirmIfNoTags()) return;
+    setIsTestGenerating(true);
+    setTestGenError(null);
+    try {
+      const result = await outfitsApi.testGeneratePreview(currentOutfitTags(), selectedId, activeOutfit.icon_excluded_fields ?? []);
+      setTestPreview(result);
+    } catch (err) {
+      setTestGenError(err.message);
+    } finally {
+      setIsTestGenerating(false);
     }
   }
 
@@ -1167,9 +1186,36 @@ export default function CharactersPage() {
                           </>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                          <button onClick={handleTestGeneratePreview} disabled={isTestGenerating}>
+                            {isTestGenerating ? 'テスト生成中...' : 'テスト生成（全身+顔・保存されません）'}
+                          </button>
                           <button onClick={saveOutfit}>この衣装を保存</button>
                         </div>
+
+                        {testGenError && <p style={{ color: 'red', fontSize: 12 }}>{testGenError}</p>}
+                        {testPreview && (
+                          <div style={{ border: '1px dashed #aaa', borderRadius: 6, padding: 8, marginTop: 4 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <p style={{ fontSize: 11, color: '#888', margin: 0 }}>テスト結果（保存されません）</p>
+                              <button style={{ fontSize: 11 }} onClick={() => setTestPreview(null)}>
+                                閉じる
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+                              <div>
+                                <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>全身</p>
+                                <img src={testPreview.standing.imagePath} alt="テスト生成：全身" style={{ maxWidth: 160, borderRadius: 4 }} />
+                              </div>
+                              {testPreview.expression && (
+                                <div>
+                                  <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>顔（{testPreview.expression.expressionTypeName}）</p>
+                                  <img src={testPreview.expression.imagePath} alt="テスト生成：顔アイコン" style={{ maxWidth: 160, borderRadius: 4 }} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         <div>
                           <p style={{ fontSize: 12, marginBottom: 4 }}>立ち絵イメージ（この衣装につき1枚）</p>

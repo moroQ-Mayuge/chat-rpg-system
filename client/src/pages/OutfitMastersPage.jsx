@@ -7,6 +7,7 @@ import { groupByKeys } from '../utils/grouping.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
 import OutfitTagCategoryEditor, { OUTFIT_TAG_FIELDS } from '../components/ui/OutfitTagCategoryEditor.jsx';
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
+import { outfitsApi } from '../api/outfits.js';
 
 const emptyForm = {
   name: '',
@@ -42,6 +43,9 @@ export default function OutfitMastersPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [selectedExportIds, setSelectedExportIds] = useState(new Set());
+  const [testPreview, setTestPreview] = useState(null);
+  const [isTestGenerating, setIsTestGenerating] = useState(false);
+  const [testGenError, setTestGenError] = useState(null);
   const queryClient = useQueryClient();
 
   const isNew = selectedId === 'new';
@@ -112,6 +116,23 @@ export default function OutfitMastersPage() {
       setSelectedId(created.id);
     } else {
       await update.mutateAsync({ id: selectedId, data: payload });
+    }
+  }
+
+  // どの衣装マスタのレコードにも書き込まない使い捨てプレビュー。マスタには
+  // character_id/icon_excluded_fieldsの概念が無いため、タグをそのまま渡すだけ。
+  async function handleTestGeneratePreview() {
+    const hasAnyTag = OUTFIT_TAG_FIELDS.some((key) => form[key]?.trim());
+    if (!hasAnyTag && !window.confirm('服装タグが未設定ですが、このまま画像生成しますか？（意図せず裸体が生成される場合があります）')) return;
+    setIsTestGenerating(true);
+    setTestGenError(null);
+    try {
+      const result = await outfitsApi.testGeneratePreview(Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, form[key] ?? ''])), null, []);
+      setTestPreview(result);
+    } catch (err) {
+      setTestGenError(err.message);
+    } finally {
+      setIsTestGenerating(false);
     }
   }
 
@@ -267,10 +288,37 @@ export default function OutfitMastersPage() {
               />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                <button onClick={handleTestGeneratePreview} disabled={isTestGenerating}>
+                  {isTestGenerating ? 'テスト生成中...' : 'テスト生成（全身+顔・保存されません）'}
+                </button>
                 <button onClick={handleSave} disabled={!form.name}>
                   {isNew ? '追加' : '保存'}
                 </button>
               </div>
+
+              {testGenError && <p style={{ color: 'red', fontSize: 12 }}>{testGenError}</p>}
+              {testPreview && (
+                <div style={{ border: '1px dashed #aaa', borderRadius: 6, padding: 8, marginTop: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p style={{ fontSize: 11, color: '#888', margin: 0 }}>テスト結果（保存されません）</p>
+                    <button style={{ fontSize: 11 }} onClick={() => setTestPreview(null)}>
+                      閉じる
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+                    <div>
+                      <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>全身</p>
+                      <img src={testPreview.standing.imagePath} alt="テスト生成：全身" style={{ maxWidth: 160, borderRadius: 4 }} />
+                    </div>
+                    {testPreview.expression && (
+                      <div>
+                        <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>顔（{testPreview.expression.expressionTypeName}）</p>
+                        <img src={testPreview.expression.imagePath} alt="テスト生成：顔アイコン" style={{ maxWidth: 160, borderRadius: 4 }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {!isNew && <OutfitMasterWorldsSection masterId={selectedId} worlds={worlds} />}
             </div>
