@@ -65,7 +65,7 @@ export default function OutfitTagCategoryEditor({
 }) {
   return (
     <div>
-      <p style={{ fontSize: 12, marginBottom: 4 }}>画像生成用danbooruタグ（カテゴリ別）</p>
+      <p style={{ fontSize: 12, marginBottom: 4 }}>衣装の画像生成用danbooruタグ（カテゴリ別）</p>
       {OUTFIT_TAG_CATEGORIES.map(([key, label]) => (
         <details key={key} open={Boolean(values[key]?.trim())} style={{ marginBottom: 4 }}>
           <summary style={{ fontSize: 11, color: '#555', cursor: 'pointer' }}>{label}</summary>

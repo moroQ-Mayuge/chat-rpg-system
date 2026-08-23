@@ -1468,7 +1468,7 @@ export default function CharactersPage() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={save} disabled={!form.name || !formMatchesSelected}>
-                {isNew ? '作成' : formMatchesSelected ? '保存' : '読み込み中…'}
+                {isNew ? '作成' : formMatchesSelected ? 'キャラ保存' : '読み込み中…'}
               </button>
             </div>
           </div>
