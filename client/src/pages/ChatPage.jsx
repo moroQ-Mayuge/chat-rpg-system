@@ -12,34 +12,33 @@ import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/us
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
 
-function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// mentionedNames（選択順の配列）から実際に送信する本文へ@トークンを合成する。
+// サーバー側resolveMentions()(roomSessions.js)は本文中の@表示名の出現順で
+// ターゲット順序を決めるため、送信直前にこの順で並べて連結するだけでよい。
+function composeSendText(mentionedNames, text) {
+  return [...mentionedNames.map((n) => `@${n}`), text.trim()].filter(Boolean).join(' ');
 }
 
-// After a send, extracts just the @mention tokens that were present in the
-// draft (in their original order) so they can be restored to the input --
-// used when chat_input_settings.clear_mentions_on_send is off (the default):
-// the typed instruction disappears but selected mention targets don't have
-// to be re-picked for the next message.
-function extractMentionTokens(text, names) {
-  const found = [];
-  for (const name of names) {
-    if (text.includes(`@${name}`)) found.push({ name, index: text.indexOf(`@${name}`) });
-  }
-  found.sort((a, b) => a.index - b.index);
-  return found.map((f) => `@${f.name}`);
-}
-
-// Resolves which participant is currently @-mentioned first in the draft
-// (mention order, not participant list order -- mirrors extractMentionTokens'
-// own index-based ordering), for 脱衣 commands' mentioned-only status gating
-// below. null when the draft has no recognized @mention yet.
-function firstMentionedParticipant(draft, participants) {
-  const names = participants.map((p) => p.name);
-  const [firstToken] = extractMentionTokens(draft, names);
-  if (!firstToken) return null;
-  const name = firstToken.slice(1);
+// 脱衣コマンドのmentioned-only状態ゲート等で使う「先頭でメンションされている
+// 参加者」。mentionedNamesは選択順そのものの配列なので先頭を引くだけでよい。
+function firstMentionedParticipant(mentionedNames, participants) {
+  const name = mentionedNames[0];
+  if (!name) return null;
   return participants.find((p) => p.name === name) ?? null;
+}
+
+const MENTION_ORDER_DIGITS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+
+// 選択中のメンションボタンは色だけだと「誰が何番目か」まで分からないので、
+// 選択順の丸数字を前置する。選択解除中はプレーンな枠線ボタンのまま。
+function mentionButtonStyle(baseStyle, name, mentionedNames, color) {
+  if (!mentionedNames.includes(name)) return { ...baseStyle, color };
+  return { ...baseStyle, color: '#fff', background: color, borderColor: color };
+}
+
+function mentionOrderPrefix(name, mentionedNames) {
+  const index = mentionedNames.indexOf(name);
+  return index === -1 ? '' : `${MENTION_ORDER_DIGITS[index] ?? `(${index + 1})`} `;
 }
 
 // Compact renderer for a status snapshot ({self_stats, statuses, stages} —
@@ -361,12 +360,11 @@ function ItemPickupPanel({ sessionId, onClose, onAcquired }) {
   );
 }
 
-// Looks for an already-typed "@名前" mention in the chat draft matching a
-// current participant, so opening an item action panel doesn't force
-// re-selecting a target the player already specified inline (e.g. having
-// typed "@みお" then tapping "使う" should default the target to みお).
-function detectMentionedParticipant(draft, participants) {
-  const match = participants.find((p) => draft.includes(`@${p.name}`));
+// 選択中の@メンションに一致する参加者を探し、アイテム操作パネルを開いたときの
+// 対象初期値にする（例: みおを@メンションした状態で「使う」を押したら対象は
+// みおが初期選択されている、という体験を保つ）。
+function detectMentionedParticipant(mentionedNames, participants) {
+  const match = participants.find((p) => mentionedNames.includes(p.name));
   return match ? String(match.character_id) : '';
 }
 
@@ -375,7 +373,7 @@ function detectMentionedParticipant(draft, participants) {
 // `command` carries the clicked command's label plus its consumes_item/
 // transfers_to_target flags, which drive both the panel's own behavior and
 // the wording of the chat line it posts.
-function ItemActionPanel({ command, playthroughId, participants, draft, onClose, onSend }) {
+function ItemActionPanel({ command, playthroughId, participants, mentionedNames, onClose, onSend }) {
   const { data: inventory } = useInventory(playthroughId);
   // 保有衣装(0096、itemsを介さない別経済)は「渡す」でのみ選択肢に混ぜる——
   // 「使う」「食べる」等、items専用のconsumes_item系コマンドには衣装の出番が無い。
@@ -383,7 +381,7 @@ function ItemActionPanel({ command, playthroughId, participants, draft, onClose,
   const { useItem, transferItem } = useInventoryMutations(playthroughId);
   const { transferItem: transferOutfitItem } = useOutfitInventoryMutations(playthroughId);
   const [selectedKey, setSelectedKey] = useState('');
-  const [targetId, setTargetId] = useState(() => detectMentionedParticipant(draft, participants));
+  const [targetId, setTargetId] = useState(() => detectMentionedParticipant(mentionedNames, participants));
   const [description, setDescription] = useState('');
 
   const itemEntries = (inventory ?? []).map((e) => ({
@@ -819,13 +817,15 @@ export default function ChatPage() {
     playthrough?.world_id,
   );
   const [draft, setDraft] = useState('');
+  const [mentionedNames, setMentionedNames] = useState([]);
   // Route param :id changes on room move without remounting ChatPage (same
-  // route pattern), so leftover draft text -- including @mention tokens kept
-  // around by clearDraftAfterSend's default "keep mentions" behavior --
-  // otherwise survives into the new room and can reference a character who
-  // isn't even present there anymore.
+  // route pattern), so leftover draft text/mentions -- including @mention
+  // selections kept around by clearDraftAfterSend's default "keep mentions"
+  // behavior -- otherwise survive into the new room and can reference a
+  // character who isn't even present there anymore.
   useEffect(() => {
     setDraft('');
+    setMentionedNames([]);
   }, [id]);
   const { data: worlds } = useWorlds();
   const world = worlds?.find((w) => w.id === playthrough?.world_id);
@@ -893,23 +893,21 @@ export default function ChatPage() {
   // -- the default -- clear everything EXCEPT the @mention tokens that were
   // present, so a run of messages to the same target doesn't require
   // re-picking the mention each time.
-  function clearDraftAfterSend(sentText) {
-    if (chatInputSettings?.clear_mentions_on_send) {
-      setDraft('');
-      return;
-    }
-    const names = [...(session?.participants ?? []).map((p) => p.name), '周辺'];
-    const tokens = extractMentionTokens(sentText, names);
-    setDraft(tokens.length ? `${tokens.join(' ')} ` : '');
+  // 自由記述(draft)は送信のたびに常にクリアする。mentionedNamesは
+  // chat_input_settings.clear_mentions_on_send がオフ(既定)なら保持し、次の
+  // メッセージでも同じ相手を選び直さなくて良いようにする。
+  function clearDraftAfterSend() {
+    setDraft('');
+    if (chatInputSettings?.clear_mentions_on_send) setMentionedNames([]);
   }
 
   // Submitting with an empty draft is not a no-op: it's an explicit "continue
   // from here" trigger (no user action/speech), handled server-side by
   // generating the next turn without inserting a user message at all.
   async function handleSend() {
-    const sentText = draft.trim();
+    const sentText = composeSendText(mentionedNames, draft);
     await sendMessage.mutateAsync(sentText);
-    clearDraftAfterSend(sentText);
+    clearDraftAfterSend();
   }
 
   async function sendText(text) {
@@ -923,30 +921,21 @@ export default function ChatPage() {
     await craftItem.mutateAsync({ content: text, craft });
   }
 
-  // Action-command keyword buttons used to discard whatever was typed in the
-  // draft (including an @mention inserted via insertMention), silently
-  // breaking any event whose action targets character_id: "mentioned" (e.g.
-  // the undress-state commands) since mentionedCharacterIds would resolve to
-  // empty. Prepending the current draft preserves the mention while leaving
-  // the no-draft case (the vast majority of existing keyword commands)
-  // unchanged.
   async function sendKeywordCommand(keywordText) {
     const combined = draft.trim() ? `${draft.trim()} ${keywordText}` : keywordText;
-    await sendMessage.mutateAsync(combined);
-    clearDraftAfterSend(combined);
+    const sentText = composeSendText(mentionedNames, combined);
+    await sendMessage.mutateAsync(sentText);
+    clearDraftAfterSend();
   }
 
-  // Toggle: re-clicking a mention that's already in the draft removes it
-  // instead of appending a second copy. The draft is a single opaque string
-  // (no structured token model), so "already present" is a substring search
-  // -- the same approach resolveMentions() uses server-side.
-  function insertMention(name) {
-    setDraft((d) => {
-      const token = `@${name}`;
-      const pattern = new RegExp(`${escapeRegExp(token)}\\s*`);
-      if (pattern.test(d)) return d.replace(pattern, '');
-      return d ? `${d} ${token} ` : `${token} `;
-    });
+  // Toggle: mentionedNamesは選択順そのものの配列なので、追加は末尾へpush、
+  // 解除はfilterで取り除くだけでよい。
+  function toggleMention(name) {
+    setMentionedNames((names) => (names.includes(name) ? names.filter((n) => n !== name) : [...names, name]));
+  }
+
+  function clearAllMentions() {
+    setMentionedNames([]);
   }
 
   async function handleExit() {
@@ -1278,7 +1267,7 @@ export default function ChatPage() {
           command={itemPanel}
           playthroughId={session.playthrough_id}
           participants={session.participants}
-          draft={draft}
+          mentionedNames={mentionedNames}
           onClose={() => setItemPanel(null)}
           onSend={sendText}
         />
@@ -1315,20 +1304,28 @@ export default function ChatPage() {
       <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, marginBottom: 4, flexShrink: 0, overflowX: 'auto' }}>
         <button
           type="button"
-          style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#15803d', flexShrink: 0 }}
+          style={mentionButtonStyle({ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 }, '周辺', mentionedNames, '#15803d')}
           title="周辺を調査・確認する（アドベンチャー的な行動用）"
-          onClick={() => insertMention('周辺')}
+          onClick={() => toggleMention('周辺')}
         >
-          @周辺
+          {mentionOrderPrefix('周辺', mentionedNames)}@周辺
+        </button>
+        <button
+          type="button"
+          style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 }}
+          onClick={clearAllMentions}
+          disabled={mentionedNames.length === 0}
+        >
+          @解除
         </button>
         {session.participants.map((p) => (
           <button
             key={p.id}
             type="button"
-            style={{ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', color: '#2563eb', flexShrink: 0 }}
-            onClick={() => insertMention(p.name)}
+            style={mentionButtonStyle({ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 }, p.name, mentionedNames, '#2563eb')}
+            onClick={() => toggleMention(p.name)}
           >
-            @{p.name}
+            {mentionOrderPrefix(p.name, mentionedNames)}@{p.name}
           </button>
         ))}
       </div>
@@ -1336,7 +1333,7 @@ export default function ChatPage() {
       <ActionCommandBar
         worldId={playthrough.world_id}
         participants={session.participants}
-        mentionedParticipant={firstMentionedParticipant(draft, session.participants)}
+        mentionedParticipant={firstMentionedParticipant(mentionedNames, session.participants)}
         roomTemplateId={session.room_template_id}
         onKeywordSend={sendKeywordCommand}
         onOpenPanel={setItemPanel}

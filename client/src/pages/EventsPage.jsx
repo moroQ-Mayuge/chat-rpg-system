@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEventDefinitions, useEventDefinitionMutations, useEventOverrides, useEventOverrideMutations } from '../hooks/useEvents.js';
-import { useCharacters } from '../hooks/useCharacters.js';
+import { useCharacters, useCharacter } from '../hooks/useCharacters.js';
 import { useRelationshipAxes } from '../hooks/useRelationshipAxes.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
@@ -737,6 +737,12 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
 function ActionEditor({ action, characters, axes, expressionTypes, items, outfitMasters, transformations, statuses, roomTemplates, poseMasters, hasOutcomeBranch, onChange, onRemove }) {
   const p = action.params;
   const setParams = (patch) => onChange({ ...action, params: { ...p, ...patch } });
+  // 衣装変更アクションの「切り替え先衣装ID」をID直打ちでなく名前選択にするため、
+  // 対象キャラが具体的な数値ID(=編集時点で確定している)ときだけそのキャラの
+  // 衣装一覧を取得する。'mentioned'/'condition_matched'は実行時まで誰か
+  // 決まらないため取得しようがなく、既存の数値ID入力にフォールバックする。
+  const targetCharacterId = action.action_type === 'change_outfit' && typeof p.character_id === 'number' ? p.character_id : null;
+  const { data: targetCharacter } = useCharacter(targetCharacterId);
   const charOptions = characters.map((c) => (
     <option key={c.id} value={c.id}>
       {c.name}
@@ -1130,8 +1136,19 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
             </select>
           </label>
           <label>
-            <span style={label11}>切り替え先衣装ID</span>
-            <input type="number" value={p.outfit_id ?? ''} onChange={(e) => setParams({ outfit_id: Number(e.target.value) || null })} />
+            <span style={label11}>切り替え先衣装</span>
+            {targetCharacterId != null ? (
+              <select value={p.outfit_id ?? ''} onChange={(e) => setParams({ outfit_id: Number(e.target.value) || null })}>
+                <option value="">選択してください</option>
+                {(targetCharacter?.outfits ?? []).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input type="number" value={p.outfit_id ?? ''} onChange={(e) => setParams({ outfit_id: Number(e.target.value) || null })} />
+            )}
           </label>
           <label>
             <span style={label11}>衣装マスタから指定（任意・指定時はこちらが優先）</span>
