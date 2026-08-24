@@ -10,6 +10,26 @@ import OutfitTagCategoryEditor, { OUTFIT_TAG_FIELDS } from '../components/ui/Out
 import { contentBundleApi, formatBundleImportSummary } from '../api/contentBundle.js';
 import { outfitsApi } from '../api/outfits.js';
 
+// テスト生成の状態チェックリスト用: 状態名(例:「上着を破る」)だけでは上半身/
+// 下半身どちらの衣装フィールドを対象にした状態か分からない(同名で上半身用・
+// 下半身用の2行が存在する)ため、対象フィールドから部位を補って表示する。
+const STATUS_FIELD_BODY_PART = {
+  clothing_upper_outer: '上半身',
+  clothing_upper: '上半身',
+  underwear_upper: '上半身',
+  clothing_lower_outer: '下半身',
+  clothing_lower: '下半身',
+  underwear_lower: '下半身',
+};
+
+function statusBodyPartLabel(status) {
+  const fields = status.disturbs_outfit_field
+    ? [status.disturbs_outfit_field]
+    : (status.suppresses_outfit_fields || '').split(',').map((f) => f.trim()).filter(Boolean);
+  const parts = [...new Set(fields.map((f) => STATUS_FIELD_BODY_PART[f]).filter(Boolean))];
+  return parts.length ? `（${parts.join('・')}）` : '';
+}
+
 const emptyForm = {
   name: '',
   slot: 'normal',
@@ -313,6 +333,7 @@ export default function OutfitMastersPage() {
                         <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
                           <input type="checkbox" checked={testStatusIds.includes(s.id)} onChange={() => toggleTestStatusId(s.id)} />
                           {s.name}
+                          {statusBodyPartLabel(s)}
                         </label>
                       ))}
                   </div>
