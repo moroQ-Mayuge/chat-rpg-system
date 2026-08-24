@@ -111,7 +111,7 @@ outfitsRouter.post('/outfits/test-generate-preview', (req, res) => {
         garment_operations: req.body.garment_operations ?? {},
         ...tagOverridesFromBody(req.body),
       };
-      res.json(await testGenerateOutfitPreview(outfit, req.body.extra_hint, req.body.status_ids ?? []));
+      res.json(await testGenerateOutfitPreview(outfit, req.body.extra_hint, req.body.status_ids ?? [], req.body.mode));
     } catch (err) {
       res.status(502).json({ error: err.message });
     }

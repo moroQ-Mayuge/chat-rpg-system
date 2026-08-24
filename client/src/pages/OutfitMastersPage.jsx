@@ -69,6 +69,7 @@ export default function OutfitMastersPage() {
   const [isTestGenerating, setIsTestGenerating] = useState(false);
   const [testGenError, setTestGenError] = useState(null);
   const [testStatusIds, setTestStatusIds] = useState([]);
+  const [testGenMode, setTestGenMode] = useState('');
   const queryClient = useQueryClient();
 
   const isNew = selectedId === 'new';
@@ -156,6 +157,7 @@ export default function OutfitMastersPage() {
         [],
         testStatusIds,
         form.garment_operations ?? {},
+        testGenMode || undefined,
       );
       setTestPreview(result);
     } catch (err) {
@@ -340,7 +342,15 @@ export default function OutfitMastersPage() {
                 </details>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, alignItems: 'center' }}>
+                <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  顔/イベントのモード
+                  <select style={{ fontSize: 10 }} value={testGenMode} onChange={(e) => setTestGenMode(e.target.value)}>
+                    <option value="">既定を使用</option>
+                    <option value="anchor_i2i">参照画像アンカー（i2i）</option>
+                    <option value="prompt_only">プロンプトのみ</option>
+                  </select>
+                </label>
                 <button onClick={handleTestGeneratePreview} disabled={isTestGenerating}>
                   {isTestGenerating ? 'テスト生成中...' : 'テスト生成（全身+顔+イベント・保存されません）'}
                 </button>

@@ -22,12 +22,13 @@ export const outfitsApi = {
     api.post(`/outfits/${id}/generate-standing-image`, { extra_hint: extraHint, ...tags }),
   generateExpressionImage: (id, expressionTypeId, extraHint, mode, tags) =>
     api.post(`/outfits/${id}/generate-expression-image/${expressionTypeId}`, { extra_hint: extraHint, mode, ...tags }),
-  testGeneratePreview: (tags, characterId, iconExcludedFields, statusIds, garmentOperations) =>
+  testGeneratePreview: (tags, characterId, iconExcludedFields, statusIds, garmentOperations, mode) =>
     api.post('/outfits/test-generate-preview', {
       character_id: characterId,
       icon_excluded_fields: iconExcludedFields,
       status_ids: statusIds,
       garment_operations: garmentOperations,
+      mode,
       ...tags,
     }),
 };

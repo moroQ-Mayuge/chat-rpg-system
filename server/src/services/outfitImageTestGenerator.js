@@ -13,11 +13,14 @@ function buildPrompt(settings, variables) {
   return renderPromptTemplate(settings.prompt_template, { style_preset: resolveDefaultStylePrompt(), ...variables });
 }
 
-// expression/eventの共通分岐: settings.default_modeがanchor_i2iかつ参照できる
+// expression/eventの共通分岐: modeOverride（テスト生成UIで明示指定された場合）
+// があればそれを、無ければsettings.default_modeを使う。anchor_i2iかつ参照できる
 // 立ち絵テスト画像があればi2iアンカー、それ以外はプレーンtxt2img
-// （outfitImageGenerator.jsのgenerateOutfitExpressionImageと同じ分岐）。
-async function generateTestImage(settings, prompt, standingImagePath) {
-  if (settings.default_mode !== 'anchor_i2i' || !standingImagePath) {
+// （outfitImageGenerator.jsのgenerateOutfitExpressionImageの4番目の引数modeと
+// 同じ「明示指定があれば設定より優先」という扱い）。
+async function generateTestImage(settings, prompt, standingImagePath, modeOverride) {
+  const resolvedMode = modeOverride || settings.default_mode;
+  if (resolvedMode !== 'anchor_i2i' || !standingImagePath) {
     const buffer = await generateTxt2Image({
       prompt,
       negativePrompt: settings.negative_prompt,
@@ -74,7 +77,7 @@ async function testGenerateStanding(outfit, extraHint, modifiers, exposureTagSet
   return { imagePath: await saveTestImage(buffer, 'png'), prompt };
 }
 
-async function testGenerateExpression(outfit, expressionType, extraHint, standingImagePath, modifiers, exposureTagSettings) {
+async function testGenerateExpression(outfit, expressionType, extraHint, standingImagePath, modifiers, exposureTagSettings, mode) {
   const settings = getImageGenerationSettings('expression');
   // icon_excluded_fields(アイコンに含めない設定)と状態によるsuppressedFields
   // (脱がされて無い設定)は別概念なので和集合にする。
@@ -91,7 +94,7 @@ async function testGenerateExpression(outfit, expressionType, extraHint, standin
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });
-  return generateTestImage(settings, prompt, standingImagePath);
+  return generateTestImage(settings, prompt, standingImagePath, mode);
 }
 
 // イベント画像(image_type='event'、eventEngine/actions/generateImage.js)のテスト
@@ -99,7 +102,7 @@ async function testGenerateExpression(outfit, expressionType, extraHint, standin
 // と複数参加者の合成）を前提にしているが、衣装編集にはそのどれも無い——ここでは
 // character_tagsだけをこの衣装のタグで埋め、他のプレースホルダは空文字にする
 // (buildSceneTagParts/eventEngine/actions/generateImage.jsと同じプレースホルダ名)。
-async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers, exposureTagSettings) {
+async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers, exposureTagSettings, mode) {
   const settings = getImageGenerationSettings('event');
   const characterTags = resolveOutfitTags(
     composeWornOutfit(outfit.character_id, outfit, null),
@@ -118,7 +121,7 @@ async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers
     time_slot_tags: '',
     extra_hint: extraHint,
   });
-  return generateTestImage(settings, prompt, standingImagePath);
+  return generateTestImage(settings, prompt, standingImagePath, mode);
 }
 
 // 衣装タグ編集中のプレビュー用: どのキャラ/衣装/マスタのレコードにも書き込まず、
@@ -129,17 +132,23 @@ async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers
 // 状態から組み立てる版)と同じmergeStatusModifiersを、選んだID配列に対して適用する。
 // 表情アイコン/イベント画像は全身側で生成したテスト画像をi2iアンカーに使う（既存の
 // generateOutfitExpressionImageがoutfit.standing_image_pathを使うのと同じ役割）。
-export async function testGenerateOutfitPreview(outfit, extraHint, statusIds = []) {
+// mode: 'anchor_i2i'|'prompt_only'|undefined。指定時は表情/イベント両方の
+// settings.default_modeを上書きする（標準生成のgenerate-expression-imageルートが
+// 受け取るmodeと同じ考え方——立ち絵は常にプレーンtxt2imgなので対象外）。
+export async function testGenerateOutfitPreview(outfit, extraHint, statusIds = [], mode) {
   const modifiers = resolveStatusModifiers(statusIds);
   const exposureTagSettings = getOutfitExposureTagSettings();
   const standing = await testGenerateStanding(outfit, extraHint, modifiers, exposureTagSettings);
 
   const expressionType = listExpressionTypes()[0];
   const expression = expressionType
-    ? { ...(await testGenerateExpression(outfit, expressionType, extraHint, standing.imagePath, modifiers, exposureTagSettings)), expressionTypeName: expressionType.name }
+    ? {
+        ...(await testGenerateExpression(outfit, expressionType, extraHint, standing.imagePath, modifiers, exposureTagSettings, mode)),
+        expressionTypeName: expressionType.name,
+      }
     : null;
 
-  const event = await testGenerateEvent(outfit, extraHint, standing.imagePath, modifiers, exposureTagSettings);
+  const event = await testGenerateEvent(outfit, extraHint, standing.imagePath, modifiers, exposureTagSettings, mode);
 
   return { standing, expression, event };
 }
