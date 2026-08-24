@@ -1245,7 +1245,7 @@ export default function CharactersPage() {
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                           <button onClick={handleTestGeneratePreview} disabled={isTestGenerating}>
-                            {isTestGenerating ? 'テスト生成中...' : 'テスト生成（全身+顔・保存されません）'}
+                            {isTestGenerating ? 'テスト生成中...' : 'テスト生成（全身+顔+イベント・保存されません）'}
                           </button>
                           <button onClick={saveOutfit}>この衣装を保存</button>
                         </div>
@@ -1268,6 +1268,12 @@ export default function CharactersPage() {
                                 <div>
                                   <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>顔（{testPreview.expression.expressionTypeName}）</p>
                                   <img src={testPreview.expression.imagePath} alt="テスト生成：顔アイコン" style={{ maxWidth: 160, borderRadius: 4 }} />
+                                </div>
+                              )}
+                              {testPreview.event && (
+                                <div>
+                                  <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>イベント画像</p>
+                                  <img src={testPreview.event.imagePath} alt="テスト生成：イベント画像" style={{ maxWidth: 160, borderRadius: 4 }} />
                                 </div>
                               )}
                             </div>
