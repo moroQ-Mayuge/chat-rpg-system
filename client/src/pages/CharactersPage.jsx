@@ -1200,11 +1200,12 @@ export default function CharactersPage() {
                         )}
 
                         {(allStatuses ?? []).some((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field) && (
-                          <div style={{ marginBottom: 4 }}>
-                            <p style={{ fontSize: 11, color: '#888', margin: '0 0 2px' }}>
+                          <details open={testStatusIds.length > 0} style={{ marginBottom: 4 }}>
+                            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>
                               テスト生成時の状態（複数選択可・セッションを進めずに乱れ状態を確認）
-                            </p>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {testStatusIds.length > 0 && `（${testStatusIds.length}件選択中）`}
+                            </summary>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                               {(allStatuses ?? [])
                                 .filter((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field)
                                 .map((s) => (
@@ -1218,7 +1219,7 @@ export default function CharactersPage() {
                                   </label>
                                 ))}
                             </div>
-                          </div>
+                          </details>
                         )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
