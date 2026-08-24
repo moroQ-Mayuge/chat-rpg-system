@@ -13,6 +13,7 @@ import {
   useCharacterTransformationMutations,
 } from '../hooks/useCharacterTransformations.js';
 import { useExpressionTypes } from '../hooks/useExpressionTypes.js';
+import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllOutfitMasters } from '../hooks/useOutfitMasters.js';
 import DanbooruTagEditor from '../components/ui/DanbooruTagEditor.jsx';
@@ -171,6 +172,7 @@ export default function CharactersPage() {
   const queryClient = useQueryClient();
   const { data: characters, isLoading: loadingList } = useCharacters();
   const { data: expressionTypes } = useExpressionTypes();
+  const { data: allStatuses } = useAllCharacterStatuses();
   const { data: worlds } = useWorlds();
   const [groupAxis, setGroupAxis] = useState('world');
   const [hideRouteScoped, setHideRouteScoped] = useLocalStorageState('characters:hideRouteScoped', false);
@@ -217,6 +219,7 @@ export default function CharactersPage() {
   const [testPreview, setTestPreview] = useState(null);
   const [isTestGenerating, setIsTestGenerating] = useState(false);
   const [testGenError, setTestGenError] = useState(null);
+  const [testStatusIds, setTestStatusIds] = useState([]);
 
   useEffect(() => {
     setPendingOutfitTags('');
@@ -618,13 +621,23 @@ export default function CharactersPage() {
     setIsTestGenerating(true);
     setTestGenError(null);
     try {
-      const result = await outfitsApi.testGeneratePreview(currentOutfitTags(), selectedId, activeOutfit.icon_excluded_fields ?? []);
+      const result = await outfitsApi.testGeneratePreview(
+        currentOutfitTags(),
+        selectedId,
+        activeOutfit.icon_excluded_fields ?? [],
+        testStatusIds,
+        resolveTagSource()?.garment_operations ?? {},
+      );
       setTestPreview(result);
     } catch (err) {
       setTestGenError(err.message);
     } finally {
       setIsTestGenerating(false);
     }
+  }
+
+  function toggleTestStatusId(id) {
+    setTestStatusIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   }
 
   // Fills in whatever this outfit is still missing, one at a time — image
@@ -1184,6 +1197,28 @@ export default function CharactersPage() {
                               onToggleIconField={toggleIconExcludedField}
                             />
                           </>
+                        )}
+
+                        {(allStatuses ?? []).some((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field) && (
+                          <div style={{ marginBottom: 4 }}>
+                            <p style={{ fontSize: 11, color: '#888', margin: '0 0 2px' }}>
+                              テスト生成時の状態（複数選択可・セッションを進めずに乱れ状態を確認）
+                            </p>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {(allStatuses ?? [])
+                                .filter((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field)
+                                .map((s) => (
+                                  <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={testStatusIds.includes(s.id)}
+                                      onChange={() => toggleTestStatusId(s.id)}
+                                    />
+                                    {s.name}
+                                  </label>
+                                ))}
+                            </div>
+                          </div>
                         )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

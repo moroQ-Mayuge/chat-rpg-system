@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllOutfitMasters, useOutfitMasterMutations, useOutfitMasterWorlds, useOutfitMasterWorldMutations } from '../hooks/useOutfitMasters.js';
+import { useAllCharacterStatuses } from '../hooks/useCharacterStatuses.js';
 import { useMobileListToggle } from '../hooks/useMobileListToggle.js';
 import { groupByKeys } from '../utils/grouping.js';
 import GroupedList from '../components/ui/GroupedList.jsx';
@@ -38,6 +39,7 @@ function masterToForm(m) {
 export default function OutfitMastersPage() {
   const { data: masters, isLoading } = useAllOutfitMasters();
   const { data: worlds, isLoading: worldsLoading } = useWorlds();
+  const { data: allStatuses } = useAllCharacterStatuses();
   const { create, update, remove } = useOutfitMasterMutations();
   const { mobileListOpen, openList, closeList } = useMobileListToggle();
   const [selectedId, setSelectedId] = useState(null);
@@ -46,6 +48,7 @@ export default function OutfitMastersPage() {
   const [testPreview, setTestPreview] = useState(null);
   const [isTestGenerating, setIsTestGenerating] = useState(false);
   const [testGenError, setTestGenError] = useState(null);
+  const [testStatusIds, setTestStatusIds] = useState([]);
   const queryClient = useQueryClient();
 
   const isNew = selectedId === 'new';
@@ -127,13 +130,23 @@ export default function OutfitMastersPage() {
     setIsTestGenerating(true);
     setTestGenError(null);
     try {
-      const result = await outfitsApi.testGeneratePreview(Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, form[key] ?? ''])), null, []);
+      const result = await outfitsApi.testGeneratePreview(
+        Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, form[key] ?? ''])),
+        null,
+        [],
+        testStatusIds,
+        form.garment_operations ?? {},
+      );
       setTestPreview(result);
     } catch (err) {
       setTestGenError(err.message);
     } finally {
       setIsTestGenerating(false);
     }
+  }
+
+  function toggleTestStatusId(id) {
+    setTestStatusIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   }
 
   async function handleDelete(id) {
@@ -286,6 +299,24 @@ export default function OutfitMastersPage() {
                 garmentOperations={form.garment_operations}
                 onGarmentOperationChange={updateGarmentOperation}
               />
+
+              {(allStatuses ?? []).some((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field) && (
+                <div style={{ marginTop: 12, marginBottom: 4 }}>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 2px' }}>
+                    テスト生成時の状態（複数選択可・セッションを進めずに乱れ状態を確認）
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {(allStatuses ?? [])
+                      .filter((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field)
+                      .map((s) => (
+                        <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                          <input type="checkbox" checked={testStatusIds.includes(s.id)} onChange={() => toggleTestStatusId(s.id)} />
+                          {s.name}
+                        </label>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
                 <button onClick={handleTestGeneratePreview} disabled={isTestGenerating}>

@@ -1,6 +1,7 @@
 import { db } from '../db/connection.js';
 import { OUTFIT_TAG_FIELDS } from '../db/repositories/outfitsRepo.js';
 import { listActiveStatuses } from '../db/repositories/characterStatusStatesRepo.js';
+import { getStatus } from '../db/repositories/characterStatusesRepo.js';
 import { composeWornOutfit } from './outfitComposition.js';
 
 export const CATEGORY_KEYS = OUTFIT_TAG_FIELDS;
@@ -97,12 +98,11 @@ function joinFields(outfit, fields, suppressedFields, disturbedFieldStyles, torn
 // Centralizes logic that used to live only in generateImage.js's local
 // getSuppressedOutfitFields, so imagePromptBuilder.js can reuse the exact
 // same rules for ambient scene generation.
-export function getActiveOutfitStatusModifiers(characterId, statusCtx) {
-  const active = listActiveStatuses(characterId, statusCtx);
+function mergeStatusModifiers(statuses) {
   const suppressedFields = new Set();
   const disturbedFieldStyles = new Map();
   const tornFields = new Set();
-  for (const status of active) {
+  for (const status of statuses) {
     for (const field of (status.suppresses_outfit_fields || '').split(',').map((f) => f.trim()).filter(Boolean)) {
       suppressedFields.add(field);
     }
@@ -114,6 +114,18 @@ export function getActiveOutfitStatusModifiers(characterId, statusCtx) {
     }
   }
   return { suppressedFields, disturbedFieldStyles, tornFields };
+}
+
+export function getActiveOutfitStatusModifiers(characterId, statusCtx) {
+  return mergeStatusModifiers(listActiveStatuses(characterId, statusCtx));
+}
+
+// 衣装テスト生成(outfitImageTestGenerator.js)用: セッションで実際にアクティブな
+// 状態ではなく、ユーザーがUIで選んだ状態IDの集合からmodifierを組み立てる。
+// マージのルール自体はgetActiveOutfitStatusModifiersと完全に同じ
+// (mergeStatusModifiers共有)なので、実際にイベントが付与する状態と挙動が一致する。
+export function resolveStatusModifiers(statusIds) {
+  return mergeStatusModifiers(statusIds.map((id) => getStatus(id)).filter(Boolean));
 }
 
 const UPPER_CLOTHING_LAYERS = ['clothing_upper_outer', 'clothing_upper'];

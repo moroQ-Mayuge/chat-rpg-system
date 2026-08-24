@@ -105,9 +105,13 @@ outfitsRouter.post('/outfits/test-generate-preview', (req, res) => {
       const outfit = {
         character_id: req.body.character_id ?? null,
         icon_excluded_fields: req.body.icon_excluded_fields ?? [],
+        // 乱れスタイル(pull/lift/open/aside)がこの衣装で許可されているかの判定
+        // (composeFieldValue's allowedStyles)に必要 -- tagOverridesFromBodyは
+        // 19タグ列しか拾わないのでここで別途載せる。
+        garment_operations: req.body.garment_operations ?? {},
         ...tagOverridesFromBody(req.body),
       };
-      res.json(await testGenerateOutfitPreview(outfit, req.body.extra_hint));
+      res.json(await testGenerateOutfitPreview(outfit, req.body.extra_hint, req.body.status_ids ?? []));
     } catch (err) {
       res.status(502).json({ error: err.message });
     }
