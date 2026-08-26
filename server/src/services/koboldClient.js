@@ -88,6 +88,7 @@ export async function generateChatCompletion({
   topK,
   minP,
   stop,
+  grammar,
   stream = false,
   onToken,
 }) {
@@ -122,6 +123,10 @@ export async function generateChatCompletion({
           top_k: topK ?? defaults.top_k,
           min_p: minP ?? defaults.min_p,
           stop,
+          // GBNF文法(llmGrammar.js)。rep_pen等と同じくKoboldCpp独自拡張なので
+          // 追加フィールドとして素通しする。未指定時はキー自体を送らない
+          // ——既存の呼び出し元の挙動を一切変えないため。
+          ...(grammar ? { grammar } : {}),
           stream,
         }),
       });

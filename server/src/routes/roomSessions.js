@@ -37,6 +37,7 @@ import { runEventEngine } from '../services/eventEngine/index.js';
 import { resolveStylePromptForWorld } from '../db/repositories/imageStylePresetsRepo.js';
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
+import { resolveJapaneseGrammar } from '../db/repositories/llmGenerationSettingsRepo.js';
 import { withDisambiguatedNames, buildParticipantResolver } from '../services/participantNaming.js';
 import { broadcast } from '../ws/rooms.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
@@ -739,6 +740,7 @@ async function generateReply(
     messages: built.messages,
     stop: ['ユーザー:', 'User:'],
     stream: true,
+    grammar: resolveJapaneseGrammar(),
     ...(maxTokens ? { maxTokens } : {}),
     onToken: (token) => {
       lineBuffer += token;

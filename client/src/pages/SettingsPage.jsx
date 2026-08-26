@@ -908,6 +908,20 @@ function LlmGenerationSettingsSection() {
       {numberField('top_k', 'top_k', '0で無効。', { step: 1, min: 0 })}
       {numberField('min_p', 'min_p', '', { step: 0.01, min: 0, max: 1 })}
 
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12 }}>
+        <input
+          type="checkbox"
+          checked={Boolean(form.grammar_enabled)}
+          onChange={(e) => setForm({ ...form, grammar_enabled: e.target.checked ? 1 : 0 })}
+        />
+        出力を日本語＋英語の文字に制限する（チャット返信・キャラシート生成）
+      </label>
+      <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+        GBNF文法でハングル・キリル・アラビア文字・タイ文字・絵文字などをブロックします。簡体字も主要な文字は弾きますが、
+        漢字は日本語と中国語でコードが共通のため、漢字だけで書かれた中国語は完全には防げません。
+        出力が不自然になったり同じ語を繰り返す場合はOFFにしてください。
+      </p>
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
         <button onClick={() => update.mutate(form)} disabled={!dirty || update.isPending}>
           {update.isPending ? '保存中...' : '保存'}
