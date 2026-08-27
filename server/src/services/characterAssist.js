@@ -1,6 +1,6 @@
 import { generateChatCompletion } from './koboldClient.js';
 import { parseCharacterSheet } from './characterSheetFormat.js';
-import { resolveJapaneseGrammar } from '../db/repositories/llmGenerationSettingsRepo.js';
+import { resolveForeignTokenBans } from '../db/repositories/llmGenerationSettingsRepo.js';
 
 const SHEET_FORMAT_TEMPLATE =
   'キャラ情報：{名前}/本名：{本名}/あだ名：{あだ名}/職業：{職業}/年齢：{年齢}歳/種族：{種族}/属性：{属性}/容姿特徴：{容姿特徴}/目色形状：{目色形状}/髪型髪色：{髪型髪色}/体型：{体型}/胸大きさ形：{胸}/身体特徴：{身体特徴}/一人称自分呼方『{一人称}』/あなたを『{呼称}』と呼ぶ/他人を『{他人呼称}』と呼ぶ/性格：{性格}/口調：{口調}/語尾：{語尾}/行動原理：{行動原理}/対人傾向：{対人傾向}/癖口癖：{癖}/好物：{好物}/苦手：{苦手}/スキル技能：{スキル}/特殊スキル：{特殊スキル}/弱点：{弱点}/秘密：{秘密}/備考：{備考}';
@@ -30,7 +30,7 @@ export async function generateCharacterSheet(instruction) {
     ],
     maxTokens: 700,
     temperature: 0.9,
-    grammar: resolveJapaneseGrammar(),
+    bannedTokens: resolveForeignTokenBans(),
   });
 
   const parsed = parseCharacterSheet(rawText);
@@ -148,7 +148,7 @@ export async function regenerateField({ field, instruction, currentFields }) {
     ],
     maxTokens: 150,
     temperature: 0.9,
-    grammar: resolveJapaneseGrammar(),
+    bannedTokens: resolveForeignTokenBans(),
   });
 
   return rawText.trim().split('\n')[0];

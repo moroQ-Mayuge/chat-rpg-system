@@ -88,7 +88,7 @@ export async function generateChatCompletion({
   topK,
   minP,
   stop,
-  grammar,
+  bannedTokens,
   stream = false,
   onToken,
 }) {
@@ -123,10 +123,11 @@ export async function generateChatCompletion({
           top_k: topK ?? defaults.top_k,
           min_p: minP ?? defaults.min_p,
           stop,
-          // GBNF文法(llmGrammar.js)。rep_pen等と同じくKoboldCpp独自拡張なので
-          // 追加フィールドとして素通しする。未指定時はキー自体を送らない
-          // ——既存の呼び出し元の挙動を一切変えないため。
-          ...(grammar ? { grammar } : {}),
+          // 禁止トークン(llmTokenBans.js)。指定した部分文字列を含む語彙トークンが
+          // 生成候補から外れる。rep_pen等と同じくKoboldCpp独自拡張なので追加
+          // フィールドとして素通しする。未指定時はキー自体を送らない——既存の
+          // 呼び出し元の挙動を一切変えないため。
+          ...(bannedTokens?.length ? { banned_tokens: bannedTokens } : {}),
           stream,
         }),
       });

@@ -911,14 +911,21 @@ function LlmGenerationSettingsSection() {
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12 }}>
         <input
           type="checkbox"
-          checked={Boolean(form.grammar_enabled)}
-          onChange={(e) => setForm({ ...form, grammar_enabled: e.target.checked ? 1 : 0 })}
+          checked={Boolean(form.foreign_token_ban_enabled)}
+          onChange={(e) => setForm({ ...form, foreign_token_ban_enabled: e.target.checked ? 1 : 0 })}
         />
-        出力を日本語＋英語の文字に制限する（チャット返信・キャラシート生成）
+        日本語・英語以外の文字を出さない（チャット返信・キャラシート生成）
       </label>
       <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
-        GBNF文法でハングル・キリル・アラビア文字・タイ文字・絵文字などをブロックします。簡体字も主要な文字は弾きますが、
-        漢字は日本語と中国語でコードが共通のため、漢字だけで書かれた中国語は完全には防げません。
+        禁止トークン指定で、キリル文字（ロシア語）・アラビア文字・ヘブライ文字・ハングル・簡体字をブロックします。
+        生成速度は1〜2割ほど落ちます。
+      </p>
+      <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+        KoboldCppの禁止トークンは約768件までという上限があり、日本語・英語以外の文字を全部覆うには到底足りないため、
+        「実プレイで自然に混ざってくる形」を優先して割り当てています。会話中にふと外国語が混ざるケースは止まりますが、
+        <b>「〇〇語で書いて」と明示的に指示した場合は、稀な音節や異表記に逃げて出力されることがあります</b>。
+        また漢字は日本語と中国語でコードが共通のため、漢字だけで書かれた中国語は防げません。
+        ギリシャ文字は日本語でも記号として使う（α版・Ω・μ など）ため対象外です。
         出力が不自然になったり同じ語を繰り返す場合はOFFにしてください。
       </p>
 
