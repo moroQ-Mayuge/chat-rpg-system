@@ -30,15 +30,19 @@ function calendarBreakdownForDay(world, day) {
   const totalDaysInYear = world.days_per_season * world.season_labels.length;
   const dayOfYear = ((day - 1) % totalDaysInYear) + 1;
   const seasonIndex = Math.floor((day - 1) / world.days_per_season) % world.season_labels.length;
-  const isHoliday =
-    world.holiday_weekday_indices.includes(dayOfWeekIndex) ||
-    listHolidaysForWorld(world.id).some((h) => h.day_of_year === dayOfYear);
+  // 曜日ベースの休日(毎週土日等)と、特定の日付に紐づく名前付き特別日
+  // (world_calendar_holidays、例:「文化祭」)は別物。isHolidayは両方をまとめた
+  // 真偽値(既存のflag_state "is_holiday" 等が期待する形)、holidayNameは後者が
+  // 一致した場合だけそのラベルを持つ(曜日ベースの休日には名前が無い)。
+  const namedHoliday = listHolidaysForWorld(world.id).find((h) => h.day_of_year === dayOfYear);
+  const isHoliday = world.holiday_weekday_indices.includes(dayOfWeekIndex) || Boolean(namedHoliday);
   return {
     day,
     dayOfWeekIndex,
     dayOfWeekLabel: world.day_of_week_labels[dayOfWeekIndex] ?? null,
     dayOfYear,
     isHoliday,
+    holidayName: namedHoliday?.label || null,
     year: Math.floor((day - 1) / totalDaysInYear) + 1,
     seasonIndex,
     seasonLabel: world.season_labels[seasonIndex] ?? null,
@@ -61,8 +65,10 @@ function attachLabels(playthrough) {
     current_season_label: world.season_labels[playthrough.current_season_index] ?? null,
     current_day_of_week_label: breakdown.dayOfWeekLabel,
     current_is_holiday: breakdown.isHoliday,
+    current_holiday_name: breakdown.holidayName,
     current_year: breakdown.year,
     current_day_of_season: breakdown.dayOfSeason,
+    current_day_of_year: breakdown.dayOfYear,
     current_date_label: dateLabel,
     currency_enabled: world.currency_enabled,
     currency_unit: world.currency_unit,

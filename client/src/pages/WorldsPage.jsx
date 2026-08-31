@@ -16,7 +16,7 @@ const DEFAULT_STATUS_DISPLAY_SETTINGS = {
   chat_log: { self_stat: false, status: false, relationship_stage: false },
 };
 
-const DEFAULT_DATE_FORMAT_TEMPLATE = '${year} ${season} ${day}（${weekday}${holiday}） ${time_slot}・${weather}';
+const DEFAULT_DATE_FORMAT_TEMPLATE = '${year} ${season} ${day}（${weekday}${holiday}${holiday_name}） ${time_slot}・${weather}';
 
 const emptyForm = {
   name: '',
@@ -602,9 +602,10 @@ export default function WorldsPage() {
                   チャット画面・ルート一覧の日付表示に使う書式です。使えるプレースホルダ：
                   <code>${'{year}'}</code>（例：1年目）／<code>${'{season}'}</code>（例：春の月）／
                   <code>${'{day}'}</code>（季節内の日、例：01日）／<code>${'{weekday}'}</code>（例：月曜日）／
-                  <code>${'{holiday}'}</code>（休日のみ「（休日）」、それ以外は空）／
+                  <code>${'{holiday}'}</code>（曜日ベースの休日または下記の特別日のいずれかで「（休日）」、それ以外は空）／
+                  <code>${'{holiday_name}'}</code>（下の「個別の休日」に登録した名前がある日だけ「・文化祭」のように付く。曜日ベースの休日には名前が無いので空のまま）／
                   <code>${'{time_slot}'}</code>（例：朝）／<code>${'{weather}'}</code>（例：晴れ）／
-                  <code>${'{absolute_day}'}</code>（通し日数）
+                  <code>${'{absolute_day}'}</code>（通し日数）／<code>${'{day_of_year}'}</code>（年内の通し日数、年が変わると1に戻る）
                 </p>
                 <input
                   style={{ width: '100%' }}

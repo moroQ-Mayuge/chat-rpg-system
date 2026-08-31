@@ -19,11 +19,20 @@ export function buildDateTemplateVariables(breakdown, { timeSlotLabel, weather }
     season: `${breakdown.seasonLabel}の月`,
     day: `${String(breakdown.dayOfSeason).padStart(2, '0')}日`,
     weekday: `${breakdown.dayOfWeekLabel}曜日`,
+    // holiday: 曜日ベースの休日(毎週土日等)・名前付き特別日どちらでも立つ汎用マーカー。
+    // holiday_name: world_calendar_holidays に登録された特定の日付だけが持つ名前
+    // (例:「文化祭」)。曜日ベースの休日には名前が無いので、その日は空文字のまま
+    // ——「・」を前置した自己完結な形にしてあるので、そのまま他のプレースホルダの
+    // 後ろに続けて書ける(未設定なら何も付け足さない)。
     holiday: breakdown.isHoliday ? '（休日）' : '',
+    holiday_name: breakdown.holidayName ? `・${breakdown.holidayName}` : '',
     time_slot: timeSlotLabel ?? '',
     weather: weather ?? '',
     absolute_day: String(breakdown.day),
+    // day_of_year: 年内の通し日数(1年目1日目=1、年をまたぐと1に戻る)。dayが季節
+    // 内でリセットされるのに対し、こちらは年内で一貫した日数を知りたい場合用。
+    day_of_year: String(breakdown.dayOfYear),
   };
 }
 
-export const DEFAULT_DATE_FORMAT_TEMPLATE = '${year} ${season} ${day}（${weekday}${holiday}） ${time_slot}・${weather}';
+export const DEFAULT_DATE_FORMAT_TEMPLATE = '${year} ${season} ${day}（${weekday}${holiday}${holiday_name}） ${time_slot}・${weather}';
