@@ -16,6 +16,8 @@ const DEFAULT_STATUS_DISPLAY_SETTINGS = {
   chat_log: { self_stat: false, status: false, relationship_stage: false },
 };
 
+const DEFAULT_DATE_FORMAT_TEMPLATE = '${year} ${season} ${day}（${weekday}${holiday}） ${time_slot}・${weather}';
+
 const emptyForm = {
   name: '',
   worldview: '',
@@ -26,6 +28,7 @@ const emptyForm = {
   days_per_season: 30,
   day_of_week_labels: ['月', '火', '水', '木', '金', '土', '日'],
   holiday_weekday_indices: [],
+  date_format_template: DEFAULT_DATE_FORMAT_TEMPLATE,
   image_style_preset_id: null,
   image_tags: '',
   protagonist_name: '',
@@ -145,6 +148,7 @@ export default function WorldsPage() {
         days_per_season: world.days_per_season,
         day_of_week_labels: world.day_of_week_labels,
         holiday_weekday_indices: world.holiday_weekday_indices,
+        date_format_template: world.date_format_template ?? DEFAULT_DATE_FORMAT_TEMPLATE,
         image_style_preset_id: world.image_style_preset_id ?? null,
         image_tags: world.image_tags ?? '',
         thumbnail_image_path: world.thumbnail_image_path,
@@ -591,6 +595,23 @@ export default function WorldsPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+              <div>
+                <p>日付表示フォーマット</p>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                  チャット画面・ルート一覧の日付表示に使う書式です。使えるプレースホルダ：
+                  <code>${'{year}'}</code>（例：1年目）／<code>${'{season}'}</code>（例：春の月）／
+                  <code>${'{day}'}</code>（季節内の日、例：01日）／<code>${'{weekday}'}</code>（例：月曜日）／
+                  <code>${'{holiday}'}</code>（休日のみ「（休日）」、それ以外は空）／
+                  <code>${'{time_slot}'}</code>（例：朝）／<code>${'{weather}'}</code>（例：晴れ）／
+                  <code>${'{absolute_day}'}</code>（通し日数）
+                </p>
+                <input
+                  style={{ width: '100%' }}
+                  value={form.date_format_template}
+                  onChange={(e) => setForm({ ...form, date_format_template: e.target.value })}
+                  placeholder={DEFAULT_DATE_FORMAT_TEMPLATE}
+                />
               </div>
             </div>
             {editingId !== 'new' && <CalendarHolidaysSection worldId={editingId} />}

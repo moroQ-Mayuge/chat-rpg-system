@@ -15,31 +15,55 @@ import { listActivePregnancies } from './characterPregnanciesRepo.js';
 import { cyclePhaseFor } from '../../services/fertilityCycle.js';
 import { pregnancyStateFor } from '../../services/pregnancy.js';
 import { rerollUnderwearAssignments } from '../../services/underwearAssignment.js';
+import { renderDateTemplate, buildDateTemplateVariables } from '../../services/dateFormat.js';
 
 // day is the playthrough's 1-based absolute day count (current_day).
 // dayOfYear wraps every days_per_season * season_labels.length days (an
 // in-game "year") so a World's calendar holidays repeat identically across
 // every playthrough of it, rather than being tied to one specific route.
-function calendarInfoForDay(world, day) {
+//
+// year/dayOfSeason (both 1-based): 「年」の概念がこれまでどこにも存在せず、
+// 季節が一巡しても年が変わったことを示すものが無かった(current_dayの通し日数
+// だけが表示され続ける)ため追加した。dateFormat.js のテンプレート変数に渡す。
+function calendarBreakdownForDay(world, day) {
   const dayOfWeekIndex = (day - 1) % world.day_of_week_labels.length;
   const totalDaysInYear = world.days_per_season * world.season_labels.length;
   const dayOfYear = ((day - 1) % totalDaysInYear) + 1;
+  const seasonIndex = Math.floor((day - 1) / world.days_per_season) % world.season_labels.length;
   const isHoliday =
     world.holiday_weekday_indices.includes(dayOfWeekIndex) ||
     listHolidaysForWorld(world.id).some((h) => h.day_of_year === dayOfYear);
-  return { dayOfWeekIndex, dayOfYear, isHoliday };
+  return {
+    day,
+    dayOfWeekIndex,
+    dayOfWeekLabel: world.day_of_week_labels[dayOfWeekIndex] ?? null,
+    dayOfYear,
+    isHoliday,
+    year: Math.floor((day - 1) / totalDaysInYear) + 1,
+    seasonIndex,
+    seasonLabel: world.season_labels[seasonIndex] ?? null,
+    dayOfSeason: ((day - 1) % world.days_per_season) + 1,
+  };
 }
 
 function attachLabels(playthrough) {
   if (!playthrough) return playthrough;
   const world = getWorld(playthrough.world_id);
-  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, playthrough.current_day);
+  const breakdown = calendarBreakdownForDay(world, playthrough.current_day);
+  const timeSlotLabel = world.time_slot_labels[playthrough.current_time_slot_index] ?? null;
+  const dateLabel = renderDateTemplate(
+    world.date_format_template,
+    buildDateTemplateVariables(breakdown, { timeSlotLabel, weather: playthrough.current_weather }),
+  );
   return {
     ...playthrough,
-    current_time_slot_label: world.time_slot_labels[playthrough.current_time_slot_index] ?? null,
+    current_time_slot_label: timeSlotLabel,
     current_season_label: world.season_labels[playthrough.current_season_index] ?? null,
-    current_day_of_week_label: world.day_of_week_labels[dayOfWeekIndex] ?? null,
-    current_is_holiday: isHoliday,
+    current_day_of_week_label: breakdown.dayOfWeekLabel,
+    current_is_holiday: breakdown.isHoliday,
+    current_year: breakdown.year,
+    current_day_of_season: breakdown.dayOfSeason,
+    current_date_label: dateLabel,
     currency_enabled: world.currency_enabled,
     currency_unit: world.currency_unit,
   };
@@ -71,7 +95,7 @@ export function createPlaythrough(worldId, name) {
   setFlag(result.lastInsertRowid, 'season', world.season_labels[0] ?? '', null);
   setFlag(result.lastInsertRowid, 'time_slot', world.time_slot_labels[0] ?? '', null);
   setFlag(result.lastInsertRowid, 'weather', initialWeather, null);
-  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, 1);
+  const { dayOfWeekIndex, isHoliday } = calendarBreakdownForDay(world, 1);
   setFlag(result.lastInsertRowid, 'day_of_week', world.day_of_week_labels[dayOfWeekIndex] ?? '', null);
   setFlag(result.lastInsertRowid, 'is_holiday', isHoliday ? 'true' : 'false', null);
   // Same reason, for the per-character derived flags (妊娠しやすさの段階など):
@@ -212,7 +236,7 @@ export function advanceTime(playthroughId, slots = 1) {
     }
   }
   const seasonIndex = Math.floor((day - 1) / world.days_per_season) % world.season_labels.length;
-  const { dayOfWeekIndex, isHoliday } = calendarInfoForDay(world, day);
+  const { dayOfWeekIndex, isHoliday } = calendarBreakdownForDay(world, day);
 
   db.prepare(
     `UPDATE playthroughs
@@ -232,7 +256,7 @@ export function advanceTime(playthroughId, slots = 1) {
   if (weather !== playthrough.current_weather) {
     setFlag(playthroughId, 'weather', weather ?? '', null);
   }
-  const previousCalendarInfo = calendarInfoForDay(world, playthrough.current_day);
+  const previousCalendarInfo = calendarBreakdownForDay(world, playthrough.current_day);
   if (dayOfWeekIndex !== previousCalendarInfo.dayOfWeekIndex) {
     setFlag(playthroughId, 'day_of_week', world.day_of_week_labels[dayOfWeekIndex] ?? '', null);
   }

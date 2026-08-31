@@ -958,8 +958,7 @@ export default function ChatPage() {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '0.75rem 1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexShrink: 0 }}>
         <p style={{ fontSize: 12, color: '#888', margin: 0 }}>
-          {playthrough.name} ／ {playthrough.current_day}日目 {playthrough.current_time_slot_label} ／{' '}
-          {playthrough.current_weather} ／ {session.current_location_text}
+          {playthrough.name} ／ {playthrough.current_date_label} ／ {session.current_location_text}
           {playthrough.currency_enabled && (
             <>
               {' '}

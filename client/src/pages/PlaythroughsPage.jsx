@@ -380,9 +380,7 @@ export default function PlaythroughsPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <p style={{ margin: 0 }}>{p.name}</p>
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#888' }}>
-                  {p.current_day}日目 {p.current_time_slot_label} ／ {p.current_weather} ／ {p.current_season_label}
-                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: '#888' }}>{p.current_date_label}</p>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button onClick={() => resume(p.id)}>続きから</button>
