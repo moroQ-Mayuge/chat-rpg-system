@@ -47,6 +47,45 @@ export function getMasterByName(name) {
   return parseGarmentOperations(db.prepare('SELECT * FROM outfit_masters WHERE name = ?').get(name));
 }
 
+// 全角(（）)・半角(())の丸括弧は同じ意味で使われるが別文字なので、正規化して
+// 比較しないと「メイド服（クラシック/ミニスカート）」(全角で書き間違えた)が
+// 一致しなくなる。中身は落とさず括弧の幅だけ揃える —— 中身ごと落とすと
+// 「メイド服」と「メイド服(クラシック/ミニスカート)」という**別価格の別商品**が
+// 同じ文字列に潰れて衝突してしまうため。
+function normalizeParens(name) {
+  return (name || '').replace(/（/g, '(').replace(/）/g, ')');
+}
+
+// getMasterByNameの完全一致だけでは、実プレイで「衣装がうまく購入できない」の
+// 主因になっていた: 衣装マスタ名は「メイド服(クラシック/ミニスカート)」
+// 「ゴスロリ（ゴシックロリータ）」のように括弧付き補足や全角/半角混在が多く、
+// LLMが括弧部分を省略・言い換えるだけで即座に不一致になり、フォールバックも
+// 無いため常に「売り物ではないようだ」に倒れていた。
+//
+// 2段階で緩める:
+//   1. 括弧幅だけを正規化した完全一致 —— 全角/半角の書き間違いはこれで確実に拾う。
+//   2. それでも一致しなければ、キャラ名解決(participantNaming.jsの
+//      buildParticipantResolver)と同じ「部分文字列一致・候補が1件に絞れる時だけ
+//      採用」という緩め方。括弧の補足を省略した言い換えはこちらで拾う。
+// 対象はそのWorldで実際に価格設定されている衣装マスタだけ
+// (promptBuilder.jsがLLMに見せているのと同じ集合)に限定し、無関係なマスタへの
+// 誤爆を避ける。どちらの段階でも1件に絞れなければnullを返し、呼び出し側は
+// 「売り物ではないようだ」の安全側に倒れる。
+export function resolveMasterNameFuzzy(worldId, name) {
+  const exact = getMasterByName(name);
+  if (exact) return exact;
+  if (!name) return null;
+
+  const products = listMastersForWorld(worldId).filter((m) => m.buy_price != null);
+
+  const normalized = normalizeParens(name);
+  const parenMatches = products.filter((m) => normalizeParens(m.name) === normalized);
+  if (parenMatches.length === 1) return parenMatches[0];
+
+  const candidates = products.filter((m) => m.name.includes(name) || name.includes(m.name));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export function createMaster(data) {
   const columns = MASTER_FIELDS.join(', ');
   const placeholders = MASTER_FIELDS.map(() => '?').join(', ');

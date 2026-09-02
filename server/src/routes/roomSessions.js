@@ -12,7 +12,7 @@ import {
   updateParticipantTransformation,
   updateParticipantPose,
 } from '../db/repositories/roomSessionsRepo.js';
-import { wearMasterAsCharacter, getMasterByName } from '../db/repositories/outfitMastersRepo.js';
+import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
@@ -577,7 +577,7 @@ async function generateReply(
       // 買い物モード時のみ出す)。衣装マスタはitemsのfindOrCreateWorldItemのような
       // 即興作成をしない厳選プリセットのため、名前が一致しなければ「売っていない」
       // 扱いにする——ITEM_GRANTのカテゴリ引数に相当するものが無いのはこのため。
-      const master = getMasterByName(parsed.outfitMasterName);
+      const master = resolveMasterNameFuzzy(worldId, parsed.outfitMasterName);
       if (!master || !session.room_is_shop || !world.currency_enabled || master.buy_price == null) {
         const message = createMessage(sessionId, {
           sender_type: 'narration',
