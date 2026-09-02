@@ -58,6 +58,7 @@ const emptyForm = {
   memory_prompt_limit: 5,
   memory_auto_extract_enabled: false,
   memory_editing_visible: true,
+  held_items_prompt_limit: 0,
   pose_enabled: false,
   cycle_enabled: false,
   cycle_length_days: 28,
@@ -176,6 +177,7 @@ export default function WorldsPage() {
         memory_prompt_limit: world.memory_prompt_limit ?? 5,
         memory_auto_extract_enabled: Boolean(world.memory_auto_extract_enabled),
         memory_editing_visible: Boolean(world.memory_editing_visible),
+        held_items_prompt_limit: world.held_items_prompt_limit ?? 0,
         pose_enabled: Boolean(world.pose_enabled),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
@@ -718,6 +720,25 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               制作中は記憶を直接編集できると便利ですが、遊ぶユーザーに見せたくない場合はOFFにしてください。OFFにしても記憶の蓄積とプロンプトへの反映は通常どおり動きます。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>NPCが持っている物（会話に自動で反映）</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              プレイヤーが渡したアイテムなどを各NPCが今持っているかを、キャラ設定の一部としてプロンプトに載せます（渡したが未着用の衣装は対象外）。「持ち物確認」コマンド（もちものカテゴリ）で明示的に確認した場合は、この件数上限に関わらずその場の全員の所持アイテムを全件見せます。
+            </p>
+
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: 11, color: '#888' }}>プロンプトに自動で載せる件数の上限（0で自動反映を無効化）</span>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 80, display: 'block' }}
+                value={form.held_items_prompt_limit}
+                onChange={(e) => setForm({ ...form, held_items_prompt_limit: e.target.value === '' ? 0 : Number(e.target.value) })}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              登場人物やアイテムが多いWorldほど小さめの値にしてください。取得が新しい順にこの件数までの名前だけが自動で渡されます。「持ち物確認」コマンド自体はこの設定に関わらず常に機能します。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>キャラのポーズ状態</h4>

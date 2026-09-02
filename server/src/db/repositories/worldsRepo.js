@@ -130,6 +130,7 @@ export function createWorld({
   underwear_random_enabled = false,
   author_note = '',
   date_format_template = DEFAULT_DATE_FORMAT_TEMPLATE,
+  held_items_prompt_limit = 0,
 }) {
   const result = db
     .prepare(
@@ -139,8 +140,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -205,6 +206,7 @@ export function createWorld({
       underwear_random_enabled ? 1 : 0,
       author_note ?? '',
       date_format_template ?? DEFAULT_DATE_FORMAT_TEMPLATE,
+      held_items_prompt_limit ?? 0,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -274,6 +276,7 @@ export function updateWorld(
     underwear_random_enabled,
     author_note,
     date_format_template,
+    held_items_prompt_limit,
   },
 ) {
   db.prepare(
@@ -287,7 +290,7 @@ export function updateWorld(
          cycle_enabled = ?, cycle_length_days = ?, llm_value_delta_cap = ?, pregnancy_enabled = ?, gestation_days = ?, conception_rate_multiplier = ?,
          character_aging = ?, child_appearance = ?, child_maturation_days = ?, child_age_min = ?, child_age_max = ?, birth_lore = ?, child_attribute_tags = ?,
          warp_world_rules = ?, warp_situation = ?, warp_others_mind = ?, deviation_handling = ?, policy_notice = ?, warp_lore = ?,
-         child_inherit_parent_tags = ?, child_random_attribute_tags = ?, child_random_tag_count = ?, child_name_style = ?, underwear_random_enabled = ?, author_note = ?, date_format_template = ?
+         child_inherit_parent_tags = ?, child_random_attribute_tags = ?, child_random_tag_count = ?, child_name_style = ?, underwear_random_enabled = ?, author_note = ?, date_format_template = ?, held_items_prompt_limit = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -352,6 +355,7 @@ export function updateWorld(
     underwear_random_enabled ? 1 : 0,
     author_note ?? '',
     date_format_template ?? DEFAULT_DATE_FORMAT_TEMPLATE,
+    held_items_prompt_limit ?? 0,
     id,
   );
   return getWorld(id);

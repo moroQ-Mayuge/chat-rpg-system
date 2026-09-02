@@ -132,6 +132,12 @@ function isContentOnlyMentions(content, participants) {
 // rather than its label, since that's what actually gets sent as chat text.
 const NON_EXPLORING_KEYWORD = '（そのまま何も言わず、今の状況が続くのを見守る）';
 
+// 「持ち物確認」コマンド(もちものカテゴリ、0119_inventory_check_command.sql)の
+// keyword_textと一致させる。held_items_prompt_limitによる軽量な自動差し込みとは
+// 別に、この文字列が含まれるターンだけ全参加者の所持アイテムを件数上限なしで
+// プロンプトに載せる(promptBuilder.jsのisInventoryCheck)。
+const INVENTORY_CHECK_KEYWORD = '（今ここにいる皆が今何を持っているか、それとなく確認してほしい）';
+
 // Does this player input count as looking around the room? @周辺 (the existing
 // surroundings-check mode) plus any しらべる-category command — those are the
 // two ways the UI offers to examine a place.
@@ -559,6 +565,10 @@ async function generateReply(
   // asks for a description of the place rather than for the scene to move on.
   const isSurroundingsCheck = typeof userMessageContent === 'string' && userMessageContent.includes('@周辺');
   const ephemeralUserTurn = isContinuation ? (isSurroundingsCheck ? SURROUNDINGS_TURN : CONTINUATION_TURN) : null;
+  // 「持ち物確認」コマンド(もちものカテゴリ)のkeyword_textが送信された時だけ、
+  // held_items_prompt_limitの上限を無視して全参加者の所持アイテムを全件見せる
+  // (promptBuilder.jsのisInventoryCheck)。
+  const isInventoryCheck = typeof userMessageContent === 'string' && userMessageContent.includes(INVENTORY_CHECK_KEYWORD);
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const world = getWorld(worldId);
@@ -569,6 +579,7 @@ async function generateReply(
   const built = await buildMultiCharacterMessages(session, {
     ephemeralUserTurn,
     isSurroundingsCheck,
+    isInventoryCheck,
     isCraftAttempt,
     responseTokenReserve: maxTokens ?? undefined,
   });

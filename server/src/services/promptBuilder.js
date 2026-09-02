@@ -16,6 +16,7 @@ import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCateg
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listShopProducts } from './shopProducts.js';
+import { listInventoryForPlaythrough } from '../db/repositories/inventoryRepo.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
@@ -245,6 +246,19 @@ function buildSystemPrompt(session, participants, options = {}) {
       const memoryLines = listMemoriesForPrompt(session.playthrough_id, character.id, world.memory_prompt_limit).map(
         (m) => (m.occurred_label ? `記憶（${m.occurred_label}）：${m.content}` : `記憶：${m.content}`),
       );
+      // NPC所持アイテムのヒント。通常は取得が新しい順にN件・名前のみの軽量注入
+      // (World単位のheld_items_prompt_limit、0=OFF)。プレイヤーが「持ち物確認」
+      // コマンド(0119_inventory_check_command.sql)で明示的に確認した時だけ、
+      // その場の全参加者について件数上限なしの全リストを出す(isInventoryCheck)。
+      // 渡したが未着用の衣装(playthrough_outfit_inventory)は対象外(アイテムのみ)。
+      const heldItems = options.isInventoryCheck
+        ? listInventoryForPlaythrough(session.playthrough_id, character.id)
+        : world.held_items_prompt_limit > 0
+          ? listInventoryForPlaythrough(session.playthrough_id, character.id).slice(0, world.held_items_prompt_limit)
+          : [];
+      if (heldItems.length > 0) {
+        memoryLines.push(`現在持っている物：${heldItems.map((i) => i.name).join('、')}`);
+      }
       // 妊娠(0076)と妊娠しやすさの周期(0070)。どちらもWorld・キャラ両方が有効な
       // 時だけ行が増える。妊娠中は周期を出さない——既に妊娠している相手に
       // 「今日は危険日」と言わせても意味がない。
@@ -603,6 +617,7 @@ export async function buildMultiCharacterMessages(session, options = {}) {
   const systemPrompt = buildSystemPrompt(session, session.participants, {
     isSurroundingsCheck: options.isSurroundingsCheck,
     isCraftAttempt: options.isCraftAttempt,
+    isInventoryCheck: options.isInventoryCheck,
   });
   const history = buildHistoryMessages(session.id, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];
