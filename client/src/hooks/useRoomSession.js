@@ -19,6 +19,25 @@ export function usePickupItems(sessionId) {
   });
 }
 
+// 「買い物」コマンド(ShopPanel)向け。店でない部屋では空({items:[],outfits:[]})
+// が返る(shop-productsルート側のガード、roomSessions.js参照)。
+export function useShopProducts(sessionId) {
+  return useQuery({
+    queryKey: ['roomSessions', sessionId, 'shop-products'],
+    queryFn: () => roomSessionsApi.getShopProducts(sessionId),
+    enabled: sessionId != null,
+  });
+}
+
+// 'pickup'部屋(衣裳部屋など)向け。pickup部屋でなければ空配列が返る。
+export function usePickupableOutfits(sessionId) {
+  return useQuery({
+    queryKey: ['roomSessions', sessionId, 'pickupable-outfits'],
+    queryFn: () => roomSessionsApi.listPickupableOutfits(sessionId),
+    enabled: sessionId != null,
+  });
+}
+
 export function usePickupItemMutation(sessionId) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -51,6 +70,9 @@ export function useRoomSessionMutations(id) {
       onSuccess: invalidate,
     }),
     sellItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.sellItem(id, itemId), onSuccess: invalidate }),
+    buyItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.buyItem(id, itemId), onSuccess: invalidate }),
+    buyOutfit: useMutation({ mutationFn: (outfitMasterId) => roomSessionsApi.buyOutfit(id, outfitMasterId), onSuccess: invalidate }),
+    pickupOutfit: useMutation({ mutationFn: (outfitMasterId) => roomSessionsApi.pickupOutfit(id, outfitMasterId), onSuccess: invalidate }),
     wearItem: useMutation({
       mutationFn: ({ characterId, itemId }) => roomSessionsApi.wearItem(id, characterId, itemId),
       onSuccess: invalidate,

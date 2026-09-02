@@ -12,7 +12,8 @@ import {
   updateParticipantTransformation,
   updateParticipantPose,
 } from '../db/repositories/roomSessionsRepo.js';
-import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
+import { wearMasterAsCharacter, resolveMasterNameFuzzy, getMaster } from '../db/repositories/outfitMastersRepo.js';
+import { listShopProducts, listPickupableOutfits } from '../services/shopProducts.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
@@ -278,6 +279,121 @@ roomSessionsRouter.post('/:id/sell-item', (req, res) => {
   broadcast(req.params.id, { type: 'message_complete', message });
   broadcast(req.params.id, { type: 'money_changed', money });
   res.json({ money, message });
+});
+
+// 「買い物」コマンド(ShopPanel)向け: LLMが[ITEM_GRANT]/[OUTFIT_GRANT]を出すか
+// どうかに購入成立が委ねられていた会話ベースの購入とは別に、確定的に成立する
+// 直接購入経路を提供する。会話ベースの購入(generateReplyのitem_grant/
+// outfit_grant分岐)は引き続きロールプレイの体験として併存させる。
+roomSessionsRouter.get('/:id/shop-products', (req, res) => {
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  const world = getWorld(worldId);
+  if (!session.room_is_shop || !world.currency_enabled) return res.json({ items: [], outfits: [] });
+  res.json(listShopProducts(worldId, session.room_template_id));
+});
+
+roomSessionsRouter.post('/:id/buy-item', (req, res) => {
+  const itemId = req.body.item_id;
+  if (!itemId) return res.status(400).json({ error: 'item_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  const world = getWorld(worldId);
+  if (!session.room_is_shop || !world.currency_enabled) {
+    return res.status(400).json({ error: 'not_a_shop' });
+  }
+
+  const item = getItem(itemId);
+  if (!item || item.buy_price == null) {
+    return res.status(400).json({ error: 'not_for_sale' });
+  }
+
+  const currentMoney = getPlaythrough(session.playthrough_id).money;
+  if (item.buy_price > currentMoney) {
+    return res.status(400).json({ error: 'insufficient_funds' });
+  }
+
+  const money = adjustMoney(session.playthrough_id, -item.buy_price);
+  addItemToInventory(session.playthrough_id, item.id);
+  const message = createMessage(req.params.id, {
+    sender_type: 'narration',
+    content: `『${item.name}』を${item.buy_price}${world.currency_unit}で購入した。（所持金 ${money}${world.currency_unit}）`,
+  });
+  broadcast(req.params.id, { type: 'message_complete', message });
+  broadcast(req.params.id, { type: 'money_changed', money });
+  res.json({ money, message });
+});
+
+roomSessionsRouter.post('/:id/buy-outfit', (req, res) => {
+  const outfitMasterId = req.body.outfit_master_id;
+  if (!outfitMasterId) return res.status(400).json({ error: 'outfit_master_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  const world = getWorld(worldId);
+  if (!session.room_is_shop || !world.currency_enabled) {
+    return res.status(400).json({ error: 'not_a_shop' });
+  }
+
+  const master = getMaster(outfitMasterId);
+  if (!master || master.buy_price == null || master.is_not_for_sale) {
+    return res.status(400).json({ error: 'not_for_sale' });
+  }
+
+  const currentMoney = getPlaythrough(session.playthrough_id).money;
+  if (master.buy_price > currentMoney) {
+    return res.status(400).json({ error: 'insufficient_funds' });
+  }
+
+  const money = adjustMoney(session.playthrough_id, -master.buy_price);
+  addOutfitToInventory(session.playthrough_id, master.id);
+  const message = createMessage(req.params.id, {
+    sender_type: 'narration',
+    content: `『${master.name}』を${master.buy_price}${world.currency_unit}で購入した。（所持金 ${money}${world.currency_unit}）`,
+  });
+  broadcast(req.params.id, { type: 'message_complete', message });
+  broadcast(req.params.id, { type: 'money_changed', money });
+  res.json({ money, message });
+});
+
+// 'pickup'部屋(衣裳部屋など)向け: 対価なしでそのまま持ち物に加わる。買い物と
+// 違いWorldの通貨設定に依存しない(is_shopでない部屋でも機能する)。
+roomSessionsRouter.get('/:id/pickupable-outfits', (req, res) => {
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  if (session.room_outfit_acquisition_mode !== 'pickup') return res.json([]);
+  res.json(listPickupableOutfits(worldId, session.room_template_id));
+});
+
+roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
+  const outfitMasterId = req.body.outfit_master_id;
+  if (!outfitMasterId) return res.status(400).json({ error: 'outfit_master_id_required' });
+
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+  if (session.room_outfit_acquisition_mode !== 'pickup') {
+    return res.status(400).json({ error: 'not_a_pickup_room' });
+  }
+
+  const master = getMaster(outfitMasterId);
+  if (!master || master.is_not_for_sale) {
+    return res.status(400).json({ error: 'not_available' });
+  }
+
+  addOutfitToInventory(session.playthrough_id, master.id);
+  const message = createMessage(req.params.id, {
+    sender_type: 'narration',
+    content: `『${master.name}』を手に入れた。`,
+  });
+  broadcast(req.params.id, { type: 'message_complete', message });
+  res.json({ message });
 });
 
 // 衣装アイテム(items.outfit_master_id が設定されたもの)を、対象キャラの現在の

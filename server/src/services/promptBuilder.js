@@ -15,8 +15,7 @@ import { composeCharacterIdentity } from './characterIdentity.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
-import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
-import { listMastersForWorld } from '../db/repositories/outfitMastersRepo.js';
+import { listShopProducts } from './shopProducts.js';
 import { listLlmAutoUpdateEnabledAxes } from '../db/repositories/relationshipAxesRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { getLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
@@ -304,17 +303,14 @@ function buildSystemPrompt(session, participants, options = {}) {
   // buy_price is only ever set by an admin) so ITEM_GRANT here means a real
   // sale, not the free "the character happens to hand you something"
   // narrative device the normal ITEM_GRANT instruction describes.
+  //
+  // listShopProducts (shopProducts.js) is the single source of truth shared
+  // with the ShopPanel UI's direct-purchase route -- if this and the UI
+  // computed the list separately, they'd drift and a player could see "買う"
+  // for something chat insists isn't for sale, or vice versa.
   let shopBlock = null;
   if (isShopMode) {
-    const shopProducts = listItemsForWorld(worldId).filter(
-      (i) =>
-        i.buy_price != null &&
-        (roomCandidateItemCategories.length === 0 || roomCandidateItemCategories.some((c) => c.id === i.category_id)),
-    );
-    // 衣装マスタ側の商品(0096)。items経由ではなくWorldスコープ(world_outfit_masters)
-    // だけで絞り込む——部屋ごとの品揃え選択UIは今のところ無いので、そのWorldで
-    // 使える価格設定済みマスタは全部この部屋でも売っている扱いにする。
-    const outfitProducts = listMastersForWorld(worldId).filter((m) => m.buy_price != null);
+    const { items: shopProducts, outfits: outfitProducts } = listShopProducts(worldId, session.room_template_id);
     const money = getMoney(session.playthrough_id);
     const productLines =
       shopProducts.length > 0

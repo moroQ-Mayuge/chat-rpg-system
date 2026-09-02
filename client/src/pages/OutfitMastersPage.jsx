@@ -39,6 +39,7 @@ const emptyForm = {
   garment_operations: {},
   buy_price: '',
   sell_price: '',
+  is_not_for_sale: false,
   ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, ''])),
 };
 
@@ -52,6 +53,7 @@ function masterToForm(m) {
     garment_operations: m.garment_operations ?? {},
     buy_price: m.buy_price ?? '',
     sell_price: m.sell_price ?? '',
+    is_not_for_sale: Boolean(m.is_not_for_sale),
     ...Object.fromEntries(OUTFIT_TAG_FIELDS.map((key) => [key, m[key] ?? ''])),
   };
 }
@@ -314,6 +316,14 @@ export default function OutfitMastersPage() {
                   />
                 </label>
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={form.is_not_for_sale}
+                  onChange={(e) => setField('is_not_for_sale', e.target.checked)}
+                />
+                非売品（価格に関わらず、買い物・拾える部屋どちらの一覧にも出さない）
+              </label>
 
               <OutfitTagCategoryEditor
                 values={form}

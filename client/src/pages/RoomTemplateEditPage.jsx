@@ -43,6 +43,8 @@ const emptyForm = {
   is_shop: false,
   suppress_auto_population: false,
   reset_items_per_session: false,
+  outfit_acquisition_mode: 'none',
+  outfit_attribute_tags: [],
 };
 
 // Room master data now: what a room IS, shared across every World that
@@ -91,6 +93,8 @@ export default function RoomTemplateEditPage() {
       is_shop: Boolean(existing.is_shop),
       suppress_auto_population: Boolean(existing.suppress_auto_population),
       reset_items_per_session: Boolean(existing.reset_items_per_session),
+      outfit_acquisition_mode: existing.outfit_acquisition_mode ?? 'none',
+      outfit_attribute_tags: tagsToArray(existing.outfit_attribute_tags),
     });
   }, [existing]);
 
@@ -148,6 +152,8 @@ export default function RoomTemplateEditPage() {
       is_shop: form.is_shop,
       suppress_auto_population: form.suppress_auto_population,
       reset_items_per_session: form.reset_items_per_session,
+      outfit_acquisition_mode: form.outfit_acquisition_mode,
+      outfit_attribute_tags: tagsToText(form.outfit_attribute_tags),
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -525,6 +531,51 @@ export default function RoomTemplateEditPage() {
               />
               部屋のアイテムをセッション毎にリセットする（売店には影響しません。入室のたびに探索候補が新しく抽選し直されます）
             </label>
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10 }}>
+            <p style={{ marginBottom: 4 }}>衣装の入手方法</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              LLMの会話任せではなく、確定的に成立する「買い物」コマンド（もちものカテゴリ）向けの設定です。「購入できる」は上の「買い物できる部屋にする」と貨幣を使用するWorldであることが前提、「拾える」は無料でその場で入手できます（衣裳部屋など）。
+            </p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="radio"
+                  checked={form.outfit_acquisition_mode === 'none'}
+                  onChange={() => setForm({ ...form, outfit_acquisition_mode: 'none' })}
+                />
+                なし
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="radio"
+                  checked={form.outfit_acquisition_mode === 'shop'}
+                  onChange={() => setForm({ ...form, outfit_acquisition_mode: 'shop' })}
+                />
+                購入できる
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="radio"
+                  checked={form.outfit_acquisition_mode === 'pickup'}
+                  onChange={() => setForm({ ...form, outfit_acquisition_mode: 'pickup' })}
+                />
+                拾える
+              </label>
+            </div>
+            {form.outfit_acquisition_mode !== 'none' && (
+              <div>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+                  品揃えを絞る属性キー（衣装マスタ側の属性キーと1つでも一致すれば対象。空欄なら非売品以外の全衣装が対象）
+                </p>
+                <TagChips
+                  tags={form.outfit_attribute_tags}
+                  onChange={(tags) => setForm({ ...form, outfit_attribute_tags: tags })}
+                  placeholder="+ 属性キーを追加"
+                />
+              </div>
+            )}
           </div>
 
           {!isNew && (

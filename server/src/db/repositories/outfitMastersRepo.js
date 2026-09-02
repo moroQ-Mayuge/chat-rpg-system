@@ -92,21 +92,31 @@ export function createMaster(data) {
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfit_masters (${columns}, garment_operations, slot, buy_price, sell_price) VALUES (${placeholders}, ?, ?, ?, ?)`,
+      `INSERT INTO outfit_masters (${columns}, garment_operations, slot, buy_price, sell_price, is_not_for_sale) VALUES (${placeholders}, ?, ?, ?, ?, ?)`,
     )
-    .run(...values, JSON.stringify(data.garment_operations ?? {}), data.slot ?? 'normal', data.buy_price ?? null, data.sell_price ?? null);
+    .run(
+      ...values,
+      JSON.stringify(data.garment_operations ?? {}),
+      data.slot ?? 'normal',
+      data.buy_price ?? null,
+      data.sell_price ?? null,
+      data.is_not_for_sale ? 1 : 0,
+    );
   return getMaster(result.lastInsertRowid);
 }
 
 export function updateMaster(id, data) {
   const setClause = MASTER_FIELDS.map((f) => `${f} = ?`).join(', ');
   const values = MASTER_FIELDS.map((f) => data[f] ?? '');
-  db.prepare(`UPDATE outfit_masters SET ${setClause}, garment_operations = ?, slot = ?, buy_price = ?, sell_price = ? WHERE id = ?`).run(
+  db.prepare(
+    `UPDATE outfit_masters SET ${setClause}, garment_operations = ?, slot = ?, buy_price = ?, sell_price = ?, is_not_for_sale = ? WHERE id = ?`,
+  ).run(
     ...values,
     JSON.stringify(data.garment_operations ?? {}),
     data.slot ?? 'normal',
     data.buy_price ?? null,
     data.sell_price ?? null,
+    data.is_not_for_sale ? 1 : 0,
     id,
   );
   return getMaster(id);

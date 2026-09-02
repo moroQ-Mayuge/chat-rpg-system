@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useRoomSession, useRoomSessionMutations, usePickupItems, usePickupItemMutation } from '../hooks/useRoomSession.js';
+import {
+  useRoomSession,
+  useRoomSessionMutations,
+  usePickupItems,
+  usePickupItemMutation,
+  useShopProducts,
+  usePickupableOutfits,
+} from '../hooks/useRoomSession.js';
 import { useRoomConnections } from '../hooks/useRoomTemplates.js';
 import { useChatStream } from '../hooks/useChatStream.js';
 import { playthroughsApi } from '../api/playthroughs.js';
@@ -320,6 +327,60 @@ function ItemCheckPanel({ playthroughId, onClose, isShop, currencyUnit, onSell }
               売る（{entry.sell_price}{currencyUnit}）
             </button>
           )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// LLMが[ITEM_GRANT]/[OUTFIT_GRANT]を出すかどうかに購入成立が委ねられていた
+// 会話ベースの購入とは別の、確定的に成立する直接購入・入手経路。「持ち物」の
+// 売却(ItemCheckPanel)と対になる存在。アイテムはisShop(room_is_shop)の時だけ、
+// 衣装はoutfitMode('shop'=購入／'pickup'=無料入手／'none'=経路なし)に応じて
+// 出し分ける——衣装だけisShopと独立している点に注意(pickup部屋はis_shopでなくても
+// 機能する)。
+function ShopPanel({ sessionId, onClose, isShop, outfitMode, currencyUnit, money, onBuyItem, onBuyOutfit, onPickupOutfit }) {
+  const { data: shopProducts, isLoading: shopLoading } = useShopProducts(sessionId);
+  const { data: pickupableOutfits, isLoading: pickupLoading } = usePickupableOutfits(sessionId);
+
+  const items = isShop ? shopProducts?.items ?? [] : [];
+  const shopOutfits = outfitMode === 'shop' ? shopProducts?.outfits ?? [] : [];
+  const pickupOutfits = outfitMode === 'pickup' ? pickupableOutfits ?? [] : [];
+  const isLoading = (isShop && shopLoading) || (outfitMode === 'pickup' && pickupLoading);
+  const isEmpty = !isLoading && items.length === 0 && shopOutfits.length === 0 && pickupOutfits.length === 0;
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>買い物</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      {isLoading && <p style={{ fontSize: 12, color: '#888' }}>読み込み中...</p>}
+      {isEmpty && <p style={{ fontSize: 12, color: '#888' }}>ここでは何もありません。</p>}
+      {items.map((item) => (
+        <div key={`item-${item.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 0' }}>
+          <p style={{ fontSize: 12, margin: 0 }}>{item.name}</p>
+          <button type="button" style={{ fontSize: 11 }} disabled={money < item.buy_price} onClick={() => onBuyItem(item.id)}>
+            買う（{item.buy_price}{currencyUnit}）
+          </button>
+        </div>
+      ))}
+      {shopOutfits.map((outfit) => (
+        <div key={`outfit-${outfit.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 0' }}>
+          <p style={{ fontSize: 12, margin: 0 }}>{outfit.name}</p>
+          <button type="button" style={{ fontSize: 11 }} disabled={money < outfit.buy_price} onClick={() => onBuyOutfit(outfit.id)}>
+            買う（{outfit.buy_price}{currencyUnit}）
+          </button>
+        </div>
+      ))}
+      {pickupOutfits.map((outfit) => (
+        <div key={`pickup-${outfit.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '2px 0' }}>
+          <p style={{ fontSize: 12, margin: 0 }}>{outfit.name}</p>
+          <button type="button" style={{ fontSize: 11 }} onClick={() => onPickupOutfit(outfit.id)}>
+            もらう
+          </button>
         </div>
       ))}
     </div>
@@ -806,7 +867,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: session, isLoading } = useRoomSession(id);
-  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem } = useRoomSessionMutations(id);
+  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -1260,6 +1321,19 @@ export default function ChatPage() {
       )}
       {itemPanel?.command_type === 'item_pickup' && (
         <ItemPickupPanel sessionId={id} onClose={() => setItemPanel(null)} onAcquired={sendText} />
+      )}
+      {itemPanel?.command_type === 'shop' && (
+        <ShopPanel
+          sessionId={id}
+          onClose={() => setItemPanel(null)}
+          isShop={Boolean(session.room_is_shop) && Boolean(playthrough?.currency_enabled)}
+          outfitMode={session.room_outfit_acquisition_mode}
+          currencyUnit={playthrough?.currency_unit}
+          money={playthrough?.money ?? 0}
+          onBuyItem={(itemId) => buyItem.mutate(itemId)}
+          onBuyOutfit={(outfitMasterId) => buyOutfit.mutate(outfitMasterId)}
+          onPickupOutfit={(outfitMasterId) => pickupOutfit.mutate(outfitMasterId)}
+        />
       )}
       {itemPanel?.command_type === 'item_use' && (
         <ItemActionPanel
