@@ -4,24 +4,15 @@ KoboldCpp のセットアップについて
 このフォルダ（koboldcpp）には、以下を別途ダウンロードして配置してください。
 サイズが大きいため、本パッケージには含まれていません。
 
-1. KoboldCpp本体
-   https://github.com/LostRuins/koboldcpp/releases
-   から Windows用の koboldcpp.exe をダウンロードし、このフォルダ直下に配置してください。
+  1. KoboldCpp本体（koboldcpp.exe）をこのフォルダ直下に配置
+  2. テキスト生成用モデル（.gguf）を models\llm\ に配置
+  3. 画像生成用モデル（.safetensors、任意）を models\sd\ に配置
 
-2. テキスト生成用モデル（.gguf形式）
-   例：Hugging Face (https://huggingface.co/) で GGUF形式のモデルを探し、
-   このフォルダの下に models\llm\ フォルダを作成して配置してください。
-   （日本語ロールプレイ対応をうたっているモデルを推奨）
-
-3. 画像生成用モデル（.safetensors形式、SDXLベース推奨）
-   同様に Hugging Face や Civitai などで入手し、
-   models\sd\ フォルダを作成して配置してください。
+入手先URL・PCスペック別のおすすめモデル・詳しい手順は、
+一つ上の階層にある README.md の「クイックスタート」の章を参照してください。
 
 配置後、このフォルダにある start-koboldcpp.bat をダブルクリックすると、
 配置したモデルファイルを自動検出してKoboldCppを起動します。
-
-（手動で起動する場合のコマンド例）
-  koboldcpp.exe --model models\llm\<モデルファイル名>.gguf --sdmodel models\sd\<モデルファイル名>.safetensors --port 5001 --contextsize 8192 --gpulayers 999
 
 起動後、ChatRPG側の .env にある KOBOLD_BASE_URL が
 http://127.0.0.1:5001 になっていることを確認してください（既定値のままでOK。

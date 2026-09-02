@@ -4,16 +4,46 @@
 
 ## 必要なもの
 
-- Node.js 20以降
-- [KoboldCpp](https://github.com/LostRuins/koboldcpp)（テキスト生成用LLM＋画像生成用SDモデルをロードして起動しておく）
+- [Node.js](https://nodejs.org/) 20以降（LTS版推奨）
+- [KoboldCpp](https://github.com/LostRuins/koboldcpp/releases)（テキスト生成用LLM＋画像生成用SDモデルをロードして起動しておく）
 
-## セットアップ
+## クイックスタート（プログラミング知識不要の場合）
+
+配布されたフォルダをそのまま使う、開発環境を触らない最短手順。うまくいかない場合は[トラブルシューティング](#トラブルシューティング)を参照。
+
+1. **Node.jsをインストールする**
+   [nodejs.org](https://nodejs.org/) からLTS版をダウンロードしてインストールする。
+
+2. **KoboldCppとAIモデルを用意する**
+
+   `koboldcpp/` フォルダに以下を配置する（サイズが大きいため本体には同梱されていない）。
+
+   - **KoboldCpp本体**：[GitHub Releases](https://github.com/LostRuins/koboldcpp/releases) からWindows用の`koboldcpp.exe`をダウンロードし、`koboldcpp/`フォルダ直下に配置する。
+   - **テキスト生成用モデル**（`.gguf`形式）：`koboldcpp/models/llm/` フォルダを作って配置する。PCのスペックに応じて選ぶ：
+
+     | スペック目安 | モデル |
+     |---|---|
+     | 上位（VRAM 12GB前後〜） | [dahara1/gemma-4-12B-it-qat-UD-japanese-imatrix](https://huggingface.co/dahara1/gemma-4-12B-it-qat-UD-japanese-imatrix) の `Q4_K_M` |
+     | 下位 | [HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive](https://huggingface.co/HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive) の `Q4_K_M` |
+
+   - **画像生成用モデル**（`.safetensors`形式、任意）：`koboldcpp/models/sd/` フォルダを作って配置する。画像生成機能そのものが任意（無くてもテキストのロールプレイは遊べる）なので、不要なら省略してよい。
+     - 推奨：[Zammy v1.0 Turbo](https://civitai.com/models/1400211/zammy-illustriousnoobai-merge)（`ZammyDMDMix.safetensors`、Illustrious/NoobAI系マージ）
+
+3. **`setup-and-start.bat` をダブルクリックする**
+   依存関係のインストール・ネイティブモジュールのビルド・データベース準備・サーバー起動までを自動で行う。
+
+4. **ブラウザで `http://localhost:5180` を開く**
+
+## 開発者向けセットアップ
 
 ```bash
 npm install
+npm rebuild better-sqlite3 sharp --workspace server --ignore-scripts=false
 cp .env.example .env   # 必要に応じて値を編集
 npm run migrate         # DBスキーマを作成
 ```
+
+> このリポジトリの`.npmrc`は npm供給網攻撃対策として`ignore-scripts=true`を設定しており、`npm install`だけでは`better-sqlite3`・`sharp`のネイティブバイナリが自動ビルドされない。上記の`npm rebuild`を必ず続けて実行すること（`npm ci`を使った場合も同様）。詳しくは[トラブルシューティング](#トラブルシューティング)を参照。
 
 `.env` の主な項目：
 
@@ -27,7 +57,7 @@ npm run migrate         # DBスキーマを作成
 
 ## KoboldCppの起動
 
-テキストモデルと画像生成モデルの両方をロードして起動しておく。次のいずれかの方法が使える。
+テキストモデルと画像生成モデルの両方をロードして起動しておく（モデルの入手先は上の「クイックスタート」の表を参照）。次のいずれかの方法が使える。
 
 - **`koboldcpp/start-koboldcpp.bat`をダブルクリック**：`koboldcpp/`直下（またはこのリポジトリの構成に合わせて`koboldcpp/models/`）の実行ファイル、`koboldcpp/models/llm/`の`.gguf`、`koboldcpp/models/sd/`の`.safetensors`を自動検出して起動する
 - **設定画面（`/settings`）の「KoboldCppを起動」ボタン**：ChatRPGサーバーと同じPC上で上記と同じ自動検出ロジックによりkoboldcpp.exeをデタッチ起動する（KoboldCpp未接続時のみ表示）
@@ -75,6 +105,7 @@ npm run dev:client   # クライアントのみ起動
 2. **新しいフォルダで依存パッケージをインストール**
    ```bash
    npm install
+   npm rebuild better-sqlite3 sharp --workspace server --ignore-scripts=false
    ```
 3. **KoboldCppの用意**
    - モデルファイルは容量が大きいため、`koboldcpp/`フォルダは通常コピーしない。次のいずれかで対応する：
@@ -92,6 +123,28 @@ npm run dev:client   # クライアントのみ起動
    ブラウザでキャラ一覧・部屋一覧に既存データが表示されること、設定画面（`/settings`）でKoboldCppが接続中になっていることを確認する。
 
 > **同じPCで元の環境と同時に起動する場合の注意**：`.env`を作成していないとサーバーは既定の`PORT=3001`で起動するため、元の環境がすでに動作中だとポートが衝突し `EADDRINUSE` エラーで起動に失敗する。同時に動かしたい場合は、新しい環境の`.env`で`PORT`を別の値（例：`3002`）に変更する。クライアント（Vite, 既定5180）は使用中なら自動的に別ポートへ切り替わるため対応不要。
+
+## トラブルシューティング
+
+**「rebuildしたのに直らない」／サーバー起動時に`better-sqlite3`のネイティブモジュール未ビルドエラー、または画像処理（`sharp`）関連の実行時エラーが出る**
+
+`.npmrc`の`ignore-scripts=true`（npm供給網攻撃対策として意図的に設定）は`npm rebuild`内部のinstallスクリプト実行にも及ぶため、`--ignore-scripts=false`を付け忘れると`npm rebuild`は「rebuilt dependencies successfully」と表示されるだけで実際には何もビルドしない空撃ちになる。必ず次の形で実行すること：
+
+```bash
+npm rebuild better-sqlite3 sharp --workspace server --ignore-scripts=false
+```
+
+`npm install`・`npm ci`を実行するたびに（新しいネイティブ依存を追加したときも同様に）このコマンドを続けて実行する必要がある。
+
+**起動時に `EADDRINUSE` エラーが出る**
+
+同じPCで別のChatRPGインスタンスが既に起動している可能性が高い。`.env`（無ければ`.env.example`をコピー）で`PORT`を空いている値（例：`3002`）に変更する。クライアント（Vite）側は使用中のポートを検知して自動的に別ポートへ切り替わるため対応不要。
+
+**KoboldCppに接続できない／画像生成が動かない**
+
+- 設定画面（`/settings`）でKoboldCppの接続状況・起動ログを確認できる。
+- `.env`の`KOBOLD_BASE_URL`が、KoboldCppを起動したポート（既定 `http://127.0.0.1:5001`）と一致しているか確認する。
+- 画像生成だけ動かない場合は、`koboldcpp/models/sd/`にモデルを配置し忘れていないか確認する（テキストのみでも動作するが、画像生成には別途SDモデルが必要）。
 
 ## 実装状況・ロードマップ
 
