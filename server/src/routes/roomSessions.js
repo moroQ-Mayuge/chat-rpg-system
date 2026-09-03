@@ -12,7 +12,7 @@ import {
   updateParticipantTransformation,
   updateParticipantPose,
 } from '../db/repositories/roomSessionsRepo.js';
-import { wearMasterAsCharacter, resolveMasterNameFuzzy, getMaster } from '../db/repositories/outfitMastersRepo.js';
+import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
 import { listShopProducts, listPickupableOutfits } from '../services/shopProducts.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
@@ -304,7 +304,7 @@ roomSessionsRouter.get('/:id/shop-products', (req, res) => {
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const world = getWorld(worldId);
   if (!session.room_is_shop || !world.currency_enabled) return res.json({ items: [], outfits: [] });
-  res.json(listShopProducts(worldId, session.room_template_id));
+  res.json(listShopProducts(worldId, session.room_template_id, session.playthrough_id));
 });
 
 roomSessionsRouter.post('/:id/buy-item', (req, res) => {
@@ -320,8 +320,13 @@ roomSessionsRouter.post('/:id/buy-item', (req, res) => {
     return res.status(400).json({ error: 'not_a_shop' });
   }
 
-  const item = getItem(itemId);
-  if (!item || item.buy_price == null) {
+  // 一般的な販売可否(buy_price)だけでなく、部屋のランダム品揃え設定(0120)による
+  // 「今の棚」に実際に載っているかどうかも見る——ランダム表示を単なる見た目に
+  // 終わらせず、載っていない物は買えないようにする。
+  const item = listShopProducts(worldId, session.room_template_id, session.playthrough_id).items.find(
+    (i) => i.id === Number(itemId),
+  );
+  if (!item) {
     return res.status(400).json({ error: 'not_for_sale' });
   }
 
@@ -354,8 +359,12 @@ roomSessionsRouter.post('/:id/buy-outfit', (req, res) => {
     return res.status(400).json({ error: 'not_a_shop' });
   }
 
-  const master = getMaster(outfitMasterId);
-  if (!master || master.buy_price == null || master.is_not_for_sale) {
+  // buy-itemと同じ理由で、一般的な販売可否だけでなく現在の抽選済みラインナップ
+  // (0120)に載っているかも見る。
+  const master = listShopProducts(worldId, session.room_template_id, session.playthrough_id).outfits.find(
+    (m) => m.id === Number(outfitMasterId),
+  );
+  if (!master) {
     return res.status(400).json({ error: 'not_for_sale' });
   }
 
@@ -382,7 +391,7 @@ roomSessionsRouter.get('/:id/pickupable-outfits', (req, res) => {
   if (!session) return res.status(404).json({ error: 'not_found' });
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   if (session.room_outfit_acquisition_mode !== 'pickup') return res.json([]);
-  res.json(listPickupableOutfits(worldId, session.room_template_id));
+  res.json(listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id));
 });
 
 roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
@@ -395,8 +404,12 @@ roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
     return res.status(400).json({ error: 'not_a_pickup_room' });
   }
 
-  const master = getMaster(outfitMasterId);
-  if (!master || master.is_not_for_sale) {
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
+  // buy-outfitと同じ理由で、現在の抽選済みラインナップ(0120)に載っているかを見る。
+  const master = listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id).find(
+    (m) => m.id === Number(outfitMasterId),
+  );
+  if (!master) {
     return res.status(400).json({ error: 'not_available' });
   }
 

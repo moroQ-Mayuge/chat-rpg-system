@@ -324,7 +324,7 @@ function buildSystemPrompt(session, participants, options = {}) {
   // for something chat insists isn't for sale, or vice versa.
   let shopBlock = null;
   if (isShopMode) {
-    const { items: shopProducts, outfits: outfitProducts } = listShopProducts(worldId, session.room_template_id);
+    const { items: shopProducts, outfits: outfitProducts } = listShopProducts(worldId, session.room_template_id, session.playthrough_id);
     const money = getMoney(session.playthrough_id);
     const productLines =
       shopProducts.length > 0

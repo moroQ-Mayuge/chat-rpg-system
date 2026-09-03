@@ -45,6 +45,10 @@ const emptyForm = {
   reset_items_per_session: false,
   outfit_acquisition_mode: 'none',
   outfit_attribute_tags: [],
+  shop_lineup_min: '',
+  shop_lineup_max: '',
+  shop_lineup_refresh_unit: 'turn',
+  shop_lineup_refresh_interval: 0,
 };
 
 // Room master data now: what a room IS, shared across every World that
@@ -95,6 +99,10 @@ export default function RoomTemplateEditPage() {
       reset_items_per_session: Boolean(existing.reset_items_per_session),
       outfit_acquisition_mode: existing.outfit_acquisition_mode ?? 'none',
       outfit_attribute_tags: tagsToArray(existing.outfit_attribute_tags),
+      shop_lineup_min: existing.shop_lineup_min ?? '',
+      shop_lineup_max: existing.shop_lineup_max ?? '',
+      shop_lineup_refresh_unit: existing.shop_lineup_refresh_unit ?? 'turn',
+      shop_lineup_refresh_interval: existing.shop_lineup_refresh_interval ?? 0,
     });
   }, [existing]);
 
@@ -154,6 +162,10 @@ export default function RoomTemplateEditPage() {
       reset_items_per_session: form.reset_items_per_session,
       outfit_acquisition_mode: form.outfit_acquisition_mode,
       outfit_attribute_tags: tagsToText(form.outfit_attribute_tags),
+      shop_lineup_min: form.shop_lineup_min === '' ? null : Number(form.shop_lineup_min),
+      shop_lineup_max: form.shop_lineup_max === '' ? null : Number(form.shop_lineup_max),
+      shop_lineup_refresh_unit: form.shop_lineup_refresh_unit,
+      shop_lineup_refresh_interval: Number(form.shop_lineup_refresh_interval) || 0,
     };
     if (isNew) {
       const created = await create.mutateAsync(payload);
@@ -576,6 +588,58 @@ export default function RoomTemplateEditPage() {
                 />
               </div>
             )}
+          </div>
+
+          <div style={{ borderTop: '1px solid #ddd', paddingTop: 10 }}>
+            <p style={{ marginBottom: 4 }}>品揃えのランダム表示（買い物・拾えるの両方に適用）</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              対象が多いと毎回全件表示されて棚が薄まりがちな場合に使います。下限・上限を指定すると、条件に合う候補からその範囲でランダムに何点かだけ選んで表示します。アイテム・衣装それぞれ独立に抽選します。空欄なら今までどおり全件表示です。
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, marginBottom: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                下限
+                <input
+                  type="number"
+                  min="0"
+                  style={{ width: 60 }}
+                  value={form.shop_lineup_min}
+                  onChange={(e) => setForm({ ...form, shop_lineup_min: e.target.value })}
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                上限
+                <input
+                  type="number"
+                  min="0"
+                  style={{ width: 60 }}
+                  value={form.shop_lineup_max}
+                  onChange={(e) => setForm({ ...form, shop_lineup_max: e.target.value })}
+                />
+              </label>
+            </div>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              ラインナップの更新タイミング（下限・上限を指定した場合のみ有効）
+            </p>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12 }}>
+              <select
+                value={form.shop_lineup_refresh_unit}
+                onChange={(e) => setForm({ ...form, shop_lineup_refresh_unit: e.target.value })}
+              >
+                <option value="turn">ターン数ごと</option>
+                <option value="time_slot">時間帯ごと</option>
+                <option value="day">日数ごと</option>
+              </select>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 60 }}
+                value={form.shop_lineup_refresh_interval}
+                onChange={(e) => setForm({ ...form, shop_lineup_refresh_interval: e.target.value })}
+              />
+            </div>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              0にすると、見るたびに毎回ランダムに選び直します（品揃えを覚えておきません）。1以上なら、その回数分だけ単位が経過するまで同じ品揃えを保ちます。
+            </p>
           </div>
 
           {!isNew && (
