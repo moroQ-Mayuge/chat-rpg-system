@@ -9,6 +9,8 @@
 // generateReply() in routes/roomSessions.js). parseScriptResponse() parses a
 // full text in one pass by feeding it through the same per-line parser.
 
+import { editDistance } from './textDistance.js';
+
 // ローカル日本語チューニングモデルが半角[ ] |の代わりに全角［］｜【】を使って
 // しまう崩れは実プレイで頻出する。以降の全パターンは半角前提なので、比較の
 // 前に正規化してしまえば既存ロジックを一切変えずに吸収できる。「］：」→「]:」
@@ -59,18 +61,6 @@ const CRAFT_RESULT_PATTERN = /^CRAFT_RESULT:\s*(.+)$/;
 // normalizes to NARRNATION, one deletion away from NARRATION).
 function normalizeTagWord(value) {
   return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-}
-
-function editDistance(a, b) {
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i += 1) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j += 1) {
-      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = row;
-  }
-  return prev[b.length];
 }
 
 // Control tags are always ASCII keywords, so anything containing Japanese is a

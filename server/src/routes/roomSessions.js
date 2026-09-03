@@ -138,6 +138,13 @@ const NON_EXPLORING_KEYWORD = '（そのまま何も言わず、今の状況が�
 // プロンプトに載せる(promptBuilder.jsのisInventoryCheck)。
 const INVENTORY_CHECK_KEYWORD = '（今ここにいる皆が今何を持っているか、それとなく確認してほしい）';
 
+// 受け渡し検知ログ(下記)用: 実際に物を渡した/差し出したことを示す語。ITEM_GRANT
+// の指示自体が「世間話や比喩表現では使わない」と釘を刺しているとおり、これらの
+// 語自体は比喩でも普通に使われるので単独では偽陽性が出る——だからこの語だけで
+// 何かする(自動付与など)のではなく、同ターンでITEM_GRANTが実際に処理された
+// かどうかとつき合わせてログに残すだけの診断用途に留める。
+const HANDOVER_PHRASES = ['渡した', '渡して', 'あげる', 'あげた', '差し出した', '差し出して', '手渡し', '受け取って', '受け取った', '贈った', '譲った'];
+
 // Does this player input count as looking around the room? @周辺 (the existing
 // surroundings-check mode) plus any しらべる-category command — those are the
 // two ways the UI offers to examine a place.
@@ -628,6 +635,8 @@ async function generateReply(
   // クラフト材料の返金判定(下記)用: このターンで実際にcraft_resultを処理できた
   // かどうか。
   let craftResultHandled = false;
+  // 受け渡し検知ログ(下記)用: このターンで実際にitem_grantを処理できたかどうか。
+  let itemGrantHandledThisTurn = false;
 
   // Persists + broadcasts one parsed line as soon as it's recognized, so chat
   // bubbles reveal one at a time as the response streams in, instead of all
@@ -648,6 +657,7 @@ async function generateReply(
     }
 
     if (parsed.type === 'item_grant') {
+      itemGrantHandledThisTurn = true;
       // Dynamic item generation (chat enhancement backlog item 9): always
       // scoped to the current room's own World, never the shared-common
       // tier — see findOrCreateWorldItem's own comment for why. The LLM
@@ -922,6 +932,15 @@ async function generateReply(
       content: 'うまく形にならなかったようだ。材料は手元に戻ってきた。',
     });
     broadcast(sessionId, { type: 'message_complete', message: refundMessage });
+  }
+
+  // 受け渡し語(HANDOVER_PHRASES)が出ているのにITEM_GRANTが一度も処理されな
+  // かったターンをログに残す——「モデルがタグを出す判断自体をしなかった」ケース
+  // の実頻度を把握するための診断のみで、挙動は一切変えない(誤検知しても実害が
+  // 無いようにあえて何もしない: 自動付与するとハルシネーションしたアイテム名を
+  // 掴んで作ってしまうリスクがある)。
+  if (!itemGrantHandledThisTurn && HANDOVER_PHRASES.some((phrase) => fullText.includes(phrase))) {
+    console.warn(`[roomSessions] 受け渡し語を含むがITEM_GRANTが無いターンを検出しました (session ${sessionId})`);
   }
 
   try {
