@@ -9,6 +9,21 @@
 // generateReply() in routes/roomSessions.js). parseScriptResponse() parses a
 // full text in one pass by feeding it through the same per-line parser.
 
+// ローカル日本語チューニングモデルが半角[ ] |の代わりに全角［］｜【】を使って
+// しまう崩れは実プレイで頻出する。以降の全パターンは半角前提なので、比較の
+// 前に正規化してしまえば既存ロジックを一切変えずに吸収できる。「］：」→「]:」
+// だけは"]"の直後に限定し、地の文中の全角コロンには触れない(意味のある記号
+// として普通に使われるため)。全角コロン単体のグローバル置換はしない。
+function normalizeBracketPunctuation(line) {
+  return line
+    .replace(/［/g, '[')
+    .replace(/］/g, ']')
+    .replace(/｜/g, '|')
+    .replace(/【/g, '[')
+    .replace(/】/g, ']')
+    .replace(/\]：/g, ']:');
+}
+
 const LINE_PATTERN = /^\[(.+?)\]:\s*(.*)$/;
 // Fallback for a model putting the name outside the brackets and the
 // emotion tag inside instead of the reverse, e.g. "陽葵[困り顔]: ..." instead
@@ -72,6 +87,17 @@ function isTagLike(rawTag, keyword) {
   if (normalized === target) return true;
   return editDistance(normalized, target) <= TAG_FUZZ_MAX_DISTANCE;
 }
+
+// isTagLikeと違い行全体からの部分一致で、タグ境界(括弧・コロン)が完全に崩れて
+// LINE_PATTERN等が丸ごとマッチしなかった行にも使える最終セーフティ。記号・
+// 空白・日本語を削ぎ落として比較するだけなので全角/半角や区切り方は問わない。
+// 編集距離を使わないのは、ここで緩めすぎると意図的な地の文を誤検知するため
+// (「タグらしき文字列が残っているか」の有無だけを見る)。
+export function lineContainsKeywordTrace(line, keyword) {
+  return normalizeTagWord(line).includes(normalizeTagWord(keyword));
+}
+
+const KNOWN_TAG_KEYWORDS = ['ITEM_GRANT', 'OUTFIT_GRANT', 'CRAFT_RESULT', 'STAT_CHANGE', 'SCENE_CHANGE'];
 
 // CRAFT_RESULTの3項目目(消費型/永続型)。省略・未知語は null = 「判定なし」で、
 // アイテムのカテゴリ設定にそのまま従わせる(itemsRepo.jsのis_consumable上書きが
@@ -164,7 +190,7 @@ function matchPayloadTag(tag, keyword) {
 // parsing, since an earlier turn may already have been persisted/broadcast
 // by the time a stray line shows up.
 export function parseScriptLine(rawLine) {
-  const line = (rawLine || '').trim();
+  const line = normalizeBracketPunctuation((rawLine || '').trim());
   if (!line) return null;
 
   const m = line.match(LINE_PATTERN);
@@ -208,6 +234,13 @@ export function parseScriptLine(rawLine) {
         emotionKey: emotionKeyMatch ? emotionKeyMatch[1] : bracketContent.trim() || null,
         poseKey: null,
       };
+    }
+    // 正規化しても尚どのパターンにも一致しなかった行。既知タグの痕跡が残って
+    // いれば(全角崩れの吸収漏れ・タグ名自体の編集距離オーバー等)、実害調査の
+    // 手がかりとしてログに残す——表示内容はこれまでどおり変更しない。
+    const suspectedTag = KNOWN_TAG_KEYWORDS.find((k) => lineContainsKeywordTrace(line, k));
+    if (suspectedTag) {
+      console.warn(`[responseParser] ${suspectedTag}らしき行がパースできませんでした: ${line}`);
     }
     return { type: 'narration', text: line, emotionKey: null };
   }

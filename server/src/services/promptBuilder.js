@@ -466,6 +466,10 @@ function buildSystemPrompt(session, participants, options = {}) {
     '✅ 正しい例: [陽葵]: 今日は暇だなあ [EMOTION:smile]',
     '❌ 誤った例（タグの文字の間に記号が入っている）: [NARR_N_A_T_I_O_N]: 二人は黙って座っていた',
     '✅ 正しい例: [NARRATION]: 二人は黙って座っていた',
+    '❌ 誤った例（全角の記号を使っている）: ［ITEM_GRANT: 鍵｜道具］',
+    `✅ 正しい例: [ITEM_GRANT: 鍵|道具]: 古びた鍵`,
+    options.isCraftAttempt ? '❌ 誤った例（全角の記号を使っている）: ［CRAFT_RESULT: 完成品名｜カテゴリ名｜消費型｜1］' : null,
+    options.isCraftAttempt ? `✅ 正しい例: [CRAFT_RESULT: 完成品名|カテゴリ名|消費型|1]: 説明` : null,
   ].join('\n');
 }
 

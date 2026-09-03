@@ -25,7 +25,7 @@ import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
-import { parseScriptLine } from '../services/responseParser.js';
+import { parseScriptLine, lineContainsKeywordTrace } from '../services/responseParser.js';
 import { isRefusalText } from '../services/refusalDetection.js';
 import { exploreRoom, makeItemAvailable } from '../services/itemDiscovery.js';
 import { listActionCommandsForWorld } from '../db/repositories/actionCommandsRepo.js';
@@ -216,7 +216,7 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
     }
   }
 
-  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId, Boolean(craft)).catch((err) => {
+  generateReply(req.params.id, content, mentionedCharacterIds, isContinuation, mentionedInstanceByCharacterId, craft).catch((err) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
@@ -548,8 +548,9 @@ async function generateReply(
   mentionedCharacterIds = null,
   isContinuation = false,
   mentionedInstanceByCharacterId = new Map(),
-  isCraftAttempt = false,
+  craft = null,
 ) {
+  const isCraftAttempt = Boolean(craft);
   const session = getRoomSession(sessionId);
   // A messages array ending on role 'assistant' (i.e. no new user turn at
   // all) reliably returns an EMPTY completion, so a continuation turn has to
@@ -623,6 +624,10 @@ async function generateReply(
   // the triggering line has no explicit @mention to disambiguate which
   // duplicate instance it should apply to (bugreports 2026-07-19 follow-up).
   const lastSpokenInstanceByCharacter = new Map();
+
+  // クラフト材料の返金判定(下記)用: このターンで実際にcraft_resultを処理できた
+  // かどうか。
+  let craftResultHandled = false;
 
   // Persists + broadcasts one parsed line as soon as it's recognized, so chat
   // bubbles reveal one at a time as the response streams in, instead of all
@@ -734,6 +739,7 @@ async function generateReply(
     }
 
     if (parsed.type === 'craft_result') {
+      craftResultHandled = true;
       // 材料は選択して実行した時点で既に消費済み(下の/:id/messagesのcraft分岐)。
       // ITEM_GRANTと違い「その場に置く」を経由せず直接持ち物へ渡す——プレイヤーが
       // 自ら材料を消費して行った行為の結果であり、拾う手間を挟む理由が無いため。
@@ -895,6 +901,27 @@ async function generateReply(
   if (refused) {
     broadcast(sessionId, { type: 'generation_done' });
     return;
+  }
+
+  // 材料は送信時点で既に消費済み(POST /:id/messagesのcraft分岐)なので、LLMが
+  // CRAFT_RESULTを一切認識できないまま終わると材料だけ失われる。全角記号崩れ
+  // 等で「作ろうとした痕跡」(lineContainsKeywordTrace)が残っている場合だけ
+  // 材料を全額返金する——現実的に不可能な組み合わせをLLMが意図して失敗描写
+  // した(タグの痕跡が全く無い)場合は、既存の難易度設計どおり材料ロストのまま
+  // にする(ユーザー確認済み)。
+  if (isCraftAttempt && !craftResultHandled && lineContainsKeywordTrace(fullText, 'CRAFT_RESULT')) {
+    const materialTotals = new Map();
+    for (const m of craft.materials ?? []) {
+      materialTotals.set(m.itemId, (materialTotals.get(m.itemId) ?? 0) + m.quantity);
+    }
+    for (const [itemId, quantity] of materialTotals) {
+      addItemToInventory(session.playthrough_id, itemId, quantity);
+    }
+    const refundMessage = createMessage(sessionId, {
+      sender_type: 'narration',
+      content: 'うまく形にならなかったようだ。材料は手元に戻ってきた。',
+    });
+    broadcast(sessionId, { type: 'message_complete', message: refundMessage });
   }
 
   try {
