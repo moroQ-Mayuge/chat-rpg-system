@@ -1158,6 +1158,12 @@ export default function ChatPage() {
         <details style={{ marginBottom: 6, flexShrink: 0 }}>
           <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>デバッグ情報</summary>
           <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 6, marginTop: 4, background: '#fafafa' }}>
+            {session.conversation_summary?.trim() && (
+              <p style={{ fontSize: 11, color: '#666', margin: '0 0 6px', whiteSpace: 'pre-wrap' }}>
+                <strong>これまでのあらすじ：</strong>
+                {session.conversation_summary}
+              </p>
+            )}
             {(session.pending_children ?? []).map((c) => (
               <p key={`child-${c.pregnancy_id}`} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
                 {c.mother_name}の子{c.child_name ? `「${c.child_name}」` : ''}：

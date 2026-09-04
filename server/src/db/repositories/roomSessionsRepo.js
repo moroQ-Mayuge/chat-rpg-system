@@ -306,8 +306,31 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     );
   const sessionId = result.lastInsertRowid;
 
+  seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId, options);
+
+  touchPlaythrough(playthroughId);
+  return getRoomSession(sessionId);
+}
+
+// createRoomSession(新セッション)と switchRoomWithinSession(継続セッション内で
+// 部屋だけ差し替え、0121)の両方から使う同席キャラの積み込み。衣装/変身/ポーズの
+// 優先順位と各種stateのseedを2箇所で二重管理しないために切り出してある。
+function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId, options = {}) {
+  const playthroughId = playthrough.id;
   const carryOverByCharacterId = new Map(
     (options.carryOverParticipants ?? []).map((p) => [p.character_id, p]),
+  );
+
+  // 継続セッションで部屋を差し替える場合、同行中のキャラは既にこのセッションの
+  // 行として在籍している。移動先の既定キャストにその同じキャラが含まれていると
+  // 二重に積んでしまうので、同行フラグ付きで在籍中の分は飛ばす。モブの重複出演
+  // (同じcharacter_idが複数インスタンスとして並ぶ、0043)は is_accompanying=0 な
+  // ので、この条件では弾かれない。
+  const alreadyAccompanying = new Set(
+    db
+      .prepare('SELECT character_id FROM room_session_characters WHERE room_session_id = ? AND is_active = 1 AND is_accompanying = 1')
+      .all(sessionId)
+      .map((r) => r.character_id),
   );
 
   // Default participants are now resolved per-World: the room master only
@@ -321,11 +344,15 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
     ? []
     : listDefaultParticipantCharacterIdsForWorldRoom(
         playthrough.world_id,
-        roomTemplateId,
+        template.id,
         playthrough.current_time_slot_index,
         playthroughId,
       );
   for (const characterId of defaultParticipantIds) {
+    if (alreadyAccompanying.has(characterId)) {
+      carryOverByCharacterId.delete(characterId);
+      continue;
+    }
     const carryOver = carryOverByCharacterId.get(characterId);
     const defaultOutfit = db
       .prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1')
@@ -357,6 +384,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // Remaining carry-over participants aren't part of the new room's own cast
   // — they're only present because they're accompanying the player.
   for (const carryOver of carryOverByCharacterId.values()) {
+    if (alreadyAccompanying.has(carryOver.character_id)) continue;
     const rscResult = db
       .prepare(
         'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, 1)',
@@ -368,8 +396,51 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       carryOverAccompanyingStatuses(carryOver.character_id, options.fromRoomSessionId, sessionId);
     }
   }
+}
 
-  touchPlaythrough(playthroughId);
+// 継続セッション(worlds.continuous_room_session_enabled、0121)での部屋移動。
+// セッション行はそのままに、部屋だけを差し替える——会話履歴が room_session_id で
+// 引かれている以上、セッションを畳まないことがそのまま「部屋をまたいで文脈が
+// 繋がる」という効果になる。
+export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
+  const session = db.prepare('SELECT * FROM room_sessions WHERE id = ?').get(sessionId);
+  const playthrough = getPlaythrough(session.playthrough_id);
+  const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(toRoomTemplateId);
+  // 「入室のたびに探索候補を引き直す」設定は部屋単位の意味なので、セッションを
+  // 跨いでもここで従来どおり効かせる。
+  resetRoomItemsIfEnabled(session.playthrough_id, toRoomTemplateId);
+
+  // 同行していないキャラはこの場に置いていく。行を消さずに退室扱いにするのは、
+  // 発言メッセージが room_session_character_id を参照しているため(と、プロンプト
+  // 側の「もう居ないので喋らせるな」リストがこの状態を見ているため)。
+  db.prepare(
+    `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+     WHERE room_session_id = ? AND is_active = 1 AND is_accompanying = 0`,
+  ).run(sessionId);
+
+  const poseEnabled = Boolean(getWorld(playthrough.world_id)?.pose_enabled);
+  const defaultPoseId = poseEnabled ? (template.default_pose_id ?? null) : null;
+
+  // entered_day/entered_time_slot_index は「このセッションが始まった時点」を指す
+  // ため触らない——継続モードのセッション境界判定(時間帯が変わったか)がこの値を
+  // 基準にしている。
+  db.prepare(
+    `UPDATE room_sessions
+     SET room_template_id = ?, current_location_text = ?, current_location_tags = ?,
+         current_atmosphere_text = ?, current_atmosphere_tags = ?, current_scene_situation = '',
+         updated_at = datetime('now')
+     WHERE id = ?`,
+  ).run(
+    toRoomTemplateId,
+    template.location_text,
+    template.location_tags,
+    template.atmosphere_text,
+    template.atmosphere_tags,
+    sessionId,
+  );
+
+  seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId);
+  touchPlaythrough(session.playthrough_id);
   return getRoomSession(sessionId);
 }
 
@@ -397,6 +468,22 @@ export function endSessionForMove(id) {
 // path is needed beyond this setter.
 export function setRelationshipUpdateCheckpoint(sessionId, turnNumber) {
   db.prepare('UPDATE room_sessions SET relationship_update_last_turn = ? WHERE id = ?').run(turnNumber, sessionId);
+}
+
+// 記憶抽出・印象更新のターン数間隔実行(0121)用チェックポイント。上の関係値版と
+// 同じく countUserTurnsForPlaythrough() の値を覚えておくだけ。
+export function setMemoryImpressionCheckpoint(sessionId, turnNumber) {
+  db.prepare('UPDATE room_sessions SET memory_impression_last_turn = ? WHERE id = ?').run(turnNumber, sessionId);
+}
+
+// 会話の要約(0121)。conversation_summary は毎回まるごと差し替え(前回のあらすじを
+// 土台にLLMが畳み直した新しい全文)、last_message_id はどこまで畳み込んだかの目印。
+export function setConversationSummary(sessionId, summary, lastMessageId) {
+  db.prepare('UPDATE room_sessions SET conversation_summary = ?, conversation_summary_last_message_id = ? WHERE id = ?').run(
+    summary,
+    lastMessageId,
+    sessionId,
+  );
 }
 
 export function setAccompanying(sessionId, characterId, isAccompanying) {

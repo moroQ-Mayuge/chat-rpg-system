@@ -11,6 +11,8 @@ import {
   updateParticipantOutfit,
   updateParticipantTransformation,
   updateParticipantPose,
+  switchRoomWithinSession,
+  setMemoryImpressionCheckpoint,
 } from '../db/repositories/roomSessionsRepo.js';
 import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
 import { listShopProducts, listPickupableOutfits } from '../services/shopProducts.js';
@@ -22,7 +24,9 @@ import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo
 import { addItemToInventory, removeItemFromInventory, getHeldQuantity } from '../db/repositories/inventoryRepo.js';
 import { addOutfitToInventory, hasOutfit } from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
-import { listMessagesForSession, createMessage } from '../db/repositories/messagesRepo.js';
+import { listMessagesForSession, createMessage, countUserTurnsForPlaythrough } from '../db/repositories/messagesRepo.js';
+import { maybeUpdateConversationSummary } from '../services/conversationSummary.js';
+import { maybeCloseSessionOnTimeSlotChange } from '../services/sessionBoundary.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
 import { parseScriptLine, lineContainsKeywordTrace } from '../services/responseParser.js';
@@ -520,9 +524,31 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
   await maybeRunRelationshipAutoUpdate(session, moveWorld, { force: true });
   await maybeRunImpressionAutoUpdate(session, moveWorld);
   await maybeRunMemoryAutoExtract(session, moveWorld);
+  setMemoryImpressionCheckpoint(session.id, countUserTurnsForPlaythrough(session.playthrough_id));
+
+  // 移動コストを先に適用してから境界を判定する(0121)。このコストで時間帯が
+  // 進むなら、それは継続セッションでも「場面の切れ目」そのものなので、継続
+  // モードでも従来どおり新しいセッションを開く。
+  const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
+  const crossedBoundary =
+    playthrough.current_day !== session.entered_day ||
+    playthrough.current_time_slot_index !== session.entered_time_slot_index;
+
+  if (moveWorld.continuous_room_session_enabled && !crossedBoundary) {
+    const updated = switchRoomWithinSession(session.id, connection.to_room_template_id);
+    // 場所が変わったことを履歴にも残す。会話が地続きになるぶん、地の文が無いと
+    // モデルが移動そのものに気づけない。
+    const toRoomName =
+      db.prepare('SELECT name FROM room_templates WHERE id = ?').get(connection.to_room_template_id)?.name ?? '別の場所';
+    const message = createMessage(session.id, {
+      sender_type: 'narration',
+      content: `${toRoomName}へ移動した。`,
+    });
+    broadcast(session.id, { type: 'message_complete', message });
+    return res.json({ session: updated, playthrough });
+  }
 
   endSessionForMove(session.id);
-  const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
   const newSession = createRoomSession(session.playthrough_id, connection.to_room_template_id, {
     carryOverParticipants,
     fromRoomSessionId: session.id,
@@ -993,6 +1019,45 @@ async function generateReply(
     await maybeRunRelationshipAutoUpdate(session, world);
   } catch (err) {
     console.error('Relationship auto-update failed:', err);
+  }
+
+  try {
+    // 記憶抽出・印象更新のターン数間隔実行(0121)。/exit・/move の「場面が終わる
+    // 時に必ず走らせる」経路とは別に、同じ場面に留まったまま会話が続く場合でも
+    // 取りこぼさないための周期実行——特にこの2つは直近20メッセージしか見ない
+    // ため、場面が長引くほど中盤の出来事が一度も拾われずに流れてしまう。
+    // 2つは同じチェックポイントを共有するので、両方走らせてから最後にまとめて
+    // 進める(片方ずつ進めると、後から走る方が必ず elapsed=0 で素通りする)。
+    const memoryInterval = world.memory_impression_interval_turns;
+    if (memoryInterval != null && memoryInterval > 0) {
+      const turnNumber = countUserTurnsForPlaythrough(session.playthrough_id);
+      const elapsed = turnNumber - session.memory_impression_last_turn;
+      if (elapsed > 0 && elapsed >= memoryInterval) {
+        await maybeRunImpressionAutoUpdate(session, world);
+        await maybeRunMemoryAutoExtract(session, world);
+        setMemoryImpressionCheckpoint(session.id, turnNumber);
+      }
+    }
+  } catch (err) {
+    console.error('Memory/impression periodic update failed:', err);
+  }
+
+  try {
+    // 会話の要約(0121)。キャラの記憶とは別レイヤーで、この場面の話の筋そのものを
+    // 1つのあらすじに畳み続ける。セッションを取り直すのは、このターンで作られた
+    // メッセージと直前の畳み込み位置を反映させるため。
+    await maybeUpdateConversationSummary(getRoomSession(sessionId), world);
+  } catch (err) {
+    console.error('Conversation summary update failed:', err);
+  }
+
+  try {
+    // 継続セッション(0121)唯一の切れ目＝時間帯の変化。このターン中に
+    // turns_per_time_slot やイベントで時間帯が進んでいれば、ここで場面を畳んで
+    // 同じ部屋で新しいセッションを開き直す(継続モードが無効なら何もしない)。
+    await maybeCloseSessionOnTimeSlotChange(getRoomSession(sessionId), world, { broadcast });
+  } catch (err) {
+    console.error('Session boundary check failed:', err);
   }
 
   broadcast(sessionId, { type: 'generation_done' });

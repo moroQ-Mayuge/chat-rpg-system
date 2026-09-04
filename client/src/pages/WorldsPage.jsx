@@ -59,6 +59,9 @@ const emptyForm = {
   memory_auto_extract_enabled: false,
   memory_editing_visible: true,
   held_items_prompt_limit: 0,
+  continuous_room_session_enabled: false,
+  memory_impression_interval_turns: '',
+  conversation_summary_interval_turns: '',
   pose_enabled: false,
   cycle_enabled: false,
   cycle_length_days: 28,
@@ -178,6 +181,9 @@ export default function WorldsPage() {
         memory_auto_extract_enabled: Boolean(world.memory_auto_extract_enabled),
         memory_editing_visible: Boolean(world.memory_editing_visible),
         held_items_prompt_limit: world.held_items_prompt_limit ?? 0,
+        continuous_room_session_enabled: Boolean(world.continuous_room_session_enabled),
+        memory_impression_interval_turns: world.memory_impression_interval_turns ?? '',
+        conversation_summary_interval_turns: world.conversation_summary_interval_turns ?? '',
         pose_enabled: Boolean(world.pose_enabled),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
@@ -229,6 +235,10 @@ export default function WorldsPage() {
       relationship_update_interval_turns:
         form.relationship_update_interval_turns === '' ? null : Number(form.relationship_update_interval_turns),
       llm_value_delta_cap: form.llm_value_delta_cap === '' ? null : Number(form.llm_value_delta_cap),
+      memory_impression_interval_turns:
+        form.memory_impression_interval_turns === '' ? null : Number(form.memory_impression_interval_turns),
+      conversation_summary_interval_turns:
+        form.conversation_summary_interval_turns === '' ? null : Number(form.conversation_summary_interval_turns),
     };
     if (editingId === 'new') {
       await create.mutateAsync(payload);
@@ -739,6 +749,51 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               登場人物やアイテムが多いWorldほど小さめの値にしてください。取得が新しい順にこの件数までの名前だけが自動で渡されます。「持ち物確認」コマンド自体はこの設定に関わらず常に機能します。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>場面（セッション）の区切り方</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              通常は部屋を移動するたびに場面が切り替わり、会話履歴もそこで途切れます。「場所」として繋がった部屋を歩き回るWorldでは、移動しても会話を続けたいことがあるため、その場合はこれをONにしてください。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.continuous_room_session_enabled}
+                onChange={(e) => setForm({ ...form, continuous_room_session_enabled: e.target.checked })}
+              />
+              部屋を移動しても場面を継続する（繋がった部屋をまとめて1つの場面として扱う）
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              ONにすると、移動しても会話履歴が途切れず「商店街で話していた続きを喫茶店でする」ができるようになります。この場合の場面の区切りは<strong>時間帯が変わった時</strong>です（移動の消費・ターン数による自動進行・時間跳躍イベントのいずれで進んでも同じ）。同席キャラは移動先の顔ぶれに入れ替わり、同行中のキャラだけが付いてきます。
+            </p>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>記憶抽出・印象更新のターン数間隔（空欄で部屋移動・場面終了時のみ）</span>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 80, display: 'block' }}
+                value={form.memory_impression_interval_turns}
+                onChange={(e) => setForm({ ...form, memory_impression_interval_turns: e.target.value })}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              記憶の自動抽出と印象の自動更新は直近20メッセージしか見ないため、1つの場面が長引くと中盤の出来事が一度も拾われずに流れます。ここにターン数を入れると、場面の途中でも定期的に拾い直します（その分LLM呼び出しが増えます）。
+            </p>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>会話のあらすじを作り直すターン数間隔（空欄で無効）</span>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 80, display: 'block' }}
+                value={form.conversation_summary_interval_turns}
+                onChange={(e) => setForm({ ...form, conversation_summary_interval_turns: e.target.value })}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              キャラの記憶とは別に、「この場面でこれまでに何があったか」を1つのあらすじとして持ち回ります。古いやりとりはトークン上限で履歴から溢れて消えますが、あらすじはキャラ設定と同じ枠に載るため消えません。長い場面でも話の筋が繋がるようにするための設定です。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>キャラのポーズ状態</h4>

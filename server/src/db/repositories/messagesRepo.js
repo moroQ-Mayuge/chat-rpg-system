@@ -72,7 +72,15 @@ export function createMessage(
       status_snapshot,
     );
   touchRoomSession(sessionId);
-  maybeAutoAdvanceTime(sessionId);
+  // ユーザーの発言でのみ判定する。narration/characterメッセージは1ターンに
+  // 何行も作られるため、全メッセージ種別で呼んでいると userTurnCount が同じ
+  // 倍数のまま留まっている間、その全行についてadvanceTime(1)が再発火してしまう
+  // (発見時の実害: turns_per_time_slot=2の部屋で1ターンの応答だけで暦が数日
+  // 進んだ)。「Nユーザーターンごとに1回」という関数自身のコメントの意図どおり、
+  // ユーザーメッセージの作成時だけに絞る。
+  if (sender_type === 'user') {
+    maybeAutoAdvanceTime(sessionId);
+  }
   return attachImagePath(db.prepare('SELECT * FROM messages WHERE id = ?').get(result.lastInsertRowid));
 }
 

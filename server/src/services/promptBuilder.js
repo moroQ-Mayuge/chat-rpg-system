@@ -205,14 +205,22 @@ function buildSystemPrompt(session, participants, options = {}) {
   // protagonist self-speech guard below) -- naming departed characters
   // explicitly gives the model a concrete negative constraint instead of
   // relying on it noticing their absence from the list.
+  // 継続セッション(0121)では部屋を移動してもセッションが畳まれないため、歩いて
+  // すれ違った相手が延々と溜まっていく。目的は「直前に別れた相手を喋らせない」
+  // ことなので、遠い過去の通行人まで並べる必要はない——退室が新しい順に絞る。
   const departedNames = db
     .prepare(
-      `SELECT DISTINCT c.name FROM room_session_characters rsc
+      `SELECT c.name FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
-       WHERE rsc.room_session_id = ? AND rsc.is_active = 0`,
+       WHERE rsc.room_session_id = ? AND rsc.is_active = 0
+       ORDER BY rsc.left_at DESC, rsc.id DESC
+       LIMIT 8`,
     )
     .all(session.id)
-    .map((r) => r.name);
+    .map((r) => r.name)
+    // 同じキャラが出入りを繰り返すと同名の行が並ぶので、ここで畳む
+    // (SQL側のDISTINCTだとORDER BY left_at と併用できないため)。
+    .filter((name, i, all) => all.indexOf(name) === i);
 
   // 「出産と成長の理」(birth_lore)を載せるかの判定。世界観本文と別に持っている
   // のは、妊娠が絡まない大多数のセッションでローカルLLMのコンテキストを
@@ -403,12 +411,20 @@ function buildSystemPrompt(session, participants, options = {}) {
       ].join('\n')
     : null;
 
+  // 会話の要約(0121)。生ログはトークン予算を超えた分から順に落ちていくが、
+  // これはシステムプロンプト側なので切り捨てを受けない——古いやりとりが履歴から
+  // 溢れた後も、この場面で何があったかの筋だけは残る。
+  const conversationSummaryBlock = (session.conversation_summary ?? '').trim()
+    ? `[これまでのあらすじ]\n${session.conversation_summary.trim()}`
+    : null;
+
   return [
     `場所：${session.current_location_text}`,
     `雰囲気：${session.current_atmosphere_text}`,
     timeWeatherLine,
     matureContentBlock,
     buildWarpConstraintBlock(world),
+    conversationSummaryBlock,
     sceneSituationLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,
