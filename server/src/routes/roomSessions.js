@@ -27,6 +27,7 @@ import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
 import { listMessagesForSession, createMessage, countUserTurnsForPlaythrough } from '../db/repositories/messagesRepo.js';
 import { maybeUpdateConversationSummary } from '../services/conversationSummary.js';
 import { maybeCloseSessionOnTimeSlotChange } from '../services/sessionBoundary.js';
+import { withSessionLock } from '../services/sessionLock.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
 import { parseScriptLine, lineContainsKeywordTrace } from '../services/responseParser.js';
@@ -481,12 +482,22 @@ roomSessionsRouter.post('/:id/exit', async (req, res) => {
   // Catch-up relationship auto-update (SPEC.md): force-run while the
   // session is still active (participants still resolvable) so any turns
   // since the last periodic check aren't lost when the session ends.
+  //
+  // 直列化(0121フォローアップ): generateReplyの事後フックや/moveと同じ
+  // セッションに対して同時に走ると、どちらも古いチェックポイント値を読んで
+  // しまうことがある(TOCTOU、continuous_room_sessions.md記載の既知の競合)。
+  // withSessionLockで同じセッションIDに対する処理を直列化し、ロック取得後に
+  // 改めてセッションを読み直して「その時点でまだactiveか」を見る。
   const session = getRoomSession(req.params.id);
   if (session) {
-    const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
-    await maybeRunRelationshipAutoUpdate(session, world, { force: true });
-    await maybeRunImpressionAutoUpdate(session, world);
-    await maybeRunMemoryAutoExtract(session, world);
+    await withSessionLock(session.id, async () => {
+      const freshSession = getRoomSession(session.id);
+      if (!freshSession || freshSession.status !== 'active') return;
+      const world = getWorld(getPlaythrough(freshSession.playthrough_id).world_id);
+      await maybeRunRelationshipAutoUpdate(freshSession, world, { force: true });
+      await maybeRunImpressionAutoUpdate(freshSession, world);
+      await maybeRunMemoryAutoExtract(freshSession, world);
+    });
   }
   res.json(exitRoomSession(req.params.id));
 });
@@ -513,48 +524,63 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
     return res.status(400).json({ error: 'invalid_connection' });
   }
 
-  const carryOverParticipants = session.participants
-    .filter((p) => p.is_accompanying)
-    .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+  // 直列化(0121フォローアップ): generateReplyの事後フック(時間帯境界での
+  // セッション取り直し等)や/exitと同じセッションに対して同時に走ると、
+  // どちらも「まだactive」という古い状態を読んだまま二重にセッションを
+  // 作ってしまうことがある(TOCTOU、continuous_room_sessions.md記載の
+  // 既知の競合——実際に兄弟セッションの二重生成として観測済み)。
+  // withSessionLockで直列化し、ロック取得後に改めてセッションを読み直す。
+  const result = await withSessionLock(session.id, async () => {
+    const freshSession = getRoomSession(session.id);
+    if (!freshSession || freshSession.status !== 'active') {
+      return { error: 'session_already_ended' };
+    }
 
-  // Catch-up relationship auto-update (SPEC.md): same rationale as /exit —
-  // room移動 also ends this room_session's message stream, so any turns
-  // since the last periodic check should be captured before it does.
-  const moveWorld = getWorld(playthroughWorldId);
-  await maybeRunRelationshipAutoUpdate(session, moveWorld, { force: true });
-  await maybeRunImpressionAutoUpdate(session, moveWorld);
-  await maybeRunMemoryAutoExtract(session, moveWorld);
-  setMemoryImpressionCheckpoint(session.id, countUserTurnsForPlaythrough(session.playthrough_id));
+    const carryOverParticipants = freshSession.participants
+      .filter((p) => p.is_accompanying)
+      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
 
-  // 移動コストを先に適用してから境界を判定する(0121)。このコストで時間帯が
-  // 進むなら、それは継続セッションでも「場面の切れ目」そのものなので、継続
-  // モードでも従来どおり新しいセッションを開く。
-  const playthrough = applyMovementCost(session.playthrough_id, connection.movement_cost);
-  const crossedBoundary =
-    playthrough.current_day !== session.entered_day ||
-    playthrough.current_time_slot_index !== session.entered_time_slot_index;
+    // Catch-up relationship auto-update (SPEC.md): same rationale as /exit —
+    // room移動 also ends this room_session's message stream, so any turns
+    // since the last periodic check should be captured before it does.
+    const moveWorld = getWorld(playthroughWorldId);
+    await maybeRunRelationshipAutoUpdate(freshSession, moveWorld, { force: true });
+    await maybeRunImpressionAutoUpdate(freshSession, moveWorld);
+    await maybeRunMemoryAutoExtract(freshSession, moveWorld);
+    setMemoryImpressionCheckpoint(freshSession.id, countUserTurnsForPlaythrough(freshSession.playthrough_id));
 
-  if (moveWorld.continuous_room_session_enabled && !crossedBoundary) {
-    const updated = switchRoomWithinSession(session.id, connection.to_room_template_id);
-    // 場所が変わったことを履歴にも残す。会話が地続きになるぶん、地の文が無いと
-    // モデルが移動そのものに気づけない。
-    const toRoomName =
-      db.prepare('SELECT name FROM room_templates WHERE id = ?').get(connection.to_room_template_id)?.name ?? '別の場所';
-    const message = createMessage(session.id, {
-      sender_type: 'narration',
-      content: `${toRoomName}へ移動した。`,
+    // 移動コストを先に適用してから境界を判定する(0121)。このコストで時間帯が
+    // 進むなら、それは継続セッションでも「場面の切れ目」そのものなので、継続
+    // モードでも従来どおり新しいセッションを開く。
+    const playthrough = applyMovementCost(freshSession.playthrough_id, connection.movement_cost);
+    const crossedBoundary =
+      playthrough.current_day !== freshSession.entered_day ||
+      playthrough.current_time_slot_index !== freshSession.entered_time_slot_index;
+
+    if (moveWorld.continuous_room_session_enabled && !crossedBoundary) {
+      const updated = switchRoomWithinSession(freshSession.id, connection.to_room_template_id);
+      // 場所が変わったことを履歴にも残す。会話が地続きになるぶん、地の文が無いと
+      // モデルが移動そのものに気づけない。
+      const toRoomName =
+        db.prepare('SELECT name FROM room_templates WHERE id = ?').get(connection.to_room_template_id)?.name ?? '別の場所';
+      const message = createMessage(freshSession.id, {
+        sender_type: 'narration',
+        content: `${toRoomName}へ移動した。`,
+      });
+      broadcast(freshSession.id, { type: 'message_complete', message });
+      return { session: updated, playthrough };
+    }
+
+    endSessionForMove(freshSession.id);
+    const newSession = createRoomSession(freshSession.playthrough_id, connection.to_room_template_id, {
+      carryOverParticipants,
+      fromRoomSessionId: freshSession.id,
     });
-    broadcast(session.id, { type: 'message_complete', message });
-    return res.json({ session: updated, playthrough });
-  }
-
-  endSessionForMove(session.id);
-  const newSession = createRoomSession(session.playthrough_id, connection.to_room_template_id, {
-    carryOverParticipants,
-    fromRoomSessionId: session.id,
+    return { session: newSession, playthrough };
   });
 
-  res.json({ session: newSession, playthrough });
+  if (result.error) return res.status(409).json(result);
+  res.json(result);
 });
 
 roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {
@@ -1010,55 +1036,70 @@ async function generateReply(
     console.error('Event engine run failed:', err);
   }
 
-  try {
-    // Periodic relationship auto-update (SPEC.md): no-ops internally unless
-    // world.relationship_update_interval_turns worth of user turns have
-    // elapsed since this session's last check. Wrapped separately from the
-    // event engine's try/catch so a failure here can't be misattributed to
-    // it, but for the same reason: must never block the chat response itself.
-    await maybeRunRelationshipAutoUpdate(session, world);
-  } catch (err) {
-    console.error('Relationship auto-update failed:', err);
-  }
+  // 直列化(0121フォローアップ): この4つはどれもセッション上のチェックポイント
+  // (relationship_update_last_turn / memory_impression_last_turn /
+  // conversation_summary_last_message_id / entered_day・entered_time_slot_index)
+  // を「読む→LLM呼び出しなど非同期処理→書き戻す」形で使う。同じセッションに
+  // 対する別のgenerateReply呼び出しや/move・/exitがこの間に割り込むと、両方が
+  // 同じ古い値を読んでしまい二重実行し得る(TOCTOU、continuous_room_sessions.md
+  // 記載の既知の競合——記憶抽出の準重複・兄弟セッションの二重生成として実際に
+  // 観測済み)。withSessionLockで同じセッションIDへのこの手の処理をすべて直列化
+  // し、ロック取得後に改めてセッションを読み直す(待っている間に/moveや/exitで
+  // 既にセッションが終わっているかもしれないため)。
+  await withSessionLock(sessionId, async () => {
+    const currentSession = getRoomSession(sessionId);
+    if (!currentSession || currentSession.status !== 'active') return;
 
-  try {
-    // 記憶抽出・印象更新のターン数間隔実行(0121)。/exit・/move の「場面が終わる
-    // 時に必ず走らせる」経路とは別に、同じ場面に留まったまま会話が続く場合でも
-    // 取りこぼさないための周期実行——特にこの2つは直近20メッセージしか見ない
-    // ため、場面が長引くほど中盤の出来事が一度も拾われずに流れてしまう。
-    // 2つは同じチェックポイントを共有するので、両方走らせてから最後にまとめて
-    // 進める(片方ずつ進めると、後から走る方が必ず elapsed=0 で素通りする)。
-    const memoryInterval = world.memory_impression_interval_turns;
-    if (memoryInterval != null && memoryInterval > 0) {
-      const turnNumber = countUserTurnsForPlaythrough(session.playthrough_id);
-      const elapsed = turnNumber - session.memory_impression_last_turn;
-      if (elapsed > 0 && elapsed >= memoryInterval) {
-        await maybeRunImpressionAutoUpdate(session, world);
-        await maybeRunMemoryAutoExtract(session, world);
-        setMemoryImpressionCheckpoint(session.id, turnNumber);
-      }
+    try {
+      // Periodic relationship auto-update (SPEC.md): no-ops internally unless
+      // world.relationship_update_interval_turns worth of user turns have
+      // elapsed since this session's last check. Wrapped separately from the
+      // event engine's try/catch so a failure here can't be misattributed to
+      // it, but for the same reason: must never block the chat response itself.
+      await maybeRunRelationshipAutoUpdate(currentSession, world);
+    } catch (err) {
+      console.error('Relationship auto-update failed:', err);
     }
-  } catch (err) {
-    console.error('Memory/impression periodic update failed:', err);
-  }
 
-  try {
-    // 会話の要約(0121)。キャラの記憶とは別レイヤーで、この場面の話の筋そのものを
-    // 1つのあらすじに畳み続ける。セッションを取り直すのは、このターンで作られた
-    // メッセージと直前の畳み込み位置を反映させるため。
-    await maybeUpdateConversationSummary(getRoomSession(sessionId), world);
-  } catch (err) {
-    console.error('Conversation summary update failed:', err);
-  }
+    try {
+      // 記憶抽出・印象更新のターン数間隔実行(0121)。/exit・/move の「場面が終わる
+      // 時に必ず走らせる」経路とは別に、同じ場面に留まったまま会話が続く場合でも
+      // 取りこぼさないための周期実行——特にこの2つは直近20メッセージしか見ない
+      // ため、場面が長引くほど中盤の出来事が一度も拾われずに流れてしまう。
+      // 2つは同じチェックポイントを共有するので、両方走らせてから最後にまとめて
+      // 進める(片方ずつ進めると、後から走る方が必ず elapsed=0 で素通りする)。
+      const memoryInterval = world.memory_impression_interval_turns;
+      if (memoryInterval != null && memoryInterval > 0) {
+        const turnNumber = countUserTurnsForPlaythrough(currentSession.playthrough_id);
+        const elapsed = turnNumber - currentSession.memory_impression_last_turn;
+        if (elapsed > 0 && elapsed >= memoryInterval) {
+          await maybeRunImpressionAutoUpdate(currentSession, world);
+          await maybeRunMemoryAutoExtract(currentSession, world);
+          setMemoryImpressionCheckpoint(currentSession.id, turnNumber);
+        }
+      }
+    } catch (err) {
+      console.error('Memory/impression periodic update failed:', err);
+    }
 
-  try {
-    // 継続セッション(0121)唯一の切れ目＝時間帯の変化。このターン中に
-    // turns_per_time_slot やイベントで時間帯が進んでいれば、ここで場面を畳んで
-    // 同じ部屋で新しいセッションを開き直す(継続モードが無効なら何もしない)。
-    await maybeCloseSessionOnTimeSlotChange(getRoomSession(sessionId), world, { broadcast });
-  } catch (err) {
-    console.error('Session boundary check failed:', err);
-  }
+    try {
+      // 会話の要約(0121)。キャラの記憶とは別レイヤーで、この場面の話の筋そのものを
+      // 1つのあらすじに畳み続ける。セッションを取り直すのは、このターンで作られた
+      // メッセージと直前の畳み込み位置を反映させるため。
+      await maybeUpdateConversationSummary(getRoomSession(sessionId), world);
+    } catch (err) {
+      console.error('Conversation summary update failed:', err);
+    }
+
+    try {
+      // 継続セッション(0121)唯一の切れ目＝時間帯の変化。このターン中に
+      // turns_per_time_slot やイベントで時間帯が進んでいれば、ここで場面を畳んで
+      // 同じ部屋で新しいセッションを開き直す(継続モードが無効なら何もしない)。
+      await maybeCloseSessionOnTimeSlotChange(getRoomSession(sessionId), world, { broadcast });
+    } catch (err) {
+      console.error('Session boundary check failed:', err);
+    }
+  });
 
   broadcast(sessionId, { type: 'generation_done' });
 }
