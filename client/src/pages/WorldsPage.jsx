@@ -62,6 +62,9 @@ const emptyForm = {
   continuous_room_session_enabled: false,
   memory_impression_interval_turns: '',
   conversation_summary_interval_turns: '',
+  session_boundary_mode: 'time_slot',
+  session_boundary_defer_to_move: false,
+  session_max_turns: '',
   pose_enabled: false,
   cycle_enabled: false,
   cycle_length_days: 28,
@@ -184,6 +187,9 @@ export default function WorldsPage() {
         continuous_room_session_enabled: Boolean(world.continuous_room_session_enabled),
         memory_impression_interval_turns: world.memory_impression_interval_turns ?? '',
         conversation_summary_interval_turns: world.conversation_summary_interval_turns ?? '',
+        session_boundary_mode: world.session_boundary_mode ?? 'time_slot',
+        session_boundary_defer_to_move: Boolean(world.session_boundary_defer_to_move),
+        session_max_turns: world.session_max_turns ?? '',
         pose_enabled: Boolean(world.pose_enabled),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
@@ -239,6 +245,7 @@ export default function WorldsPage() {
         form.memory_impression_interval_turns === '' ? null : Number(form.memory_impression_interval_turns),
       conversation_summary_interval_turns:
         form.conversation_summary_interval_turns === '' ? null : Number(form.conversation_summary_interval_turns),
+      session_max_turns: form.session_max_turns === '' ? null : Number(form.session_max_turns),
     };
     if (editingId === 'new') {
       await create.mutateAsync(payload);
@@ -765,8 +772,56 @@ export default function WorldsPage() {
               部屋を移動しても場面を継続する（繋がった部屋をまとめて1つの場面として扱う）
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-              ONにすると、移動しても会話履歴が途切れず「商店街で話していた続きを喫茶店でする」ができるようになります。この場合の場面の区切りは<strong>時間帯が変わった時</strong>です（移動の消費・ターン数による自動進行・時間跳躍イベントのいずれで進んでも同じ）。同席キャラは移動先の顔ぶれに入れ替わり、同行中のキャラだけが付いてきます。
+              ONにすると、移動しても会話履歴が途切れず「商店街で話していた続きを喫茶店でする」ができるようになります。同席キャラは移動先の顔ぶれに入れ替わり、同行中のキャラだけが付いてきます。場面の区切り方は下で選べます。
             </p>
+
+            {form.continuous_room_session_enabled && (
+              <div style={{ marginTop: 10, paddingLeft: 12, borderLeft: '2px solid #eee' }}>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>場面の区切り方</p>
+                {[
+                  { value: 'time_slot', label: '時間帯が変わったら区切る（推奨）' },
+                  { value: 'day', label: '1日の終わりで区切る' },
+                  { value: 'never', label: '区切らない' },
+                ].map((opt) => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <input
+                      type="radio"
+                      name="session_boundary_mode"
+                      checked={form.session_boundary_mode === opt.value}
+                      onChange={() => setForm({ ...form, session_boundary_mode: opt.value })}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+                <p style={{ fontSize: 11, color: '#888', margin: '4px 0 8px' }}>
+                  「区切らない」を選ぶと、場面は終わらずずっと続きます。ただし記憶抽出・印象更新・会話のあらすじ作成は<strong>日が変わったタイミング</strong>で実行され、チャット画面には<strong>当日分のメッセージだけ</strong>が表示されます（前日以前はセッション履歴から見られます）。会話のあらすじは古いやりとりが履歴から溢れても話の筋を保つ役目を持つため、下の「会話のあらすじを作り直すターン数間隔」も併せて設定することをおすすめします。
+                </p>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    disabled={form.session_boundary_mode === 'never'}
+                    checked={form.session_boundary_defer_to_move}
+                    onChange={(e) => setForm({ ...form, session_boundary_defer_to_move: e.target.checked })}
+                  />
+                  会話の途中では区切らず、次の移動時に区切る
+                </label>
+                <p style={{ fontSize: 11, color: '#888', margin: '4px 0 8px' }}>
+                  OFFの場合、時間帯や日が変わった瞬間に会話の途中でも場面が切り替わります。ONにすると、それまでの流れを保ったまま次に部屋を移動した時に区切ります。
+                </p>
+
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>1場面の最大ユーザーターン数（空欄で無制限。超えても会話の途中では区切らず、次の移動時に区切ります）</span>
+                  <input
+                    type="number"
+                    min="1"
+                    style={{ width: 80, display: 'block' }}
+                    value={form.session_max_turns}
+                    onChange={(e) => setForm({ ...form, session_max_turns: e.target.value })}
+                  />
+                </label>
+              </div>
+            )}
 
             <label style={{ display: 'block', marginTop: 10 }}>
               <span style={{ fontSize: 11, color: '#888' }}>記憶抽出・印象更新のターン数間隔（空欄で部屋移動・場面終了時のみ）</span>

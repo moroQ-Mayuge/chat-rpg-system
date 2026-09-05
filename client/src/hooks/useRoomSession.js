@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { roomSessionsApi } from '../api/roomSessions.js';
 
-export function useRoomSession(id) {
+// options.day: 'current'(当日分のみ、0122) | 数値(その日のログのみ) | 省略(全件)。
+// クエリキーにdayを含めても、既存の['roomSessions', id]でのinvalidateは
+// react-queryの前方一致マッチでそのまま効く。
+export function useRoomSession(id, options = {}) {
+  const { day } = options;
   return useQuery({
-    queryKey: ['roomSessions', id],
-    queryFn: () => roomSessionsApi.get(id),
+    queryKey: ['roomSessions', id, day ?? 'all'],
+    queryFn: () => roomSessionsApi.get(id, { day }),
     enabled: id != null,
   });
 }

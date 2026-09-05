@@ -24,6 +24,7 @@ import { executeTimeSkip } from './timeSkip.js';
 import { executeTransformCharacter } from './transformCharacter.js';
 import { executeForceRoomTransfer } from './forceRoomTransfer.js';
 import { executeSetPose } from './setPose.js';
+import { executeEndSession } from './endSession.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -52,6 +53,7 @@ export const actionRegistry = {
   transform_character: executeTransformCharacter,
   force_room_transfer: executeForceRoomTransfer,
   set_pose: executeSetPose,
+  end_session: executeEndSession,
 };
 
 export async function executeAction(action, execCtx) {

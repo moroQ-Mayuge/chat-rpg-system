@@ -104,6 +104,7 @@ export function collectWorldRoomConfigEntries(worldId) {
         to_room_template_name: c.to_room_name,
         label: c.label,
         movement_cost: c.movement_cost,
+        ends_session: Boolean(c.ends_session),
       })),
     };
   });
@@ -156,7 +157,14 @@ export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemp
         warnings.push(`部屋「${entry.room_template_name}」の接続先「${conn.to_room_template_name}」が見つからず、接続をスキップしました`);
         continue;
       }
-      createConnection({ world_id: worldId, from_room_template_id: roomId, to_room_template_id: toRoomId, label: conn.label, movement_cost: conn.movement_cost });
+      createConnection({
+        world_id: worldId,
+        from_room_template_id: roomId,
+        to_room_template_id: toRoomId,
+        label: conn.label,
+        movement_cost: conn.movement_cost,
+        ends_session: conn.ends_session,
+      });
     }
   }
 }

@@ -40,6 +40,7 @@ const emptyForm = {
   attribute_tags: [],
   default_pose_id: null,
   is_place: false,
+  ends_session_on_enter: false,
   is_shop: false,
   suppress_auto_population: false,
   reset_items_per_session: false,
@@ -94,6 +95,7 @@ export default function RoomTemplateEditPage() {
       attribute_tags: tagsToArray(existing.attribute_tags),
       default_pose_id: existing.default_pose_id ?? null,
       is_place: Boolean(existing.is_place),
+      ends_session_on_enter: Boolean(existing.ends_session_on_enter),
       is_shop: Boolean(existing.is_shop),
       suppress_auto_population: Boolean(existing.suppress_auto_population),
       reset_items_per_session: Boolean(existing.reset_items_per_session),
@@ -157,6 +159,7 @@ export default function RoomTemplateEditPage() {
       attribute_tags: tagsToText(form.attribute_tags),
       default_pose_id: form.default_pose_id,
       is_place: form.is_place,
+      ends_session_on_enter: form.ends_session_on_enter,
       is_shop: form.is_shop,
       suppress_auto_population: form.suppress_auto_population,
       reset_items_per_session: form.reset_items_per_session,
@@ -518,6 +521,14 @@ export default function RoomTemplateEditPage() {
                 onChange={(e) => setForm({ ...form, is_place: e.target.checked })}
               />
               他の部屋とつながりのある「場所」として扱う（移動先はWorldごとの設定画面で設定できます）
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.ends_session_on_enter}
+                onChange={(e) => setForm({ ...form, ends_session_on_enter: e.target.checked })}
+              />
+              この部屋に入ると場面を区切る（場面を継続するWorld設定でも、この部屋への移動では必ず新しい場面になります）
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
               <input

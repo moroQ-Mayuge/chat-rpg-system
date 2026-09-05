@@ -230,16 +230,23 @@ function buildPendingChildren(playthrough, world) {
 // first — the browsable "log" of past room/place visits (Room→Place design
 // decision: sessions still reset on each move, but their message history
 // stays reachable afterward rather than becoming permanently invisible).
+//
+// 「切らない」セッション境界モード(0122)では1つのroom_sessionが複数の
+// ログ日(messages.game_day)にまたがるため、(セッション, ログ日)の組で1行に
+// する——LEFT JOIN + GROUP BYで、メッセージが1件も無いセッションもgame_day=NULL
+// の1行として残る(クライアントはentered_dayにフォールバックする)。
 export function listSessionsForPlaythrough(playthroughId) {
   return db
     .prepare(
       `SELECT rs.id, rs.room_template_id, rt.name AS room_name, rs.status,
-              rs.entered_day, rs.entered_time_slot_index, rs.started_at, rs.updated_at,
-              (SELECT COUNT(*) FROM messages m WHERE m.room_session_id = rs.id) AS message_count
+              rs.entered_day, rs.entered_time_slot_index, rs.log_day, rs.started_at, rs.updated_at,
+              m.game_day, COUNT(m.id) AS message_count
        FROM room_sessions rs
        JOIN room_templates rt ON rt.id = rs.room_template_id
+       LEFT JOIN messages m ON m.room_session_id = rs.id
        WHERE rs.playthrough_id = ?
-       ORDER BY rs.started_at DESC`,
+       GROUP BY rs.id, m.game_day
+       ORDER BY rs.started_at DESC, m.game_day DESC`,
     )
     .all(playthroughId);
 }
@@ -290,15 +297,16 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   const result = db
     .prepare(
       `INSERT INTO room_sessions
-        (room_template_id, playthrough_id, entered_day, entered_time_slot_index,
+        (room_template_id, playthrough_id, entered_day, entered_time_slot_index, log_day,
          current_location_text, current_location_tags, current_atmosphere_text, current_atmosphere_tags, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
     )
     .run(
       roomTemplateId,
       playthroughId,
       playthrough.current_day,
       playthrough.current_time_slot_index,
+      playthrough.current_day,
       template.location_text,
       template.location_tags,
       template.atmosphere_text,
@@ -423,7 +431,9 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
 
   // entered_day/entered_time_slot_index は「このセッションが始まった時点」を指す
   // ため触らない——継続モードのセッション境界判定(時間帯が変わったか)がこの値を
-  // 基準にしている。
+  // 基準にしている。log_day/boundary_pending(0122)も同じ理由で触らない——
+  // 「ログの日替わり」「保留中の区切り」はどちらも部屋移動そのものとは独立した
+  // 状態で、handleDayRollover/evaluateBoundary(sessionBoundary.js)だけが進める。
   db.prepare(
     `UPDATE room_sessions
      SET room_template_id = ?, current_location_text = ?, current_location_tags = ?,
@@ -484,6 +494,19 @@ export function setConversationSummary(sessionId, summary, lastMessageId) {
     lastMessageId,
     sessionId,
   );
+}
+
+// セッション境界モード(0122)用チェックポイント。log_dayは「このセッションの
+// ログが今どの日に居るか」——handleDayRollover(sessionBoundary.js)が日替わりの
+// 区切り行を入れる直前にだけ進める(createRoomSessionの初期値はentered_dayと同じ)。
+export function setLogDay(sessionId, day) {
+  db.prepare('UPDATE room_sessions SET log_day = ? WHERE id = ?').run(day, sessionId);
+}
+
+// 保留中の区切り理由('' = なし)。会話の途中では区切らず次の/move・/exitで
+// 消費させたい時にevaluateBoundaryがセットする。
+export function setBoundaryPending(sessionId, reason) {
+  db.prepare('UPDATE room_sessions SET boundary_pending = ? WHERE id = ?').run(reason ?? '', sessionId);
 }
 
 export function setAccompanying(sessionId, characterId, isAccompanying) {

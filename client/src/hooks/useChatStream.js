@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 // and chat bubbles reveal one at a time as they arrive.
 const NOTICE_DURATION_MS = 6000;
 
-export function useChatStream(sessionId, onGenerationDone) {
+export function useChatStream(sessionId, onGenerationDone, onForcedTransfer) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [sceneChangeNotice, setSceneChangeNotice] = useState(null);
@@ -15,6 +15,8 @@ export function useChatStream(sessionId, onGenerationDone) {
   const [refusalNotice, setRefusalNotice] = useState(null);
   const onDoneRef = useRef(onGenerationDone);
   onDoneRef.current = onGenerationDone;
+  const onTransferRef = useRef(onForcedTransfer);
+  onTransferRef.current = onForcedTransfer;
   const sceneChangeTimerRef = useRef(null);
   const relationshipTimerRef = useRef(null);
   const refusalTimerRef = useRef(null);
@@ -48,6 +50,13 @@ export function useChatStream(sessionId, onGenerationDone) {
       } else if (data.type === 'generation_done') {
         setIsGenerating(false);
         onDoneRef.current?.();
+      } else if (data.type === 'forced_room_transfer') {
+        // セッション境界モード(0122)により、サーバー側がこのセッションを畳んで
+        // 新しいセッションを開き直した(時間帯/日の切れ目・イベントのend_session等)。
+        // 手を打たないとクライアントは終了済みセッションのwsに繋がったまま留まる
+        // ——0121で見つかった既知バグの修正。
+        setIsGenerating(false);
+        onTransferRef.current?.(data.new_session_id);
       } else if (data.type === 'message_complete') {
         // Each unit (character line, narration, scene image) arrives via its
         // own event as soon as it's ready, so refetch per-event rather than

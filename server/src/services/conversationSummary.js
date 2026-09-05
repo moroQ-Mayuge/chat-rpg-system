@@ -23,7 +23,12 @@ function formatLine(row) {
 // 前回の畳み込み以降のメッセージだけを見る。毎回ゼロから全文を要約し直すのでは
 // なく「前回のあらすじ＋その後の差分」を新しいあらすじに畳み直す積み上げ方式に
 // しているのは、会話が伸びても1回あたりの入力量が一定に保たれるため。
-export async function maybeUpdateConversationSummary(session, world) {
+//
+// force(0122): セッション境界モードの日替わり処理(handleDayRollover)が、
+// 間隔に達していなくても区切り行の手前までを強制的に畳み込むために使う。
+// 明示的に無効(interval == null)の場合はforceでも何もしない——「あらすじ機能
+// 自体を使わない」という設定は尊重する。
+export async function maybeUpdateConversationSummary(session, world, { force = false } = {}) {
   const interval = world.conversation_summary_interval_turns;
   if (interval == null || interval <= 0) return;
 
@@ -35,7 +40,8 @@ export async function maybeUpdateConversationSummary(session, world) {
   // ユーザー発言の数で数えるのは、関係値の自動更新など既存の周期処理と単位を
   // 揃えるため(地の文やキャラの発言はモデルの饒舌さで増減するので基準に向かない)。
   const userTurns = pending.filter((row) => row.sender_type === 'user').length;
-  if (userTurns < interval) return;
+  if (!force && userTurns < interval) return;
+  if (pending.length === 0) return;
 
   const transcript = pending.map(formatLine).join('\n');
   if (!transcript.trim()) return;

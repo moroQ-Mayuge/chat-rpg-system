@@ -134,6 +134,9 @@ export function createWorld({
   continuous_room_session_enabled = false,
   memory_impression_interval_turns = null,
   conversation_summary_interval_turns = null,
+  session_boundary_mode = 'time_slot',
+  session_boundary_defer_to_move = false,
+  session_max_turns = null,
 }) {
   const result = db
     .prepare(
@@ -143,8 +146,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -213,6 +216,9 @@ export function createWorld({
       continuous_room_session_enabled ? 1 : 0,
       memory_impression_interval_turns ?? null,
       conversation_summary_interval_turns ?? null,
+      session_boundary_mode ?? 'time_slot',
+      session_boundary_defer_to_move ? 1 : 0,
+      session_max_turns ?? null,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -286,6 +292,9 @@ export function updateWorld(
     continuous_room_session_enabled,
     memory_impression_interval_turns,
     conversation_summary_interval_turns,
+    session_boundary_mode,
+    session_boundary_defer_to_move,
+    session_max_turns,
   },
 ) {
   db.prepare(
@@ -300,7 +309,8 @@ export function updateWorld(
          character_aging = ?, child_appearance = ?, child_maturation_days = ?, child_age_min = ?, child_age_max = ?, birth_lore = ?, child_attribute_tags = ?,
          warp_world_rules = ?, warp_situation = ?, warp_others_mind = ?, deviation_handling = ?, policy_notice = ?, warp_lore = ?,
          child_inherit_parent_tags = ?, child_random_attribute_tags = ?, child_random_tag_count = ?, child_name_style = ?, underwear_random_enabled = ?, author_note = ?, date_format_template = ?, held_items_prompt_limit = ?,
-         continuous_room_session_enabled = ?, memory_impression_interval_turns = ?, conversation_summary_interval_turns = ?
+         continuous_room_session_enabled = ?, memory_impression_interval_turns = ?, conversation_summary_interval_turns = ?,
+         session_boundary_mode = ?, session_boundary_defer_to_move = ?, session_max_turns = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -369,6 +379,9 @@ export function updateWorld(
     continuous_room_session_enabled ? 1 : 0,
     memory_impression_interval_turns ?? null,
     conversation_summary_interval_turns ?? null,
+    session_boundary_mode ?? 'time_slot',
+    session_boundary_defer_to_move ? 1 : 0,
+    session_max_turns ?? null,
     id,
   );
   return getWorld(id);

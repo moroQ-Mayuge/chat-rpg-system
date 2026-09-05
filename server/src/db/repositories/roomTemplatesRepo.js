@@ -65,9 +65,9 @@ export function createRoomTemplate(data) {
     .prepare(
       `INSERT INTO room_templates
         (worldview_mode, name, initial_situation, location_text, location_tags,
-         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, default_pose_id, is_place, is_shop, suppress_auto_population, reset_items_per_session, outfit_acquisition_mode, outfit_attribute_tags, shop_lineup_min, shop_lineup_max, shop_lineup_refresh_unit, shop_lineup_refresh_interval)
+         atmosphere_text, atmosphere_tags, worldview, background_image_path, turns_per_time_slot, attribute_tags, default_pose_id, is_place, is_shop, suppress_auto_population, reset_items_per_session, outfit_acquisition_mode, outfit_attribute_tags, shop_lineup_min, shop_lineup_max, shop_lineup_refresh_unit, shop_lineup_refresh_interval, ends_session_on_enter)
        VALUES (@worldview_mode, @name, @initial_situation, @location_text, @location_tags,
-         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @default_pose_id, @is_place, @is_shop, @suppress_auto_population, @reset_items_per_session, @outfit_acquisition_mode, @outfit_attribute_tags, @shop_lineup_min, @shop_lineup_max, @shop_lineup_refresh_unit, @shop_lineup_refresh_interval)`,
+         @atmosphere_text, @atmosphere_tags, @worldview, @background_image_path, @turns_per_time_slot, @attribute_tags, @default_pose_id, @is_place, @is_shop, @suppress_auto_population, @reset_items_per_session, @outfit_acquisition_mode, @outfit_attribute_tags, @shop_lineup_min, @shop_lineup_max, @shop_lineup_refresh_unit, @shop_lineup_refresh_interval, @ends_session_on_enter)`,
     )
     .run({
       worldview_mode: data.worldview_mode ?? 'inherit',
@@ -92,6 +92,7 @@ export function createRoomTemplate(data) {
       shop_lineup_max: data.shop_lineup_max ?? null,
       shop_lineup_refresh_unit: data.shop_lineup_refresh_unit ?? 'turn',
       shop_lineup_refresh_interval: data.shop_lineup_refresh_interval ?? 0,
+      ends_session_on_enter: data.ends_session_on_enter ? 1 : 0,
     });
   const id = result.lastInsertRowid;
   replaceSlotsForRoom(id, data.slots);
@@ -110,7 +111,8 @@ export function updateRoomTemplate(id, data) {
        suppress_auto_population = @suppress_auto_population, reset_items_per_session = @reset_items_per_session,
        outfit_acquisition_mode = @outfit_acquisition_mode, outfit_attribute_tags = @outfit_attribute_tags,
        shop_lineup_min = @shop_lineup_min, shop_lineup_max = @shop_lineup_max,
-       shop_lineup_refresh_unit = @shop_lineup_refresh_unit, shop_lineup_refresh_interval = @shop_lineup_refresh_interval
+       shop_lineup_refresh_unit = @shop_lineup_refresh_unit, shop_lineup_refresh_interval = @shop_lineup_refresh_interval,
+       ends_session_on_enter = @ends_session_on_enter
      WHERE id = @id`,
   ).run({
     id,
@@ -135,6 +137,7 @@ export function updateRoomTemplate(id, data) {
     shop_lineup_max: data.shop_lineup_max ?? null,
     shop_lineup_refresh_unit: data.shop_lineup_refresh_unit ?? 'turn',
     shop_lineup_refresh_interval: data.shop_lineup_refresh_interval ?? 0,
+    ends_session_on_enter: data.ends_session_on_enter ? 1 : 0,
   });
   replaceSlotsForRoom(id, data.slots);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);

@@ -19,11 +19,24 @@ function attachImagePath(message) {
   return result;
 }
 
-export function listMessagesForSession(sessionId) {
+// options.day: セッション境界モード(0122)の「切らない」モード等で、当日分
+// (またはvoid指定の過去の1日分)だけに絞り込む。省略時は全件(従来どおり)。
+export function listMessagesForSession(sessionId, { day = null } = {}) {
+  const sql =
+    day != null
+      ? 'SELECT * FROM messages WHERE room_session_id = ? AND game_day = ? ORDER BY id ASC'
+      : 'SELECT * FROM messages WHERE room_session_id = ? ORDER BY id ASC';
+  const rows = day != null ? db.prepare(sql).all(sessionId, day) : db.prepare(sql).all(sessionId);
+  return rows.map(attachImagePath);
+}
+
+// そのセッションのログが実際にまたいでいる日の一覧(昇順)。「前の日のログ」
+// リンクや履歴一覧での日分割に使う。
+export function listLogDaysForSession(sessionId) {
   return db
-    .prepare('SELECT * FROM messages WHERE room_session_id = ? ORDER BY id ASC')
+    .prepare('SELECT DISTINCT game_day FROM messages WHERE room_session_id = ? AND game_day IS NOT NULL ORDER BY game_day ASC')
     .all(sessionId)
-    .map(attachImagePath);
+    .map((r) => r.game_day);
 }
 
 // A character's status_snapshot freezes their game-state values at the
@@ -55,10 +68,19 @@ export function createMessage(
   },
 ) {
   const status_snapshot = buildMessageStatusSnapshot(sessionId, sender_type, character_id, room_session_character_id);
+  // game_day(0122)はroom_sessions.log_dayから写す(暦のcurrent_dayではない) ——
+  // turns_per_time_slotがユーザー行の直後に暦を進めるため、暦から付けると
+  // 同じターンのユーザー発言と応答が別の日に分かれてしまう。log_dayは
+  // handleDayRollover(sessionBoundary.js)が区切り行を入れる直前にしか進まない
+  // ので、「日」は常に区切り行で挟まれたブロックと一致する。
+  const { log_day: logDay, entered_day: enteredDay } = db
+    .prepare('SELECT log_day, entered_day FROM room_sessions WHERE id = ?')
+    .get(sessionId);
+  const gameDay = logDay ?? enteredDay;
   const result = db
     .prepare(
-      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot, game_day)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       sessionId,
@@ -70,6 +92,7 @@ export function createMessage(
       emotion_tag,
       mentioned_character_ids ? JSON.stringify(mentioned_character_ids) : null,
       status_snapshot,
+      gameDay,
     );
   touchRoomSession(sessionId);
   // ユーザーの発言でのみ判定する。narration/characterメッセージは1ターンに
@@ -97,6 +120,12 @@ export function countUserTurnsForPlaythrough(playthroughId) {
     .get(playthroughId).c;
 }
 
+// このセッション内だけのユーザーターン数(countUserTurnsForPlaythroughのセッション版)。
+// session_max_turns(0122、1場面の最大ターン数)の判定に使う。
+export function countUserTurnsForSession(sessionId) {
+  return db.prepare("SELECT COUNT(*) AS c FROM messages WHERE room_session_id = ? AND sender_type = 'user'").get(sessionId).c;
+}
+
 // Turn-count-based time advancement trigger (SPEC.md 3.2/3.3): if the room template
 // has turns_per_time_slot set, advance the playthrough's calendar once every N user turns.
 function maybeAutoAdvanceTime(sessionId) {
@@ -104,9 +133,7 @@ function maybeAutoAdvanceTime(sessionId) {
   if (session.status !== 'active') return;
   const template = db.prepare('SELECT turns_per_time_slot FROM room_templates WHERE id = ?').get(session.room_template_id);
   if (!template.turns_per_time_slot) return;
-  const userTurnCount = db
-    .prepare("SELECT COUNT(*) AS c FROM messages WHERE room_session_id = ? AND sender_type = 'user'")
-    .get(sessionId).c;
+  const userTurnCount = countUserTurnsForSession(sessionId);
   if (userTurnCount > 0 && userTurnCount % template.turns_per_time_slot === 0) {
     advanceTime(session.playthrough_id, 1);
   }

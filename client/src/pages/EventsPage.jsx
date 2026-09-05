@@ -105,6 +105,7 @@ const ACTION_TYPES = [
   { value: 'clear_timer', label: 'タイマーを取り消す' },
   { value: 'time_skip', label: '時間跳躍（n日後・n年後）' },
   { value: 'force_room_transfer', label: '強制部屋移動（例: 逮捕→留置場）' },
+  { value: 'end_session', label: '場面を区切る（同じ部屋か指定部屋で再開）' },
 ];
 
 function conditionDefaults(type) {
@@ -198,6 +199,8 @@ function actionDefaults(type) {
     case 'set_scene_situation':
       return { text: '' };
     case 'force_room_transfer':
+      return { target_room_template_id: null, carry_character_ids: [] };
+    case 'end_session':
       return { target_room_template_id: null, carry_character_ids: [] };
     default:
       return {};
@@ -1252,6 +1255,37 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
               {charOptions}
             </select>
           </label>
+        </div>
+      )}
+      {action.action_type === 'end_session' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>再開する部屋</span>
+            <select
+              value={p.target_room_template_id ?? ''}
+              onChange={(e) => setParams({ target_room_template_id: Number(e.target.value) || null })}
+            >
+              <option value="">（同じ部屋で再開）</option>
+              {(roomTemplates ?? []).map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>追加で同行させるキャラ（複数選択・任意。同行中のキャラは自動で引き継がれます）</span>
+            <select
+              multiple
+              value={(p.carry_character_ids ?? []).map(String)}
+              onChange={(e) => setParams({ carry_character_ids: Array.from(e.target.selectedOptions, (o) => Number(o.value)) })}
+            >
+              {charOptions}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
+            このアクションで場面を区切ると、それ以降のアクションは終了済みの場面を対象にしてしまいます。end_sessionはこのイベントのアクション一覧の最後に置いてください。
+          </p>
         </div>
       )}
       {action.action_type === 'advance_time' && (

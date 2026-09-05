@@ -48,6 +48,7 @@ export default function RoomWorldConfigPage() {
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
   const [newConnectionLabel, setNewConnectionLabel] = useState('');
   const [newConnectionCost, setNewConnectionCost] = useState(1);
+  const [newConnectionEndsSession, setNewConnectionEndsSession] = useState(false);
 
   const world = worlds?.find((w) => w.id === worldIdNum);
 
@@ -135,10 +136,21 @@ export default function RoomWorldConfigPage() {
       to_room_template_id: Number(newConnectionTargetId),
       label: newConnectionLabel,
       movement_cost: newConnectionCost,
+      ends_session: newConnectionEndsSession,
     });
     setNewConnectionTargetId('');
     setNewConnectionLabel('');
     setNewConnectionCost(1);
+    setNewConnectionEndsSession(false);
+  }
+
+  // 継続セッション(0121/0122)が有効なWorldでも、この経路を通る移動は常に
+  // 場面を区切る(evaluateBoundaryのconnection.ends_sessionトリガー)。
+  function toggleConnectionEndsSession(c, checked) {
+    return connectionMutations.update.mutateAsync({
+      connectionId: c.id,
+      data: { to_room_template_id: c.to_room_template_id, label: c.label, movement_cost: c.movement_cost, ends_session: checked },
+    });
   }
 
   const connectionTargetCandidates = (worldRooms ?? []).filter((rt) => rt.id !== Number(id));
@@ -324,11 +336,22 @@ export default function RoomWorldConfigPage() {
                       → {c.to_room_name}
                       {c.label && `（${c.label}）`} / 消費{c.movement_cost}
                     </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(c.ends_session)}
+                        onChange={(e) => toggleConnectionEndsSession(c, e.target.checked)}
+                      />
+                      場面の切れ目
+                    </label>
                     <button onClick={() => connectionMutations.remove.mutateAsync(c.id)}>削除</button>
                   </div>
                 ))}
                 {(connections ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ設定されていません</p>}
               </div>
+              <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
+                「場面の切れ目」をONにした経路は、場面を継続するWorld設定でも、この経路を通る移動では必ず場面が区切られます（例: 校門・自宅玄関など）。
+              </p>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <select style={{ flex: 1 }} value={newConnectionTargetId} onChange={(e) => setNewConnectionTargetId(e.target.value)}>
                   <option value="">移動先の部屋を選択</option>
@@ -340,6 +363,10 @@ export default function RoomWorldConfigPage() {
                 </select>
                 <input style={{ width: 100 }} placeholder="ラベル（任意）" value={newConnectionLabel} onChange={(e) => setNewConnectionLabel(e.target.value)} />
                 <input type="number" min="1" style={{ width: 60 }} value={newConnectionCost} onChange={(e) => setNewConnectionCost(Number(e.target.value))} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                  <input type="checkbox" checked={newConnectionEndsSession} onChange={(e) => setNewConnectionEndsSession(e.target.checked)} />
+                  場面の切れ目
+                </label>
                 <button onClick={handleAddConnection} disabled={!newConnectionTargetId}>
                   + 追加
                 </button>

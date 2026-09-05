@@ -5,8 +5,6 @@ import {
   exitRoomSession,
   updateSessionScene,
   setCurrentSceneImage,
-  endSessionForMove,
-  createRoomSession,
   setAccompanying,
   updateParticipantOutfit,
   updateParticipantTransformation,
@@ -24,9 +22,14 @@ import { resolveCategoryOrFallback } from '../db/repositories/itemCategoriesRepo
 import { addItemToInventory, removeItemFromInventory, getHeldQuantity } from '../db/repositories/inventoryRepo.js';
 import { addOutfitToInventory, hasOutfit } from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { getConnection } from '../db/repositories/roomConnectionsRepo.js';
-import { listMessagesForSession, createMessage, countUserTurnsForPlaythrough } from '../db/repositories/messagesRepo.js';
+import {
+  listMessagesForSession,
+  listLogDaysForSession,
+  createMessage,
+  countUserTurnsForPlaythrough,
+} from '../db/repositories/messagesRepo.js';
 import { maybeUpdateConversationSummary } from '../services/conversationSummary.js';
-import { maybeCloseSessionOnTimeSlotChange } from '../services/sessionBoundary.js';
+import { maybeHandleSessionBoundary, evaluateBoundary, closeAndReopenSession, handleDayRollover, runEndOfSceneHooks } from '../services/sessionBoundary.js';
 import { withSessionLock } from '../services/sessionLock.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
@@ -66,14 +69,32 @@ const CONTINUATION_TURN =
   '（プレイヤーは特に発言も行動もしない。この場面の続きを、上記のキャラクターたちの言動と情景として描写してください。）';
 const SURROUNDINGS_TURN = '（プレイヤーは周囲を見回している。この場所の様子や、目に入るもの・人を描写してください。）';
 
+// ?day=current は当日分(session.log_day)だけに絞る。省略時は全件(従来どおり)。
+// 日替わりが一度も起きないWorldではlog_day===entered_dayのまま全メッセージが
+// その値を持つので、常に付けても実質no-op。
+function resolveDayParam(session, rawDay) {
+  if (rawDay === 'current') return session.log_day;
+  if (rawDay != null) return Number(rawDay);
+  return null;
+}
+
 roomSessionsRouter.get('/:id', (req, res) => {
   const session = getRoomSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'not_found' });
-  res.json({ ...session, messages: listMessagesForSession(req.params.id) });
+  const day = resolveDayParam(session, req.query.day);
+  res.json({
+    ...session,
+    messages: listMessagesForSession(req.params.id, { day }),
+    log_days: listLogDaysForSession(req.params.id),
+    view_day: day,
+  });
 });
 
 roomSessionsRouter.get('/:id/messages', (req, res) => {
-  res.json(listMessagesForSession(req.params.id));
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+  const day = resolveDayParam(session, req.query.day);
+  res.json(listMessagesForSession(req.params.id, { day }));
 });
 
 // Resolves "@name" tokens against the session's current participants
@@ -494,9 +515,7 @@ roomSessionsRouter.post('/:id/exit', async (req, res) => {
       const freshSession = getRoomSession(session.id);
       if (!freshSession || freshSession.status !== 'active') return;
       const world = getWorld(getPlaythrough(freshSession.playthrough_id).world_id);
-      await maybeRunRelationshipAutoUpdate(freshSession, world, { force: true });
-      await maybeRunImpressionAutoUpdate(freshSession, world);
-      await maybeRunMemoryAutoExtract(freshSession, world);
+      await runEndOfSceneHooks(freshSession, world);
     });
   }
   res.json(exitRoomSession(req.params.id));
@@ -540,41 +559,48 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
       .filter((p) => p.is_accompanying)
       .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
 
-    // Catch-up relationship auto-update (SPEC.md): same rationale as /exit —
-    // room移動 also ends this room_session's message stream, so any turns
-    // since the last periodic check should be captured before it does.
+    // Catch-up relationship/memory/impression update (SPEC.md、0121ユーザー決定：
+    // 継続セッションでも部屋移動のたびに実行する) — room移動はこのroom_session
+    // の会話の一区切りなので、切る/切らないに関わらず必ず走らせる。
     const moveWorld = getWorld(playthroughWorldId);
-    await maybeRunRelationshipAutoUpdate(freshSession, moveWorld, { force: true });
-    await maybeRunImpressionAutoUpdate(freshSession, moveWorld);
-    await maybeRunMemoryAutoExtract(freshSession, moveWorld);
-    setMemoryImpressionCheckpoint(freshSession.id, countUserTurnsForPlaythrough(freshSession.playthrough_id));
+    await runEndOfSceneHooks(freshSession, moveWorld);
 
-    // 移動コストを先に適用してから境界を判定する(0121)。このコストで時間帯が
-    // 進むなら、それは継続セッションでも「場面の切れ目」そのものなので、継続
-    // モードでも従来どおり新しいセッションを開く。
+    // 移動コストを先に適用してから境界を判定する(0121/0122)。
+    const toRoom = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(connection.to_room_template_id);
     const playthrough = applyMovementCost(freshSession.playthrough_id, connection.movement_cost);
-    const crossedBoundary =
-      playthrough.current_day !== freshSession.entered_day ||
-      playthrough.current_time_slot_index !== freshSession.entered_time_slot_index;
+    const verdict = evaluateBoundary(getRoomSession(freshSession.id), moveWorld, playthrough, {
+      connection,
+      toRoom,
+      isMove: true,
+    });
 
-    if (moveWorld.continuous_room_session_enabled && !crossedBoundary) {
+    if (!verdict.cut) {
       const updated = switchRoomWithinSession(freshSession.id, connection.to_room_template_id);
       // 場所が変わったことを履歴にも残す。会話が地続きになるぶん、地の文が無いと
       // モデルが移動そのものに気づけない。
-      const toRoomName =
-        db.prepare('SELECT name FROM room_templates WHERE id = ?').get(connection.to_room_template_id)?.name ?? '別の場所';
+      const toRoomName = toRoom?.name ?? '別の場所';
       const message = createMessage(freshSession.id, {
         sender_type: 'narration',
         content: `${toRoomName}へ移動した。`,
       });
       broadcast(freshSession.id, { type: 'message_complete', message });
-      return { session: updated, playthrough };
+
+      // 「切らない」モード等で、移動コストによって日が変わった場合はここで
+      // 日替わり処理を行う(会話の途中で時間帯だけが進むケースと同じ扱い)。
+      const after = getRoomSession(freshSession.id);
+      if (playthrough.current_day !== after.log_day) {
+        await handleDayRollover(after, moveWorld, playthrough, { broadcast });
+      }
+      return { session: getRoomSession(freshSession.id), playthrough };
     }
 
-    endSessionForMove(freshSession.id);
-    const newSession = createRoomSession(freshSession.playthrough_id, connection.to_room_template_id, {
+    // セッションを畳んで再開する。HTTP応答でクライアントがそのままnavigateする
+    // ので、ここではWS通知を流さない(二重遷移を避ける)。
+    const newSession = await closeAndReopenSession(getRoomSession(freshSession.id), moveWorld, {
+      targetRoomTemplateId: connection.to_room_template_id,
       carryOverParticipants,
-      fromRoomSessionId: freshSession.id,
+      broadcast: null,
+      reason: verdict.reason,
     });
     return { session: newSession, playthrough };
   });
@@ -1092,10 +1118,11 @@ async function generateReply(
     }
 
     try {
-      // 継続セッション(0121)唯一の切れ目＝時間帯の変化。このターン中に
-      // turns_per_time_slot やイベントで時間帯が進んでいれば、ここで場面を畳んで
-      // 同じ部屋で新しいセッションを開き直す(継続モードが無効なら何もしない)。
-      await maybeCloseSessionOnTimeSlotChange(getRoomSession(sessionId), world, { broadcast });
+      // 継続セッション(0121/0122)の区切り判定。このターン中に
+      // turns_per_time_slot やイベントで時間帯・日・最大ターン数の境界を
+      // 跨いでいれば、モードに応じて場面を畳んで開き直すか(time_slot/day)、
+      // 日替わり処理だけ行う(never、または遅延中)。継続モードが無効なら何もしない。
+      await maybeHandleSessionBoundary(getRoomSession(sessionId), world, { broadcast });
     } catch (err) {
       console.error('Session boundary check failed:', err);
     }

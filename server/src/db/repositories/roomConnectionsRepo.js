@@ -18,20 +18,21 @@ export function getConnection(id) {
   return db.prepare('SELECT * FROM room_connections WHERE id = ?').get(id);
 }
 
-export function createConnection({ world_id, from_room_template_id, to_room_template_id, label, movement_cost }) {
+export function createConnection({ world_id, from_room_template_id, to_room_template_id, label, movement_cost, ends_session }) {
   const result = db
     .prepare(
-      'INSERT INTO room_connections (world_id, from_room_template_id, to_room_template_id, label, movement_cost) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO room_connections (world_id, from_room_template_id, to_room_template_id, label, movement_cost, ends_session) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run(world_id, from_room_template_id, to_room_template_id, label ?? '', movement_cost ?? 1);
+    .run(world_id, from_room_template_id, to_room_template_id, label ?? '', movement_cost ?? 1, ends_session ? 1 : 0);
   return getConnection(result.lastInsertRowid);
 }
 
-export function updateConnection(id, { to_room_template_id, label, movement_cost }) {
-  db.prepare('UPDATE room_connections SET to_room_template_id = ?, label = ?, movement_cost = ? WHERE id = ?').run(
+export function updateConnection(id, { to_room_template_id, label, movement_cost, ends_session }) {
+  db.prepare('UPDATE room_connections SET to_room_template_id = ?, label = ?, movement_cost = ?, ends_session = ? WHERE id = ?').run(
     to_room_template_id,
     label ?? '',
     movement_cost ?? 1,
+    ends_session ? 1 : 0,
     id,
   );
   return getConnection(id);

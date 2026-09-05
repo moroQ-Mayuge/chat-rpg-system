@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   useRoomSession,
   useRoomSessionMutations,
@@ -866,7 +866,10 @@ export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: session, isLoading } = useRoomSession(id);
+  // day:'current' — セッション境界モード(0122)の「切らない」モード等で日替わりの
+  // 区切り行が入っている場合、当日分だけ見る(前日分はセッション履歴から)。
+  // 日替わりが起きないWorldではlog_day===entered_dayのままなので常時付けて実質no-op。
+  const { data: session, isLoading } = useRoomSession(id, { day: 'current' });
   const { sendMessage, craftItem, exit, move, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
@@ -930,12 +933,22 @@ export default function ChatPage() {
   const { data: chatInputSettings } = useChatInputSettings();
   const { data: imagePromptDisplaySettings } = useImagePromptDisplaySettings();
 
-  const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice, refusalNotice } = useChatStream(id, () => {
-    queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
-    // A message_complete event can be a purchase/sale narration (money_changed
-    // fires alongside it), so keep the 所持金 display fresh too.
-    queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
-  });
+  const { isGenerating, error: streamError, sceneChangeNotice, relationshipNotice, refusalNotice } = useChatStream(
+    id,
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['roomSessions', id] });
+      // A message_complete event can be a purchase/sale narration (money_changed
+      // fires alongside it), so keep the 所持金 display fresh too.
+      queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
+    },
+    (newSessionId) => {
+      // セッション境界モード(0122)によりサーバー側でセッションが畳まれ、
+      // 開き直された(forced_room_transfer)。ターン中に起きうるので、この場に
+      // 留まらずクライアントも新しいセッションへ追従する。
+      queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
+      navigate(`/room-sessions/${newSessionId}/chat`);
+    },
+  );
 
   // all_participants includes departed characters (unlike session.participants,
   // which is active-only and drives the live UI elsewhere) so past messages
@@ -1005,8 +1018,20 @@ export default function ChatPage() {
   }
 
   async function handleMove(connectionId) {
-    const result = await move.mutateAsync(connectionId);
-    navigate(`/room-sessions/${result.session.id}/chat`);
+    try {
+      const result = await move.mutateAsync(connectionId);
+      navigate(`/room-sessions/${result.session.id}/chat`);
+    } catch (err) {
+      // セッション境界モード(0122)下では、このセッションが/moveと同時に
+      // 別経路(forced_room_transfer)で既に畳まれていることがある——通常は
+      // useChatStreamのws通知が先に追従するが、念のためのフォールバック。
+      if (err.message === 'session_already_ended') {
+        const active = await playthroughsApi.getActiveSession(session.playthrough_id);
+        if (active) navigate(`/room-sessions/${active.id}/chat`);
+        return;
+      }
+      throw err;
+    }
   }
 
   async function toggleAccompanying(characterId, current) {
@@ -1030,6 +1055,14 @@ export default function ChatPage() {
         </p>
         {!session.room_is_place && <button onClick={handleExit}>部屋を退出する</button>}
       </div>
+
+      {(session.log_days?.length ?? 0) > 1 && (
+        <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px', flexShrink: 0 }}>
+          <Link to={`/room-sessions/${id}/log?day=${[...session.log_days].reverse().find((d) => d < session.log_day)}`}>
+            ← 前の日のログを見る
+          </Link>
+        </p>
+      )}
 
       {session.room_is_place && (
         <details style={{ marginBottom: 6, flexShrink: 0 }} open={(connections?.length ?? 0) <= 3}>
