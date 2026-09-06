@@ -1,4 +1,5 @@
 import { db } from '../connection.js';
+import { getUnassignedWorld } from './worldsRepo.js';
 
 // Membership: which Worlds use which room (many-to-many). Replaces the old
 // room_templates.world_id NOT NULL FK for "which World can this room be
@@ -67,6 +68,12 @@ export function attachRoomToWorld(worldId, roomTemplateId) {
       db.prepare('UPDATE room_templates SET attribute_tags = ? WHERE id = ?').run(world.attribute_tags, roomTemplateId);
     }
   }
+  // 実Worldへ新たに紐付いたら「未所属」バケツからは外す——未所属は「本当にどの
+  // 実Worldにも属していない」ことを表すためのものなので、実Worldと併存させない。
+  const bucket = getUnassignedWorld();
+  if (bucket && worldId !== bucket.id) {
+    db.prepare('DELETE FROM world_room_templates WHERE world_id = ? AND room_template_id = ?').run(bucket.id, roomTemplateId);
+  }
   return { attached: true };
 }
 
@@ -90,5 +97,13 @@ export function detachRoomFromWorld(worldId, roomTemplateId) {
     db.prepare('DELETE FROM world_room_templates WHERE world_id = ? AND room_template_id = ?').run(worldId, roomTemplateId);
   });
   tx();
+  // これでどの実Worldにも属さなくなったら「未所属」へ自動的に紐付け直す——
+  // でないと部屋がどのWorldからも見えなくなり、一覧からも実質見失われる
+  // (0030の脱World化でこの自動フォールバックが失われていた既知のバグ)。
+  const bucket = getUnassignedWorld();
+  if (bucket) {
+    const remainingReal = listWorldsForRoomTemplate(roomTemplateId).filter((w) => !w.is_unassigned_bucket).length;
+    if (remainingReal === 0) attachRoomToWorld(bucket.id, roomTemplateId);
+  }
   return { detached: true };
 }

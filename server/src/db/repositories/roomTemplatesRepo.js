@@ -5,9 +5,10 @@ import {
   listCandidateCategoriesForRoom as listCandidateItemCategoriesForRoom,
   replaceCandidateCategoriesForRoom as replaceCandidateItemCategoriesForRoom,
 } from './roomItemCategoriesRepo.js';
-import { listWorldsForRoomTemplate, getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
+import { listWorldsForRoomTemplate, getTagMatchMaxCount, attachRoomToWorld } from './worldRoomTemplatesRepo.js';
 import { listAssignmentsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPropsRepo.js';
+import { getUnassignedWorld } from './worldsRepo.js';
 
 // Rooms are shared master data (see 0030_room_world_decoupling.sql): a room
 // no longer belongs to a single World. Slots (abstract participant "枠") and
@@ -98,6 +99,11 @@ export function createRoomTemplate(data) {
   replaceSlotsForRoom(id, data.slots);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
   replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);
+  // 新規作成直後はどのWorldにも属していないので、見失われないよう「未所属」
+  // バケツへ紐付けておく(0030の脱World化で失われていたフォールバックの復元)。
+  // 実Worldへアタッチされた時点でattachRoomToWorld側が未所属を自動的に外す。
+  const bucket = getUnassignedWorld();
+  if (bucket) attachRoomToWorld(bucket.id, id);
   return getRoomTemplate(id);
 }
 

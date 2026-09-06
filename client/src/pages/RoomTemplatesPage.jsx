@@ -46,9 +46,12 @@ export default function RoomTemplatesPage() {
   if (isLoading || !worlds) return <p>読み込み中...</p>;
 
   // Rooms are shared master data now (0030_room_world_decoupling.sql) — a
-  // room can legitimately appear in more than one World's group here.
-  // Rooms attached to zero Worlds fall into a synthetic "未分類" group,
-  // same convention as prop_categories/item_categories' common fallback.
+  // room can legitimately appear in more than one World's group here. A room
+  // attached to zero real Worlds always carries the real "未所属" World's id
+  // in world_ids instead (worldRoomTemplatesRepo.js's auto attach/detach
+  // fallback), so it groups under that World's own name here like any other
+  // -- the groupByKeys `unassignedLabel` fallback below is now unreachable
+  // for rooms specifically (kept as a defensive default, not load-bearing).
   const groups = groupByKeys(
     templates,
     (template) => template.world_ids,

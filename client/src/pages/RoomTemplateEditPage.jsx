@@ -109,7 +109,8 @@ export default function RoomTemplateEditPage() {
   }, [existing]);
 
   useEffect(() => {
-    if (attachedWorlds?.length > 0 && !bgGenerateWorldId) setBgGenerateWorldId(String(attachedWorlds[0].id));
+    const real = (attachedWorlds ?? []).filter((w) => !w.is_unassigned_bucket);
+    if (real.length > 0 && !bgGenerateWorldId) setBgGenerateWorldId(String(real[0].id));
   }, [attachedWorlds, bgGenerateWorldId]);
 
   function addSlot() {
@@ -206,6 +207,11 @@ export default function RoomTemplateEditPage() {
 
   const attachedWorldIds = new Set((attachedWorlds ?? []).map((w) => w.id));
   const attachCandidates = (worlds ?? []).filter((w) => !w.is_unassigned_bucket && !attachedWorldIds.has(w.id));
+  // 「未所属」は実Worldへ何もアタッチされていない事を示す自動フォールバック
+  // (roomTemplatesRepo.js/worldRoomTemplatesRepo.js側で自動的に付け外しされる)
+  // なので、実World一覧としては見せない——ここに出すと「未所属の中で部屋を設定する」
+  // ような誤操作を誘発する。
+  const realAttachedWorlds = (attachedWorlds ?? []).filter((w) => !w.is_unassigned_bucket);
 
   if (!worlds || !propCategories) return <p>読み込み中...</p>;
 
@@ -356,7 +362,7 @@ export default function RoomTemplateEditPage() {
             >
               {!form.background_image_path && '未設定'}
             </div>
-            {!isNew && (attachedWorlds?.length ?? 0) > 0 && (
+            {!isNew && realAttachedWorlds.length > 0 && (
               <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>
                 どのWorldのスタイルで生成するか
                 <select
@@ -364,7 +370,7 @@ export default function RoomTemplateEditPage() {
                   value={bgGenerateWorldId}
                   onChange={(e) => setBgGenerateWorldId(e.target.value)}
                 >
-                  {attachedWorlds.map((w) => (
+                  {realAttachedWorlds.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
                     </option>
@@ -657,7 +663,7 @@ export default function RoomTemplateEditPage() {
             <div style={{ borderTop: '1px solid #ddd', paddingTop: 10 }}>
               <p style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>アタッチ済みWorld</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-                {(attachedWorlds ?? []).map((w) => (
+                {realAttachedWorlds.map((w) => (
                   <div
                     key={w.id}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, border: '1px solid #eee', borderRadius: 6, padding: '4px 8px' }}
@@ -669,7 +675,11 @@ export default function RoomTemplateEditPage() {
                     <button onClick={() => detach.mutateAsync(w.id)}>切り離す</button>
                   </div>
                 ))}
-                {(attachedWorlds ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだどのWorldにもアタッチされていません</p>}
+                {realAttachedWorlds.length === 0 && (
+                  <p style={{ fontSize: 12, color: '#888' }}>
+                    どのWorldにもアタッチされていません（未所属）。実際に使うにはいずれかのWorldへアタッチしてください。
+                  </p>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <select style={{ flex: 1 }} value={attachWorldId} onChange={(e) => setAttachWorldId(e.target.value)}>
