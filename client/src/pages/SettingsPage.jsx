@@ -262,6 +262,9 @@ function ImageGenerationSettingRow({ setting }) {
         cfg_scale: Number(form.cfg_scale),
         denoising_strength: Number(form.denoising_strength),
         sampler_name: form.sampler_name,
+        // sceneのみ画面に出すが、列自体は全kind共通なので他kindでも既存値を
+        // そのまま送り返す(undefinedを送るとNOT NULL列でSQLiteエラーになる)。
+        scene_tag_translation_prompt: form.scene_tag_translation_prompt,
       },
     });
   }
@@ -339,6 +342,22 @@ function ImageGenerationSettingRow({ setting }) {
               )}
             </div>
           </label>
+
+          {setting.image_kind === 'scene' && (
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: 11, color: '#888' }}>
+                シーン描写→タグ変換プロンプト（[SCENE_CHANGE]のLLM出力をdanbooruタグに変換する中間ステップ用のシステムプロンプト）
+              </span>
+              <textarea
+                style={{ display: 'block', width: '100%', height: 46, fontFamily: 'monospace', fontSize: 12 }}
+                value={form.scene_tag_translation_prompt}
+                onChange={(e) => set('scene_tag_translation_prompt', e.target.value)}
+              />
+              <p style={{ fontSize: 10, color: '#aaa', margin: '2px 0 0' }}>
+                半角カンマ区切りの英単語タグだけを出力させる指示にしてください。ここで作られたタグが上のプロンプトテンプレートの{'${location_tags}'}に入ります。
+              </p>
+            </label>
+          )}
 
           <label style={{ display: 'block' }}>
             <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト</span>

@@ -8,6 +8,7 @@ import { resolveParticipantImageTags } from './outfitTagCategories.js';
 import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
+import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 
 export const MAIN_WIDTH = 1216;
 export const MAIN_HEIGHT = 832;
@@ -17,11 +18,8 @@ export const MAIN_HEIGHT = 832;
 // needs structured tags (mirrors characterAssist.js's suggestDanbooruTags).
 export async function suggestSceneTags(description) {
   if (!description) return '';
-  const systemPrompt = [
-    '以下の日本語のシーン描写を、画像生成に使うdanbooruタグに変換してください。',
-    '出力は半角カンマ区切りの英単語タグのみとし、日本語・説明文・見出し・表・箇条書き記号は一切含めないでください。',
-    '出力形式の例：classroom, indoors, window, sunset, empty_desks',
-  ].join('\n');
+  // 設定画面(image_generation_settings、kind='scene')で編集可能。
+  const systemPrompt = getImageGenerationSettings('scene').scene_tag_translation_prompt;
 
   const rawText = await generateChatCompletion({
     messages: [
