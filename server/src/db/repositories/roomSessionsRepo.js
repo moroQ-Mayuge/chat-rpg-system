@@ -159,7 +159,8 @@ function attachParticipants(session) {
   const allParticipants = db
     .prepare(
       `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name,
-              rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying
+              rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying,
+              rsc.auto_outfit_image_last_turn
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
        LEFT JOIN character_transformations ct ON ct.id = rsc.current_transformation_id
@@ -507,6 +508,14 @@ export function setLogDay(sessionId, day) {
 // 消費させたい時にevaluateBoundaryがセットする。
 export function setBoundaryPending(sessionId, reason) {
   db.prepare('UPDATE room_sessions SET boundary_pending = ? WHERE id = ?').run(reason ?? '', sessionId);
+}
+
+// 脱衣・着替え時の自動画像生成(0125)のクールダウン用チェックポイント。キャラ単位
+// (room_session_characters行単位)——脱衣状態がキャラごとに独立しているため、
+// relationship_update_last_turn等のセッション単位のチェックポイントとは別に
+// 参加者テーブル側に持つ。
+export function setAutoOutfitImageCheckpoint(roomSessionCharacterId, turnNumber) {
+  db.prepare('UPDATE room_session_characters SET auto_outfit_image_last_turn = ? WHERE id = ?').run(turnNumber, roomSessionCharacterId);
 }
 
 export function setAccompanying(sessionId, characterId, isAccompanying) {

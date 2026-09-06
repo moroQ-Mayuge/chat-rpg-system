@@ -29,6 +29,11 @@ import {
   countUserTurnsForPlaythrough,
 } from '../db/repositories/messagesRepo.js';
 import { maybeUpdateConversationSummary } from '../services/conversationSummary.js';
+import {
+  maybeGenerateImageOnUndress,
+  maybeGenerateImageOnOutfitChangeEvent,
+  maybeGenerateImageOnDirectWear,
+} from '../services/autoOutfitImage.js';
 import { maybeHandleSessionBoundary, evaluateBoundary, closeAndReopenSession, handleDayRollover, runEndOfSceneHooks } from '../services/sessionBoundary.js';
 import { withSessionLock } from '../services/sessionLock.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
@@ -463,6 +468,7 @@ roomSessionsRouter.post('/:id/wear-item', (req, res) => {
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });
+  triggerAutoOutfitImageForWear(req.params.id, character_id);
 });
 
 // 衣装マスタ専用の所持経済版(0096)。itemsを介さずplaythrough_outfit_inventoryを
@@ -480,7 +486,18 @@ roomSessionsRouter.post('/:id/wear-outfit', (req, res) => {
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });
+  triggerAutoOutfitImageForWear(req.params.id, character_id);
 });
+
+// /wear-item・/wear-outfit(イベントエンジンを経由しない着替え)向け。API応答を
+// 画像生成の待ち時間で遅らせないよう、res.json後にfire-and-forgetで呼ぶ。
+function triggerAutoOutfitImageForWear(sessionId, characterId) {
+  const session = getRoomSession(sessionId);
+  const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
+  maybeGenerateImageOnDirectWear(session, world, Number(characterId)).catch((err) => {
+    console.error('Auto outfit image trigger failed:', err);
+  });
+}
 
 // 「変身のお願い」(実装順3)。character_transformations は character_id 必須の
 // 1キャラ専用なので、対象キャラのものでない変身定義は実装順2のイベント
@@ -1062,6 +1079,16 @@ async function generateReply(
     }
     if (world.notify_relationship_changes) {
       broadcastRelationshipChanges(sessionId, fired);
+    }
+
+    try {
+      // 脱衣コマンド実行時・衣装の着替え(change_outfitイベント)時の自動画像生成(0125)。
+      // イベント発火の結果(fired)を見るだけなので、イベント自体の成否に影響しない
+      // 独立したtry/catchにする。
+      await maybeGenerateImageOnUndress(session, world, fired);
+      await maybeGenerateImageOnOutfitChangeEvent(session, world, fired);
+    } catch (err) {
+      console.error('Auto outfit image trigger failed:', err);
     }
   } catch (err) {
     console.error('Event engine run failed:', err);

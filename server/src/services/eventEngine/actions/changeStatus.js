@@ -18,13 +18,17 @@ export async function executeChangeStatus(params, execCtx) {
           instance_id: execCtx.instanceHintByCharacterId?.get(id),
         }));
 
+  // status_id/operationをそのまま乗せておく(0125): 自動画像生成フック
+  // (autoOutfitImage.js)がfired[].actionResultsから「今回どのstatusが
+  // 付与/解除されたか」を判定するのに必要——grantStatus/removeStatusの
+  // 戻り値自体にはstatus_idが含まれないため。
   const changes = targets.map(({ character_id: id, instance_id }) => {
     const statusCtx = { playthroughId: execCtx.playthroughId, roomSessionId: execCtx.sessionId, roomSessionCharacterId: instance_id };
-    if (operation === 'grant') return { character_id: id, ...grantStatus(id, status_id, statusCtx, locked ?? false) };
-    if (operation === 'remove') return { character_id: id, ...removeStatus(id, status_id, statusCtx) };
-    if (operation === 'lock') return { character_id: id, ...setStatusLocked(id, status_id, statusCtx, true) };
-    if (operation === 'unlock') return { character_id: id, ...setStatusLocked(id, status_id, statusCtx, false) };
-    return { character_id: id, skipped: true };
+    if (operation === 'grant') return { character_id: id, status_id, operation, ...grantStatus(id, status_id, statusCtx, locked ?? false) };
+    if (operation === 'remove') return { character_id: id, status_id, operation, ...removeStatus(id, status_id, statusCtx) };
+    if (operation === 'lock') return { character_id: id, status_id, operation, ...setStatusLocked(id, status_id, statusCtx, true) };
+    if (operation === 'unlock') return { character_id: id, status_id, operation, ...setStatusLocked(id, status_id, statusCtx, false) };
+    return { character_id: id, status_id, operation, skipped: true };
   });
   return { changes };
 }

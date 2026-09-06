@@ -67,6 +67,9 @@ const emptyForm = {
   session_max_turns: '',
   pose_enabled: false,
   scene_change_enabled: true,
+  undress_image_generation_enabled: false,
+  outfit_change_image_generation_enabled: false,
+  auto_outfit_image_cooldown_turns: 2,
   cycle_enabled: false,
   cycle_length_days: 28,
   pregnancy_enabled: false,
@@ -193,6 +196,9 @@ export default function WorldsPage() {
         session_max_turns: world.session_max_turns ?? '',
         pose_enabled: Boolean(world.pose_enabled),
         scene_change_enabled: Boolean(world.scene_change_enabled),
+        undress_image_generation_enabled: Boolean(world.undress_image_generation_enabled),
+        outfit_change_image_generation_enabled: Boolean(world.outfit_change_image_generation_enabled),
+        auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
         pregnancy_enabled: world.pregnancy_enabled ?? false,
@@ -248,6 +254,7 @@ export default function WorldsPage() {
       conversation_summary_interval_turns:
         form.conversation_summary_interval_turns === '' ? null : Number(form.conversation_summary_interval_turns),
       session_max_turns: form.session_max_turns === '' ? null : Number(form.session_max_turns),
+      auto_outfit_image_cooldown_turns: form.auto_outfit_image_cooldown_turns === '' ? 0 : Number(form.auto_outfit_image_cooldown_turns),
     };
     if (editingId === 'new') {
       await create.mutateAsync(payload);
@@ -885,6 +892,49 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               OFFにすると、LLMには[SCENE_CHANGE]タグの使い方自体を教えなくなり、万一タグが出力されても無視して画像生成しません。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>自動画像生成（脱衣・着替え時）</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              脱衣コマンドの実行や衣装の着替えに合わせて、そのキャラの画像を自動生成します。生成内容（プロンプト・サイズ等）は「設定」画面の画像生成設定「イベント画像」を共有します。画像生成には数秒〜数十秒かかり、他の自動生成（シーン画像・イベント画像）と同じ待ち行列で順番に処理されます。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.undress_image_generation_enabled}
+                onChange={(e) => setForm({ ...form, undress_image_generation_enabled: e.target.checked })}
+              />
+              脱衣コマンド実行時に自動生成する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              「乱れ対象フィールド」「乱れスタイル」（脱衣ラダー）が設定されたキャラ状態が付与・解除された時に生成します。それ以外の状態変化（好感度の変化など）では生成しません。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.outfit_change_image_generation_enabled}
+                onChange={(e) => setForm({ ...form, outfit_change_image_generation_enabled: e.target.checked })}
+              />
+              衣装を着替えた時に自動生成する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              イベントアクション「衣装変更」、および参加者パネルからの「着る」操作が対象です。
+            </p>
+
+            <label style={{ display: 'block', marginTop: 10 }}>
+              <span style={{ fontSize: 11, color: '#888' }}>生成の最小間隔（ターン数、0で毎回生成）</span>
+              <input
+                type="number"
+                min="0"
+                style={{ width: 80, display: 'block' }}
+                value={form.auto_outfit_image_cooldown_turns}
+                onChange={(e) => setForm({ ...form, auto_outfit_image_cooldown_turns: e.target.value })}
+              />
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              脱衣コマンドは1場面で連続して実行されやすいため、キャラごとに直近の自動生成から この件数未満のターンでは生成をスキップします（脱衣・着替え共通のクールダウンです）。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠しやすさの周期</h4>

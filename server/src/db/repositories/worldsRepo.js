@@ -19,6 +19,8 @@ function parseWorld(row) {
     // フィールドと扱いを揃える。
     continuous_room_session_enabled: Boolean(row.continuous_room_session_enabled),
     session_boundary_defer_to_move: Boolean(row.session_boundary_defer_to_move),
+    undress_image_generation_enabled: Boolean(row.undress_image_generation_enabled),
+    outfit_change_image_generation_enabled: Boolean(row.outfit_change_image_generation_enabled),
     cycle_enabled: Boolean(row.cycle_enabled),
     pregnancy_enabled: Boolean(row.pregnancy_enabled),
     warp_world_rules: Boolean(row.warp_world_rules),
@@ -144,6 +146,9 @@ export function createWorld({
   session_boundary_mode = 'time_slot',
   session_boundary_defer_to_move = false,
   session_max_turns = null,
+  undress_image_generation_enabled = false,
+  outfit_change_image_generation_enabled = false,
+  auto_outfit_image_cooldown_turns = 2,
 }) {
   const result = db
     .prepare(
@@ -153,8 +158,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, scene_change_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, scene_change_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns, undress_image_generation_enabled, outfit_change_image_generation_enabled, auto_outfit_image_cooldown_turns)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -227,6 +232,9 @@ export function createWorld({
       session_boundary_mode ?? 'time_slot',
       session_boundary_defer_to_move ? 1 : 0,
       session_max_turns ?? null,
+      undress_image_generation_enabled ? 1 : 0,
+      outfit_change_image_generation_enabled ? 1 : 0,
+      auto_outfit_image_cooldown_turns ?? 2,
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -304,6 +312,9 @@ export function updateWorld(
     session_boundary_mode,
     session_boundary_defer_to_move,
     session_max_turns,
+    undress_image_generation_enabled,
+    outfit_change_image_generation_enabled,
+    auto_outfit_image_cooldown_turns,
   },
 ) {
   db.prepare(
@@ -319,7 +330,8 @@ export function updateWorld(
          warp_world_rules = ?, warp_situation = ?, warp_others_mind = ?, deviation_handling = ?, policy_notice = ?, warp_lore = ?,
          child_inherit_parent_tags = ?, child_random_attribute_tags = ?, child_random_tag_count = ?, child_name_style = ?, underwear_random_enabled = ?, author_note = ?, date_format_template = ?, held_items_prompt_limit = ?,
          continuous_room_session_enabled = ?, memory_impression_interval_turns = ?, conversation_summary_interval_turns = ?,
-         session_boundary_mode = ?, session_boundary_defer_to_move = ?, session_max_turns = ?
+         session_boundary_mode = ?, session_boundary_defer_to_move = ?, session_max_turns = ?,
+         undress_image_generation_enabled = ?, outfit_change_image_generation_enabled = ?, auto_outfit_image_cooldown_turns = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -392,6 +404,9 @@ export function updateWorld(
     session_boundary_mode ?? 'time_slot',
     session_boundary_defer_to_move ? 1 : 0,
     session_max_turns ?? null,
+    undress_image_generation_enabled ? 1 : 0,
+    outfit_change_image_generation_enabled ? 1 : 0,
+    auto_outfit_image_cooldown_turns ?? 2,
     id,
   );
   return getWorld(id);
