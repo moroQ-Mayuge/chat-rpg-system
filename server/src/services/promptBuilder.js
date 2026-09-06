@@ -436,7 +436,9 @@ function buildSystemPrompt(session, participants, options = {}) {
     'あなたは上記のキャラクターたちになりきって、日本語で応答してください。以下の出力フォーマットに厳密に従ってください。',
     '[キャラ名]: セリフ本文 [EMOTION:感情キー]',
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
-    '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）',
+    world.scene_change_enabled
+      ? '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）'
+      : null,
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（具体的な物がその場で見つかった・キャラクターが差し出した場合のみ。世間話や比喩表現では使わない）。これは持ち物に直接入るのではなく「その場で拾える状態」になります。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
     // 衣装は厳選プリセットでLLMの即興対象ではないため、ITEM_GRANTと違い常時使える
     // タグにはしない——買い物モード（衣装リストが実在する時）限定の案内にする。
@@ -463,12 +465,12 @@ function buildSystemPrompt(session, participants, options = {}) {
     surroundingsBlock,
     shopBlock,
     statBlock,
-    '',
-    '出力例（場所が変わった場合）：',
-    '[SCENE_CHANGE]: 夕暮れの校門前',
-    '[みお]: やっと着いたね [EMOTION:smile]',
-    '[NARRATION]: 二人は連れ立って校門をくぐった。',
-    '',
+    world.scene_change_enabled ? '' : null,
+    world.scene_change_enabled ? '出力例（場所が変わった場合）：' : null,
+    world.scene_change_enabled ? '[SCENE_CHANGE]: 夕暮れの校門前' : null,
+    world.scene_change_enabled ? '[みお]: やっと着いたね [EMOTION:smile]' : null,
+    world.scene_change_enabled ? '[NARRATION]: 二人は連れ立って校門をくぐった。' : null,
+    world.scene_change_enabled ? '' : null,
     '出力例（キャラクターが物を渡した場合）：',
     '[みお]: これ、あげる [EMOTION:smile]',
     `[ITEM_GRANT: 手作りクッキー|${itemCategoryNames[0] ?? '未分類'}]: みおが焼いた素朴な味のクッキー`,

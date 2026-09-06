@@ -66,6 +66,7 @@ const emptyForm = {
   session_boundary_defer_to_move: false,
   session_max_turns: '',
   pose_enabled: false,
+  scene_change_enabled: true,
   cycle_enabled: false,
   cycle_length_days: 28,
   pregnancy_enabled: false,
@@ -191,6 +192,7 @@ export default function WorldsPage() {
         session_boundary_defer_to_move: Boolean(world.session_boundary_defer_to_move),
         session_max_turns: world.session_max_turns ?? '',
         pose_enabled: Boolean(world.pose_enabled),
+        scene_change_enabled: Boolean(world.scene_change_enabled),
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
         pregnancy_enabled: world.pregnancy_enabled ?? false,
@@ -866,6 +868,23 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               OFFの間は部屋の初期ポーズが適用されず、イベントの「ポーズ変更」アクションとLLMの[POSE:xxx]タグも無視されます（画像生成にもポーズタグは含まれません）。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>場面転換時の自動画像生成</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              LLMが応答中に[SCENE_CHANGE]タグを出すと、その場の情景画像を自動生成します。生成内容（プロンプト）自体は「設定」画面の画像生成設定「シーン画像」で編集できます。ここではこの機能自体のON/OFFのみ切り替えます。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.scene_change_enabled}
+                onChange={(e) => setForm({ ...form, scene_change_enabled: e.target.checked })}
+              />
+              場面転換時にシーン画像を自動生成する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              OFFにすると、LLMには[SCENE_CHANGE]タグの使い方自体を教えなくなり、万一タグが出力されても無視して画像生成しません。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>妊娠しやすさの周期</h4>

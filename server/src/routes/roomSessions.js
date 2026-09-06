@@ -736,6 +736,11 @@ async function generateReply(
     if (!parsed) return;
 
     if (parsed.type === 'scene_change') {
+      // Defense in depth: even though promptBuilder.js only teaches the model
+      // this tag when world.scene_change_enabled is on, a base model could
+      // still emit it unprompted (same class of risk as ITEM_GRANT/STAT_CHANGE
+      // hallucination) -- ignore it outright when the World has this off.
+      if (!world.scene_change_enabled) return;
       broadcast(sessionId, { type: 'scene_change_detected', description: parsed.description });
       enqueueImageJob(() => generateSceneImage(sessionId, parsed.description));
       return;

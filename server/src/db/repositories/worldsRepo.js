@@ -13,6 +13,12 @@ function parseWorld(row) {
     memory_auto_extract_enabled: Boolean(row.memory_auto_extract_enabled),
     memory_editing_visible: Boolean(row.memory_editing_visible),
     pose_enabled: Boolean(row.pose_enabled),
+    scene_change_enabled: Boolean(row.scene_change_enabled),
+    // 0122で追加した際にここへの追記を忘れていた2つ。クライアント側は
+    // Boolean()で個別に包んでいたため機能的には問題なかったが、他のboolean
+    // フィールドと扱いを揃える。
+    continuous_room_session_enabled: Boolean(row.continuous_room_session_enabled),
+    session_boundary_defer_to_move: Boolean(row.session_boundary_defer_to_move),
     cycle_enabled: Boolean(row.cycle_enabled),
     pregnancy_enabled: Boolean(row.pregnancy_enabled),
     warp_world_rules: Boolean(row.warp_world_rules),
@@ -104,6 +110,7 @@ export function createWorld({
   memory_auto_extract_enabled = false,
   memory_editing_visible = true,
   pose_enabled = false,
+  scene_change_enabled = true,
   cycle_enabled = false,
   cycle_length_days = 28,
   llm_value_delta_cap = null,
@@ -146,8 +153,8 @@ export function createWorld({
          movement_points_per_time_slot, max_response_tokens, notify_relationship_changes, status_display_settings,
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
-         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, scene_change_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -186,6 +193,7 @@ export function createWorld({
       memory_auto_extract_enabled ? 1 : 0,
       memory_editing_visible ? 1 : 0,
       pose_enabled ? 1 : 0,
+      scene_change_enabled ? 1 : 0,
       cycle_enabled ? 1 : 0,
       cycle_length_days ?? 28,
       llm_value_delta_cap ?? null,
@@ -262,6 +270,7 @@ export function updateWorld(
     memory_auto_extract_enabled,
     memory_editing_visible,
     pose_enabled,
+    scene_change_enabled,
     cycle_enabled,
     cycle_length_days,
     llm_value_delta_cap,
@@ -304,7 +313,7 @@ export function updateWorld(
          attribute_tags = ?, movement_points_per_time_slot = ?, max_response_tokens = ?, notify_relationship_changes = ?, status_display_settings = ?,
          currency_enabled = ?, currency_unit = ?, initial_money = ?, self_stat_auto_update_enabled = ?, relationship_update_interval_turns = ?, mature_content_mode_enabled = ?,
          weather_tag_map = ?, time_slot_tag_map = ?, impression_auto_update_enabled = ?, refusal_detection_enabled = ?,
-         memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?, pose_enabled = ?,
+         memory_prompt_limit = ?, memory_auto_extract_enabled = ?, memory_editing_visible = ?, pose_enabled = ?, scene_change_enabled = ?,
          cycle_enabled = ?, cycle_length_days = ?, llm_value_delta_cap = ?, pregnancy_enabled = ?, gestation_days = ?, conception_rate_multiplier = ?,
          character_aging = ?, child_appearance = ?, child_maturation_days = ?, child_age_min = ?, child_age_max = ?, birth_lore = ?, child_attribute_tags = ?,
          warp_world_rules = ?, warp_situation = ?, warp_others_mind = ?, deviation_handling = ?, policy_notice = ?, warp_lore = ?,
@@ -349,6 +358,7 @@ export function updateWorld(
     memory_auto_extract_enabled ? 1 : 0,
     memory_editing_visible ? 1 : 0,
     pose_enabled ? 1 : 0,
+    scene_change_enabled ? 1 : 0,
     cycle_enabled ? 1 : 0,
     cycle_length_days ?? 28,
     llm_value_delta_cap ?? null,
