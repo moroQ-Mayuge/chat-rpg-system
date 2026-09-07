@@ -68,6 +68,7 @@ const CONDITION_TYPES = [
   { value: 'turn_count', label: '経過ターン数' },
   { value: 'keyword', label: 'キーワード検出' },
   { value: 'relationship_threshold', label: '関係性閾値' },
+  { value: 'relationship_probability', label: '関係値確率（同行可否など）' },
   { value: 'flag_state', label: 'フラグ状態' },
   { value: 'participant_count', label: '同席人数' },
   { value: 'has_item', label: '所持アイテム' },
@@ -88,6 +89,7 @@ const ACTION_TYPES = [
   { value: 'change_outfit', label: '衣装変更' },
   { value: 'transform_character', label: '変身' },
   { value: 'set_pose', label: 'ポーズ変更' },
+  { value: 'set_accompanying', label: '同行フラグ設定' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'make_item_available', label: 'アイテムを拾える状態にする' },
@@ -118,6 +120,8 @@ function conditionDefaults(type) {
       return { keywords: [], match_mode: 'any', target: 'any', case_sensitive: false };
     case 'relationship_threshold':
       return { character_id: null, axis_id: null, comparison: '>=', value: 50 };
+    case 'relationship_probability':
+      return { character_id: null, axis_ids: [] };
     case 'flag_state':
       return { flag_key: '', comparison: '==', value: 'true' };
     case 'participant_count':
@@ -167,6 +171,8 @@ function actionDefaults(type) {
       return { character_id: null, transformation_id: null };
     case 'set_pose':
       return { character_id: null, pose_id: null };
+    case 'set_accompanying':
+      return { character_id: null, is_accompanying: true };
     case 'advance_time':
       return { slots: 1 };
     case 'make_item_available':
@@ -482,6 +488,47 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
           {p.character_id === 'mentioned' && (
             <MentionedLimitField value={p.mentioned_limit} onChange={(v) => setParams({ mentioned_limit: v })} />
           )}
+        </div>
+      )}
+
+      {condition.condition_type === 'relationship_probability' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="any_present">同席者の誰か1人でも</option>
+              <option value="mentioned">@メンション中のキャラ</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ gridColumn: 'span 2' }}>
+            <span style={label11}>関係性軸（複数選択、最も正規化値が高い軸を確率として採用）</span>
+            <select
+              multiple
+              value={(p.axis_ids ?? []).map(String)}
+              onChange={(e) => setParams({ axis_ids: Array.from(e.target.selectedOptions, (o) => Number(o.value)) })}
+            >
+              {axes.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            例：信頼度・恋愛度・依存度を選ぶと、対象キャラのこの3軸のうち最も高い(現在値-最小値)/(最大値-最小値)を確率としてこの条件の成否を判定します（同行を頼む/求愛イベント等）。
+          </p>
         </div>
       )}
 
@@ -1224,6 +1271,36 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
                   {pm.name}
                 </option>
               ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {action.action_type === 'set_accompanying' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'mentioned' ? 'mentioned' : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
+              {charOptions}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>同行</span>
+            <select
+              value={p.is_accompanying ? 'true' : 'false'}
+              onChange={(e) => setParams({ is_accompanying: e.target.value === 'true' })}
+            >
+              <option value="true">同行させる</option>
+              <option value="false">同行をやめさせる</option>
             </select>
           </label>
         </div>

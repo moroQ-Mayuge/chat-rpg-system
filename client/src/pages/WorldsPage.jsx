@@ -67,6 +67,7 @@ const emptyForm = {
   session_max_turns: '',
   pose_enabled: false,
   scene_change_enabled: true,
+  debug_accompany_toggle_enabled: true,
   undress_image_generation_enabled: false,
   outfit_change_image_generation_enabled: false,
   auto_outfit_image_cooldown_turns: 2,
@@ -196,6 +197,7 @@ export default function WorldsPage() {
         session_max_turns: world.session_max_turns ?? '',
         pose_enabled: Boolean(world.pose_enabled),
         scene_change_enabled: Boolean(world.scene_change_enabled),
+        debug_accompany_toggle_enabled: Boolean(world.debug_accompany_toggle_enabled),
         undress_image_generation_enabled: Boolean(world.undress_image_generation_enabled),
         outfit_change_image_generation_enabled: Boolean(world.outfit_change_image_generation_enabled),
         auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
@@ -893,6 +895,20 @@ export default function WorldsPage() {
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               OFFにすると、LLMには[SCENE_CHANGE]タグの使い方自体を教えなくなり、万一タグが出力されても無視して画像生成しません。
             </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>同行の手動デバッグ切り替え</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              本来、キャラの同行は会話コマンド「同行を頼む」（信頼度・恋愛度・依存度のいずれかに基づく確率判定あり）で決まります。ここでON にすると、チャット画面の参加キャラ一覧に確認なしで直接ON/OFFできるデバッグ用ボタンが表示されます。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.debug_accompany_toggle_enabled}
+                onChange={(e) => setForm({ ...form, debug_accompany_toggle_enabled: e.target.checked })}
+              />
+              同行の手動デバッグ切り替えボタンを表示する
+            </label>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>自動画像生成（脱衣・着替え時）</h4>
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>

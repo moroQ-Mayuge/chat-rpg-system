@@ -7,7 +7,11 @@ import { resolveSingleTargetId } from '../targetResolution.js';
 // { selection_mode: "specific"|"random_from_present", character_id?: number|"mentioned"|"condition_matched", exit_narration? }
 export async function executeCharacterLeave(params, execCtx) {
   const { selection_mode, character_id, exit_narration } = params;
-  const present = execCtx.session.participants.map((p) => p.character_id);
+  const allParticipants = execCtx.session.participants;
+  // 同行中のキャラは退出対象から完全に除外する(ランダム選出の候補からも外れ、
+  // 指定ID狙い撃ちでも下のnot_present判定に引っかかって弾かれる)。同行を
+  // やめさせるには同行解除コマンド(set_accompanyingアクション)を使う。
+  const present = allParticipants.filter((p) => !p.is_accompanying).map((p) => p.character_id);
 
   let targetId = resolveSingleTargetId(character_id, execCtx);
   if (selection_mode === 'random_from_present') {
@@ -15,6 +19,9 @@ export async function executeCharacterLeave(params, execCtx) {
     targetId = present[Math.floor(Math.random() * present.length)];
   }
 
+  if (targetId != null && allParticipants.some((p) => p.character_id === targetId && p.is_accompanying)) {
+    return { skipped: true, reason: 'accompanying' };
+  }
   if (targetId == null || !present.includes(targetId)) {
     return { skipped: true, reason: targetId == null ? 'no_mention' : 'not_present' };
   }

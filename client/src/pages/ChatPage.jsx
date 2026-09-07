@@ -1088,7 +1088,7 @@ export default function ChatPage() {
                 <span key={p.id} style={{ marginRight: 8 }}>
                   {p.name}
                   <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
-                  {session.room_is_place && (
+                  {session.room_is_place && world?.debug_accompany_toggle_enabled && (
                     <button
                       type="button"
                       onClick={() => toggleAccompanying(p.character_id, p.is_accompanying)}
@@ -1102,9 +1102,9 @@ export default function ChatPage() {
                         color: p.is_accompanying ? '#2563eb' : '#888',
                         cursor: 'pointer',
                       }}
-                      title="移動時に同行させるか"
+                      title="デバッグ用: 確認なしで直接切り替える（本来は会話で「同行して」と頼む）"
                     >
-                      {p.is_accompanying ? '同行中' : '同行させる'}
+                      {p.is_accompanying ? '同行中(手動)' : '同行させる(デバッグ)'}
                     </button>
                   )}
                 </span>

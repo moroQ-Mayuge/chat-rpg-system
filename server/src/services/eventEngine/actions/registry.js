@@ -25,6 +25,7 @@ import { executeTransformCharacter } from './transformCharacter.js';
 import { executeForceRoomTransfer } from './forceRoomTransfer.js';
 import { executeSetPose } from './setPose.js';
 import { executeEndSession } from './endSession.js';
+import { executeSetAccompanying } from './setAccompanying.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -54,6 +55,7 @@ export const actionRegistry = {
   force_room_transfer: executeForceRoomTransfer,
   set_pose: executeSetPose,
   end_session: executeEndSession,
+  set_accompanying: executeSetAccompanying,
 };
 
 export async function executeAction(action, execCtx) {
