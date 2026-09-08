@@ -26,7 +26,10 @@ export async function executeCharacterLeave(params, execCtx) {
     return { skipped: true, reason: targetId == null ? 'no_mention' : 'not_present' };
   }
 
-  removeParticipant(execCtx.sessionId, targetId);
+  // ランダム選出はインスタンスを指定しようがない(character_idだけで選んでいる)ため
+  // undefinedのまま。@メンション等で具体的なインスタンスが分かる場合のみ渡す。
+  const roomSessionCharacterId = selection_mode === 'random_from_present' ? null : execCtx.instanceHintByCharacterId?.get(targetId) ?? null;
+  removeParticipant(execCtx.sessionId, targetId, roomSessionCharacterId);
   broadcast(execCtx.sessionId, { type: 'participants_changed' });
 
   if (exit_narration) {

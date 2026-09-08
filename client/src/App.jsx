@@ -20,6 +20,7 @@ import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
 import SessionLogPage from './pages/SessionLogPage.jsx';
 import CharacterStatusesPage from './pages/CharacterStatusesPage.jsx';
 import OutfitMastersPage from './pages/OutfitMastersPage.jsx';
+import MobFlavorPresetsPage from './pages/MobFlavorPresetsPage.jsx';
 
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
@@ -71,6 +72,9 @@ export default function App() {
           <NavLink to="/outfit-masters" style={navLinkStyle}>
             衣装マスタ
           </NavLink>
+          <NavLink to="/mob-flavor-presets" style={navLinkStyle}>
+            モブペルソナ
+          </NavLink>
           <NavLink to="/events" style={navLinkStyle}>
             イベント
           </NavLink>
@@ -105,6 +109,7 @@ export default function App() {
           <Route path="/relationship-axes" element={<RelationshipAxesPage />} />
           <Route path="/character-statuses" element={<CharacterStatusesPage />} />
           <Route path="/outfit-masters" element={<OutfitMastersPage />} />
+          <Route path="/mob-flavor-presets" element={<MobFlavorPresetsPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/model-eval" element={<ModelEvalPage />} />
           <Route path="/settings" element={<SettingsPage />} />

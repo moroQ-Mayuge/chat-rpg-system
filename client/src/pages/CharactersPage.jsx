@@ -718,11 +718,16 @@ export default function CharactersPage() {
 
   if (loadingList || !expressionTypes || !worlds) return <p>読み込み中...</p>;
 
+  // モブのお気に入り昇格(0127)由来のキャラは、任意トグルではなく常にエディタから
+  // 除外する(記憶・関係値は保持しつつ、手直しの対象としては想定していないため)。
+  const nonPromotedMobCharacters = characters.filter((c) => !c.is_promoted_mob);
   // ルート固有キャラ(0079)は繰り返し遊ぶほど溜まるので、隠せるようにしておく。
   // World での絞り込みからは外していない（実際にその World のキャラではあるので、
   // World で絞ったときだけ消えるのは分かりにくい）。
-  const visibleCharacters = hideRouteScoped ? characters.filter((c) => c.origin_playthrough_id == null) : characters;
-  const routeScopedCount = characters.filter((c) => c.origin_playthrough_id != null).length;
+  const visibleCharacters = hideRouteScoped
+    ? nonPromotedMobCharacters.filter((c) => c.origin_playthrough_id == null)
+    : nonPromotedMobCharacters;
+  const routeScopedCount = nonPromotedMobCharacters.filter((c) => c.origin_playthrough_id != null).length;
 
   const characterGroups =
     groupAxis === 'world'

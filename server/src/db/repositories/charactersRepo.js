@@ -152,8 +152,8 @@ export function createCharacter(data) {
   const placeholders = CHARACTER_TEXT_FIELDS.map((f) => `@${f}`).join(', ');
   const result = db
     .prepare(
-      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day, origin_playthrough_id, is_auto_created)
-       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day, @origin_playthrough_id, @is_auto_created)`,
+      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day, origin_playthrough_id, is_auto_created, is_promoted_mob)
+       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day, @origin_playthrough_id, @is_auto_created, @is_promoted_mob)`,
     )
     .run({
       ...values,
@@ -162,10 +162,13 @@ export function createCharacter(data) {
       cycle_enabled: data.cycle_enabled ? 1 : 0,
       cycle_offset_day: data.cycle_offset_day ?? 0,
       // 既定は「作者が手で作った通常キャラ」。ルート固有キャラを作れるのは
-      // これを明示的に渡す経路(P7の子キャラ生成)だけで、バンドルの取り込みや
-      // 画面からの作成は常に通常キャラになる。
+      // これを明示的に渡す経路(P7の子キャラ生成、0127のモブ昇格)だけで、
+      // バンドルの取り込みや画面からの作成は常に通常キャラになる。
       origin_playthrough_id: data.origin_playthrough_id ?? null,
       is_auto_created: data.is_auto_created ? 1 : 0,
+      // モブのお気に入り昇格(0127)由来のキャラだけtrue。キャラエディタから
+      // 無条件に除外される(CharactersPage.jsx)。
+      is_promoted_mob: data.is_promoted_mob ? 1 : 0,
     });
   const characterId = result.lastInsertRowid;
   replaceRelationshipDefaults(characterId, data.relationship_defaults);

@@ -60,6 +60,8 @@ import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpda
 import { clampLlmDelta } from '../services/llmValueDelta.js';
 import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
+import { triggerPendingMobFlavorGeneration } from '../services/mobPersonaGeneration.js';
+import { promoteMobToFavorite } from '../services/mobPromotion.js';
 
 export const roomSessionsRouter = Router();
 
@@ -574,7 +576,7 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
 
     const carryOverParticipants = freshSession.participants
       .filter((p) => p.is_accompanying)
-      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id, mob_flavor_preset_id: p.mob_flavor_preset_id }));
 
     // Catch-up relationship/memory/impression update (SPEC.md、0121ユーザー決定：
     // 継続セッションでも部屋移動のたびに実行する) — room移動はこのroom_session
@@ -624,10 +626,23 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
 
   if (result.error) return res.status(409).json(result);
   res.json(result);
+  // 部屋移動をブロックしないよう、応答送出後にモブのペルソナLLM生成を
+  // fire-and-forgetでキックする(llmモードのWorldのみ、対象がいれば)。
+  triggerPendingMobFlavorGeneration(result.session, getWorld(playthroughWorldId));
 });
 
 roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {
-  res.json(setAccompanying(req.params.id, req.params.characterId, Boolean(req.body.is_accompanying)));
+  res.json(
+    setAccompanying(req.params.id, req.params.characterId, Boolean(req.body.is_accompanying), req.body.room_session_character_id ?? null),
+  );
+});
+
+// 同行中の、ランダムペルソナ付与済みモブを「お気に入りキャラ」として実体化する
+// (手動確認、ChatPage.jsxのボタンから呼ぶ)。
+roomSessionsRouter.post('/:id/participants/:roomSessionCharacterId/promote-mob', (req, res) => {
+  const result = promoteMobToFavorite(req.params.id, req.params.roomSessionCharacterId);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
 });
 
 // Surfaces change_relationship action results as a transient in-chat notice

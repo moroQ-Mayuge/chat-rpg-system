@@ -15,6 +15,7 @@ import { cyclePhaseFor, cycleDayFor } from '../../services/fertilityCycle.js';
 import { getActivePregnancy, listAwaitingChildAppearance } from './characterPregnanciesRepo.js';
 import { pregnancyStateFor, childGrowthStateFor } from '../../services/pregnancy.js';
 import { resetRoomItemsIfEnabled } from '../../services/itemDiscovery.js';
+import { pickRandomMobFlavorPreset } from './mobFlavorPresetsRepo.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -158,12 +159,16 @@ function attachParticipants(session) {
   if (!session) return session;
   const allParticipants = db
     .prepare(
-      `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name,
+      `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name, c.is_mob,
               rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying,
-              rsc.auto_outfit_image_last_turn
+              rsc.auto_outfit_image_last_turn, rsc.mob_flavor_preset_id,
+              mfp.name AS mob_flavor_name, mfp.personality AS mob_flavor_personality, mfp.speech_style AS mob_flavor_speech_style,
+              mfp.sentence_ending AS mob_flavor_sentence_ending, mfp.first_person AS mob_flavor_first_person,
+              mfp.call_user_as AS mob_flavor_call_user_as, mfp.call_others_as AS mob_flavor_call_others_as
        FROM room_session_characters rsc
        JOIN characters c ON c.id = rsc.character_id
        LEFT JOIN character_transformations ct ON ct.id = rsc.current_transformation_id
+       LEFT JOIN mob_flavor_presets mfp ON mfp.id = rsc.mob_flavor_preset_id
        WHERE rsc.room_session_id = ?`,
     )
     .all(session.id);
@@ -326,6 +331,7 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
 // 優先順位と各種stateのseedを2箇所で二重管理しないために切り出してある。
 function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId, options = {}) {
   const playthroughId = playthrough.id;
+  const world = getWorld(playthrough.world_id);
   const carryOverByCharacterId = new Map(
     (options.carryOverParticipants ?? []).map((p) => [p.character_id, p]),
   );
@@ -368,9 +374,17 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
       .get(characterId);
     const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(playthroughId, characterId);
     const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(playthroughId, characterId);
+    // 同行済みの持ち越し(carryOver)がある場合は既に持っていたペルソナをそのまま
+    // 引き継ぐ(新規抽選しない)。そうでない新規登場のモブだけ、Worldが有効なら
+    // presetモードでその場で抽選する。llmモードはここではNULLのままにし、
+    // 呼び出し元(roomSessions.jsルート)がレスポンス送出後に非同期生成する。
+    let mobFlavorPresetId = carryOver?.mob_flavor_preset_id ?? null;
+    if (!carryOver && world.mob_random_flavor_enabled && isMobCharacter(characterId) && world.mob_flavor_generation_mode === 'preset') {
+      mobFlavorPresetId = pickRandomMobFlavorPreset(playthrough.world_id)?.id ?? null;
+    }
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, ?, 1, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
       )
       .run(
         sessionId,
@@ -381,6 +395,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         // 意図的に作っていない）——常にこの部屋の初期ポーズから始まる（World側で無効なら常にnull）。
         defaultPoseId,
         carryOver ? 1 : 0,
+        mobFlavorPresetId,
       );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
@@ -396,9 +411,9 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     if (alreadyAccompanying.has(carryOver.character_id)) continue;
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying) VALUES (?, ?, ?, ?, 1, 1)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id) VALUES (?, ?, ?, ?, 1, 1, ?)',
       )
-      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, defaultPoseId);
+      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, defaultPoseId, carryOver.mob_flavor_preset_id ?? null);
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
@@ -518,12 +533,45 @@ export function setAutoOutfitImageCheckpoint(roomSessionCharacterId, turnNumber)
   db.prepare('UPDATE room_session_characters SET auto_outfit_image_last_turn = ? WHERE id = ?').run(turnNumber, roomSessionCharacterId);
 }
 
-export function setAccompanying(sessionId, characterId, isAccompanying) {
-  db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ?').run(
-    isAccompanying ? 1 : 0,
-    sessionId,
-    characterId,
+// モブのランダムペルソナ(0127)のLLM生成モードが、非同期生成完了後に反映する。
+// まだ他の処理(お気に入り昇格でmob_flavor_preset_idがNULLに戻された等)に
+// よって奪われていないことをWHERE句自体で確認してから書く。戻り値は実際に
+// 反映できたか(falseなら、既に退出済み/昇格済み等で何もしなかった)。
+export function setParticipantMobFlavorPresetIfUnset(roomSessionCharacterId, presetId) {
+  const result = db
+    .prepare('UPDATE room_session_characters SET mob_flavor_preset_id = ? WHERE id = ? AND mob_flavor_preset_id IS NULL')
+    .run(presetId, roomSessionCharacterId);
+  return result.changes > 0;
+}
+
+// お気に入り昇格(mobPromotion.js)専用。この参加インスタンスを以後、新しく
+// 実体化した永続キャラ扱いに切り替える——ペルソナは新キャラ自身の項目に
+// 焼き込み済みなのでmob_flavor_preset_idは外す。
+export function repointParticipantCharacter(roomSessionCharacterId, newCharacterId) {
+  db.prepare('UPDATE room_session_characters SET character_id = ?, mob_flavor_preset_id = NULL WHERE id = ?').run(
+    newCharacterId,
+    roomSessionCharacterId,
   );
+}
+
+// roomSessionCharacterId(任意): 同一character_idのモブが同一部屋に複数同時に
+// 居る場合、指定するとその1インスタンスだけを更新する。未指定時は従来どおり
+// character_id一致の全行に効く(後方互換、通常キャラは重複しないので実質同じ)。
+export function setAccompanying(sessionId, characterId, isAccompanying, roomSessionCharacterId = null) {
+  if (roomSessionCharacterId != null) {
+    db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ? AND id = ?').run(
+      isAccompanying ? 1 : 0,
+      sessionId,
+      characterId,
+      roomSessionCharacterId,
+    );
+  } else {
+    db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ?').run(
+      isAccompanying ? 1 : 0,
+      sessionId,
+      characterId,
+    );
+  }
   return getRoomSession(sessionId);
 }
 
@@ -582,11 +630,19 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   return getRoomSession(sessionId);
 }
 
-export function removeParticipant(sessionId, characterId) {
-  db.prepare(
-    `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
-     WHERE room_session_id = ? AND character_id = ?`,
-  ).run(sessionId, characterId);
+// roomSessionCharacterId(任意): setAccompanyingと同じインスタンス精度オプション。
+export function removeParticipant(sessionId, characterId, roomSessionCharacterId = null) {
+  if (roomSessionCharacterId != null) {
+    db.prepare(
+      `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+       WHERE room_session_id = ? AND character_id = ? AND id = ?`,
+    ).run(sessionId, characterId, roomSessionCharacterId);
+  } else {
+    db.prepare(
+      `UPDATE room_session_characters SET is_active = 0, left_at = datetime('now')
+       WHERE room_session_id = ? AND character_id = ?`,
+    ).run(sessionId, characterId);
+  }
   return getRoomSession(sessionId);
 }
 

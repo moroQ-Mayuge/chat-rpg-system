@@ -27,18 +27,26 @@ function letterSuffix(occurrenceIndex) {
   return String.fromCharCode('A'.charCodeAt(0) + occurrenceIndex - 1);
 }
 
+// モブにランダム付与されたペルソナ(mob_flavor_presets、部屋登場時に抽選/LLM生成)
+// があれば、以降のA/B連番・同名(2)ロジックはこの名前を基準に行う——ベースの
+// characters.nameは共有マスタなので、ペルソナが無い間はそのまま使う。
+function baseNameFor(p) {
+  return p.mob_flavor_name ? `${p.mob_flavor_name}（モブ）` : p.name;
+}
+
 export function withDisambiguatedNames(participants) {
   const nameSeen = new Map();
   const characterIdSeen = new Map();
   return participants.map((p) => {
+    const baseName = baseNameFor(p);
     const characterOccurrence = (characterIdSeen.get(p.character_id) ?? 0) + 1;
     characterIdSeen.set(p.character_id, characterOccurrence);
     if (characterOccurrence > 1) {
-      return { ...p, display_name: `${p.name}${letterSuffix(characterOccurrence - 1)}` };
+      return { ...p, display_name: `${baseName}${letterSuffix(characterOccurrence - 1)}` };
     }
-    const nameCount = (nameSeen.get(p.name) ?? 0) + 1;
-    nameSeen.set(p.name, nameCount);
-    return { ...p, display_name: nameCount === 1 ? p.name : `${p.name}(${nameCount})` };
+    const nameCount = (nameSeen.get(baseName) ?? 0) + 1;
+    nameSeen.set(baseName, nameCount);
+    return { ...p, display_name: nameCount === 1 ? baseName : `${baseName}(${nameCount})` };
   });
 }
 

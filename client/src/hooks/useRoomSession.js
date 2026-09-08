@@ -70,7 +70,12 @@ export function useRoomSessionMutations(id) {
     exit: useMutation({ mutationFn: () => roomSessionsApi.exit(id), onSuccess: invalidate }),
     move: useMutation({ mutationFn: (connectionId) => roomSessionsApi.move(id, connectionId), onSuccess: invalidate }),
     setAccompanying: useMutation({
-      mutationFn: ({ characterId, isAccompanying }) => roomSessionsApi.setAccompanying(id, characterId, isAccompanying),
+      mutationFn: ({ characterId, isAccompanying, roomSessionCharacterId }) =>
+        roomSessionsApi.setAccompanying(id, characterId, isAccompanying, roomSessionCharacterId),
+      onSuccess: invalidate,
+    }),
+    promoteMob: useMutation({
+      mutationFn: (roomSessionCharacterId) => roomSessionsApi.promoteMob(id, roomSessionCharacterId),
       onSuccess: invalidate,
     }),
     sellItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.sellItem(id, itemId), onSuccess: invalidate }),

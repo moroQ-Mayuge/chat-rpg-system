@@ -14,6 +14,8 @@ import {
   transferOutfitItem,
 } from '../db/repositories/playthroughOutfitInventoryRepo.js';
 import { isRoomInWorld } from '../db/repositories/worldRoomTemplatesRepo.js';
+import { getWorld } from '../db/repositories/worldsRepo.js';
+import { triggerPendingMobFlavorGeneration } from '../services/mobPersonaGeneration.js';
 import {
   listMemoriesForPlaythrough,
   addMemory,
@@ -93,7 +95,11 @@ playthroughsRouter.post('/:id/room-sessions', (req, res) => {
   // room deliberately still goes through 現在のシーンを閉じる or a move.
   const activeSession = getActiveSessionForPlaythrough(req.params.id);
   if (activeSession) return res.status(200).json(activeSession);
-  res.status(201).json(createRoomSession(req.params.id, req.body.room_template_id));
+  const session = createRoomSession(req.params.id, req.body.room_template_id);
+  res.status(201).json(session);
+  // 部屋登場をブロックしないよう、応答送出後にモブのペルソナLLM生成を
+  // fire-and-forgetでキックする(llmモードのWorldのみ、対象がいれば)。
+  triggerPendingMobFlavorGeneration(session, getWorld(playthrough.world_id));
 });
 
 playthroughsRouter.get('/:id/room-sessions', (req, res) => {

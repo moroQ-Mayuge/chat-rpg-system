@@ -237,7 +237,26 @@ function buildSystemPrompt(session, participants, options = {}) {
       const currentAddress = getCurrentAddress(session.playthrough_id, character.id, session.id, p.id);
       const transformation = p.current_transformation_id ? getTransformation(p.current_transformation_id) : null;
       const identityCharacter = composeCharacterIdentity(character, transformation);
-      const effectiveCharacter = { ...identityCharacter, name: p.display_name, ...(currentAddress ? { call_user_as: currentAddress } : {}) };
+      // モブに部屋登場時ランダム付与されたペルソナ(mob_flavor_presets)があれば、
+      // 口調・性格系の項目だけをそのペルソナで上書きする——外見・属性タグ等は
+      // ベースのキャラ行のまま("見た目はそのままに"を満たす)。呼び方は
+      // currentAddress(実プレイ中に設定された呼び方)がある場合はそちらを優先する。
+      const flavorOverride = p.mob_flavor_preset_id
+        ? {
+            personality: p.mob_flavor_personality,
+            speech_style: p.mob_flavor_speech_style,
+            sentence_ending: p.mob_flavor_sentence_ending,
+            first_person: p.mob_flavor_first_person,
+            call_user_as: p.mob_flavor_call_user_as,
+            call_others_as: p.mob_flavor_call_others_as,
+          }
+        : {};
+      const effectiveCharacter = {
+        ...identityCharacter,
+        name: p.display_name,
+        ...flavorOverride,
+        ...(currentAddress ? { call_user_as: currentAddress } : {}),
+      };
       const undressStateLines = getUndressStateLines(session.playthrough_id, session.id, character.id);
       // Freeform "あなたとの関係"/"あなたの印象"-style fields (0063_character_impression_fields.sql)
       // -- only ever non-empty for characters with configured

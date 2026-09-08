@@ -7,8 +7,12 @@ export const roomSessionsApi = {
   craftItem: (id, content, craft) => api.post(`/room-sessions/${id}/messages`, { content, craft }),
   exit: (id) => api.post(`/room-sessions/${id}/exit`, {}),
   move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),
-  setAccompanying: (id, characterId, isAccompanying) =>
-    api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, { is_accompanying: isAccompanying }),
+  setAccompanying: (id, characterId, isAccompanying, roomSessionCharacterId) =>
+    api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, {
+      is_accompanying: isAccompanying,
+      room_session_character_id: roomSessionCharacterId ?? null,
+    }),
+  promoteMob: (id, roomSessionCharacterId) => api.post(`/room-sessions/${id}/participants/${roomSessionCharacterId}/promote-mob`, {}),
   sellItem: (id, itemId) => api.post(`/room-sessions/${id}/sell-item`, { item_id: itemId }),
   getShopProducts: (id) => api.get(`/room-sessions/${id}/shop-products`),
   buyItem: (id, itemId) => api.post(`/room-sessions/${id}/buy-item`, { item_id: itemId }),

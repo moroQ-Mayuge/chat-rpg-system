@@ -100,6 +100,14 @@ const CATEGORY_PILL_STYLE_ACTIVE = {
 // visible_when_status_ids' any_present gating (2026-07-16 action-command
 // categorization plan): a command with that field set only shows once at
 // least one participant currently holds one of the listed statuses.
+// モブに部屋登場時ランダム付与されたペルソナがあれば、UI上の表示名もそちらに
+// 差し替える（末尾「（モブ）」込み）。同一character_idの重複時のA/B連番までは
+// 再現しない（LLMプロンプト側のwithDisambiguatedNames専用、UIは元々display_name
+// を使っていないため今回はこの2箇所のみの最小対応）。
+function flavorAwareName(p) {
+  return p?.mob_flavor_name ? `${p.mob_flavor_name}（モブ）` : p?.name;
+}
+
 function activeStatusIdSet(participants) {
   const ids = new Set();
   for (const p of participants ?? []) {
@@ -870,7 +878,8 @@ export default function ChatPage() {
   // 区切り行が入っている場合、当日分だけ見る(前日分はセッション履歴から)。
   // 日替わりが起きないWorldではlog_day===entered_dayのままなので常時付けて実質no-op。
   const { data: session, isLoading } = useRoomSession(id, { day: 'current' });
-  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
+  const { sendMessage, craftItem, exit, move, setAccompanying, promoteMob, sellItem, buyItem, buyOutfit, pickupOutfit } =
+    useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -1034,8 +1043,13 @@ export default function ChatPage() {
     }
   }
 
-  async function toggleAccompanying(characterId, current) {
-    await setAccompanying.mutateAsync({ characterId, isAccompanying: !current });
+  async function toggleAccompanying(characterId, current, roomSessionCharacterId) {
+    await setAccompanying.mutateAsync({ characterId, isAccompanying: !current, roomSessionCharacterId });
+  }
+
+  async function handlePromoteMob(roomSessionCharacterId, name) {
+    if (!window.confirm(`${name}をお気に入りキャラとして登録しますか？（以後、記憶・関係値・ステータスを保持する専用キャラになります）`)) return;
+    await promoteMob.mutateAsync(roomSessionCharacterId);
   }
 
   if (isLoading || !session || !playthrough) return <p>読み込み中...</p>;
@@ -1086,12 +1100,12 @@ export default function ChatPage() {
             ? 'なし'
             : session.participants.map((p) => (
                 <span key={p.id} style={{ marginRight: 8 }}>
-                  {p.name}
+                  {flavorAwareName(p)}
                   <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
                   {session.room_is_place && world?.debug_accompany_toggle_enabled && (
                     <button
                       type="button"
-                      onClick={() => toggleAccompanying(p.character_id, p.is_accompanying)}
+                      onClick={() => toggleAccompanying(p.character_id, p.is_accompanying, p.id)}
                       style={{
                         fontSize: 10,
                         marginLeft: 3,
@@ -1105,6 +1119,25 @@ export default function ChatPage() {
                       title="デバッグ用: 確認なしで直接切り替える（本来は会話で「同行して」と頼む）"
                     >
                       {p.is_accompanying ? '同行中(手動)' : '同行させる(デバッグ)'}
+                    </button>
+                  )}
+                  {Boolean(p.is_accompanying) && p.mob_flavor_preset_id != null && (
+                    <button
+                      type="button"
+                      onClick={() => handlePromoteMob(p.id, flavorAwareName(p))}
+                      style={{
+                        fontSize: 10,
+                        marginLeft: 3,
+                        padding: '1px 5px',
+                        borderRadius: 8,
+                        border: '1px solid #f59e0b',
+                        background: 'transparent',
+                        color: '#b45309',
+                        cursor: 'pointer',
+                      }}
+                      title="記憶・関係値・ステータスを保持するルート専用キャラとして実体化する（キャラエディタには表示されません）"
+                    >
+                      お気に入り登録
                     </button>
                   )}
                 </span>
@@ -1286,7 +1319,7 @@ export default function ChatPage() {
             <div key={m.id} style={{ marginBottom: 6, textAlign: isUser ? 'right' : 'left' }}>
               {!isUser && (
                 <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>
-                  {participant?.name ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
+                  {(participant ? flavorAwareName(participant) : null) ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
                   {m.sender_type === 'character' && (
                     <StatusInline status={m.status_snapshot} visibility={session.status_display_visibility.chat_log} />
                   )}
