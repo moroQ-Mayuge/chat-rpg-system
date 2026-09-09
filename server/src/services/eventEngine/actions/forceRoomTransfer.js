@@ -4,6 +4,7 @@ import { getWorld } from '../../../db/repositories/worldsRepo.js';
 import { closeAndReopenSession } from '../../sessionBoundary.js';
 import { withSessionLock } from '../../sessionLock.js';
 import { broadcast } from '../../../ws/rooms.js';
+import { promoteAccompanyingFlavoredMobs } from '../../mobPromotion.js';
 
 // { target_room_template_id: number, carry_character_ids?: number[] }
 // POST /:id/moveの強制版: room_connectionsの導線チェックとapplyMovementCostを
@@ -24,15 +25,20 @@ export async function executeForceRoomTransfer(params, execCtx) {
   if (target_room_template_id == null) return { skipped: true, reason: 'no_target_room' };
 
   return withSessionLock(execCtx.sessionId, async () => {
-    const session = getRoomSession(execCtx.sessionId);
+    let session = getRoomSession(execCtx.sessionId);
     if (!session || session.status !== 'active') return { skipped: true, reason: 'session_not_active' };
 
+    const world = getWorld(getPlaythrough(execCtx.playthroughId).world_id);
+    session = await promoteAccompanyingFlavoredMobs(session, world);
     const carryIds = new Set(carry_character_ids ?? []);
     const carryOverParticipants = session.participants
       .filter((p) => carryIds.has(p.character_id))
-      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
-
-    const world = getWorld(getPlaythrough(execCtx.playthroughId).world_id);
+      .map((p) => ({
+        character_id: p.character_id,
+        current_outfit_id: p.current_outfit_id,
+        current_transformation_id: p.current_transformation_id,
+        mob_flavor_preset_id: p.mob_flavor_preset_id,
+      }));
     const newSession = await closeAndReopenSession(session, world, {
       targetRoomTemplateId: target_room_template_id,
       carryOverParticipants,

@@ -16,6 +16,7 @@ import { getActivePregnancy, listAwaitingChildAppearance } from './characterPreg
 import { pregnancyStateFor, childGrowthStateFor } from '../../services/pregnancy.js';
 import { resetRoomItemsIfEnabled } from '../../services/itemDiscovery.js';
 import { pickRandomMobFlavorPreset } from './mobFlavorPresetsRepo.js';
+import { withDisambiguatedNames, participantBaseName } from '../../services/participantNaming.js';
 
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
@@ -192,6 +193,17 @@ function attachParticipants(session) {
   }
 
   const participants = allParticipants.filter((p) => p.is_active);
+
+  // display_name: 送信文の@メンション照合(resolveMentions())・chat UIの表示に
+  // 常に使う「実際にどう呼ばれているか」の名前。参加中はwithDisambiguatedNames
+  // でA/B連番・同名(2)まで解決したもの(promptBuilder.jsがLLMに見せる名前と
+  // 完全に一致させる必要がある——ずれるとクライアントが送った@メンションが
+  // サーバー側で解決できなくなる、実際に起きた不具合)。退室済み(all_participants
+  // のみに残る行)は連番の対象外なのでベース名のみ。
+  const displayNameByRowId = new Map(withDisambiguatedNames(participants).map((p) => [p.id, p.display_name]));
+  for (const participant of allParticipants) {
+    participant.display_name = displayNameByRowId.get(participant.id) ?? participantBaseName(participant);
+  }
 
   const worldRow = db
     .prepare('SELECT w.status_display_settings FROM worlds w JOIN playthroughs p ON p.world_id = w.id WHERE p.id = ?')
@@ -379,7 +391,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     // presetモードでその場で抽選する。llmモードはここではNULLのままにし、
     // 呼び出し元(roomSessions.jsルート)がレスポンス送出後に非同期生成する。
     let mobFlavorPresetId = carryOver?.mob_flavor_preset_id ?? null;
-    if (!carryOver && world.mob_random_flavor_enabled && isMobCharacter(characterId) && world.mob_flavor_generation_mode === 'preset') {
+    if (!carryOver && world.mob_flavor_mode === 'preset' && isMobCharacter(characterId)) {
       mobFlavorPresetId = pickRandomMobFlavorPreset(playthrough.world_id)?.id ?? null;
     }
     const rscResult = db
@@ -411,9 +423,16 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     if (alreadyAccompanying.has(carryOver.character_id)) continue;
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id) VALUES (?, ?, ?, ?, 1, 1, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?)',
       )
-      .run(sessionId, carryOver.character_id, carryOver.current_outfit_id ?? null, defaultPoseId, carryOver.mob_flavor_preset_id ?? null);
+      .run(
+        sessionId,
+        carryOver.character_id,
+        carryOver.current_outfit_id ?? null,
+        carryOver.current_transformation_id ?? null,
+        defaultPoseId,
+        carryOver.mob_flavor_preset_id ?? null,
+      );
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     if (options.fromRoomSessionId != null) {
@@ -598,6 +617,7 @@ export function setCurrentSceneImage(id, generatedImageId) {
 // playthrough if this is the character's first appearance in this route.
 export function addParticipant(sessionId, characterId, outfitId = null) {
   const session = db.prepare('SELECT playthrough_id, room_template_id FROM room_sessions WHERE id = ?').get(sessionId);
+  const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
   const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(session.playthrough_id, characterId);
   const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
   const persistedTransformation = isMobCharacter(characterId) ? null : getPersistedTransformation(session.playthrough_id, characterId);
@@ -608,21 +628,26 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   const resolvedPoseId = posePermittedForParticipant
     ? db.prepare('SELECT default_pose_id FROM room_templates WHERE id = ?').get(session.room_template_id)?.default_pose_id ?? null
     : null;
+  // seedParticipantsForRoomと同じ分岐(presetモードはその場で抽選、llmモードは
+  // NULLのまま呼び出し元がキックする)。途中参加は同行キャラの持ち越しが無いので
+  // (carryOver概念が無い)、is_mobなら常にこの場で決める。
+  const mobFlavorPresetId =
+    isMobCharacter(characterId) && world.mob_flavor_mode === 'preset' ? pickRandomMobFlavorPreset(world.id)?.id ?? null : null;
   const existing = db
     .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? LIMIT 1')
     .get(sessionId, characterId);
   let roomSessionCharacterId = existing?.id;
   if (existing) {
     db.prepare(
-      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, current_pose_id = ?, joined_at = datetime('now'), left_at = NULL
+      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, current_pose_id = ?, joined_at = datetime('now'), left_at = NULL, mob_flavor_preset_id = ?
        WHERE id = ?`,
-    ).run(resolvedOutfitId, resolvedTransformationId, resolvedPoseId, existing.id);
+    ).run(resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId, existing.id);
   } else {
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active) VALUES (?, ?, ?, ?, ?, 1)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, mob_flavor_preset_id) VALUES (?, ?, ?, ?, ?, 1, ?)',
       )
-      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId, resolvedPoseId);
+      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId);
     roomSessionCharacterId = rscResult.lastInsertRowid;
   }
   ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);

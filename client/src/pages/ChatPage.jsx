@@ -28,10 +28,13 @@ function composeSendText(mentionedNames, text) {
 
 // 脱衣コマンドのmentioned-only状態ゲート等で使う「先頭でメンションされている
 // 参加者」。mentionedNamesは選択順そのものの配列なので先頭を引くだけでよい。
+// display_name(サーバー側resolveMentions()が@表示名として照合する名前、モブの
+// ランダムペルソナがあればそちらを含む)で突き合わせる——rawのp.nameで比較すると
+// ペルソナ付きモブが常に不一致になる(実際に踏んだ不具合)。
 function firstMentionedParticipant(mentionedNames, participants) {
   const name = mentionedNames[0];
   if (!name) return null;
-  return participants.find((p) => p.name === name) ?? null;
+  return participants.find((p) => p.display_name === name) ?? null;
 }
 
 const MENTION_ORDER_DIGITS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
@@ -100,14 +103,6 @@ const CATEGORY_PILL_STYLE_ACTIVE = {
 // visible_when_status_ids' any_present gating (2026-07-16 action-command
 // categorization plan): a command with that field set only shows once at
 // least one participant currently holds one of the listed statuses.
-// モブに部屋登場時ランダム付与されたペルソナがあれば、UI上の表示名もそちらに
-// 差し替える（末尾「（モブ）」込み）。同一character_idの重複時のA/B連番までは
-// 再現しない（LLMプロンプト側のwithDisambiguatedNames専用、UIは元々display_name
-// を使っていないため今回はこの2箇所のみの最小対応）。
-function flavorAwareName(p) {
-  return p?.mob_flavor_name ? `${p.mob_flavor_name}（モブ）` : p?.name;
-}
-
 function activeStatusIdSet(participants) {
   const ids = new Set();
   for (const p of participants ?? []) {
@@ -433,7 +428,7 @@ function ItemPickupPanel({ sessionId, onClose, onAcquired }) {
 // 対象初期値にする（例: みおを@メンションした状態で「使う」を押したら対象は
 // みおが初期選択されている、という体験を保つ）。
 function detectMentionedParticipant(mentionedNames, participants) {
-  const match = participants.find((p) => mentionedNames.includes(p.name));
+  const match = participants.find((p) => mentionedNames.includes(p.display_name));
   return match ? String(match.character_id) : '';
 }
 
@@ -484,7 +479,7 @@ function ItemActionPanel({ command, playthroughId, participants, mentionedNames,
       } else {
         await transferItem.mutateAsync({ itemId: entry.id, quantity: 1, toCharacterId: target.character_id });
       }
-      onSend(`『${entry.name}』を@${target.name}に${command.label}`);
+      onSend(`『${entry.name}』を@${target.display_name}に${command.label}`);
       onClose();
       return;
     }
@@ -496,7 +491,7 @@ function ItemActionPanel({ command, playthroughId, participants, mentionedNames,
     if (command.consumes_item || entry.is_consumable) {
       await useItem.mutateAsync({ itemId: entry.id, quantity: 1 });
     }
-    const targetText = target ? `@${target.name}に` : '';
+    const targetText = target ? `@${target.display_name}に` : '';
     const text = `『${entry.name}』を${targetText}${command.label}${description ? `：${description}` : ''}`;
     onSend(text);
     onClose();
@@ -530,7 +525,7 @@ function ItemActionPanel({ command, playthroughId, participants, mentionedNames,
               <option value="">{command.transfers_to_target ? '対象を選択してください' : '指定なし'}</option>
               {participants.map((p) => (
                 <option key={p.id} value={p.character_id}>
-                  {p.name}
+                  {p.display_name}
                 </option>
               ))}
             </select>
@@ -707,7 +702,7 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
     const target = participants.find((p) => p.character_id === Number(targetId));
     if (!entry || !target) return;
     await wearOutfit.mutateAsync({ characterId: target.character_id, outfitMasterId: entry.outfit_master_id });
-    onSend(`@${target.name}が『${entry.name}』を${command.label}`);
+    onSend(`@${target.display_name}が『${entry.name}』を${command.label}`);
     onClose();
   }
 
@@ -733,7 +728,7 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
             <option value="">対象を選択してください</option>
             {participants.map((p) => (
               <option key={p.id} value={p.character_id}>
-                {p.name}
+                {p.display_name}
               </option>
             ))}
           </select>
@@ -781,7 +776,7 @@ function TransformRequestPanel({ command, sessionId, participants, onClose, onSe
     const value = transformationId === '' ? null : Number(transformationId);
     await transformRequest.mutateAsync({ characterId: target.character_id, transformationId: value });
     const chosen = (transformations ?? []).find((t) => t.id === value);
-    onSend(`@${target.name}に${command.label}（${chosen ? chosen.name : '変身解除'}）`);
+    onSend(`@${target.display_name}に${command.label}（${chosen ? chosen.name : '変身解除'}）`);
     onClose();
   }
 
@@ -807,7 +802,7 @@ function TransformRequestPanel({ command, sessionId, participants, onClose, onSe
             <option value="">対象を選択してください</option>
             {participants.map((p) => (
               <option key={p.id} value={p.character_id}>
-                {p.name}
+                {p.display_name}
               </option>
             ))}
           </select>
@@ -878,8 +873,7 @@ export default function ChatPage() {
   // 区切り行が入っている場合、当日分だけ見る(前日分はセッション履歴から)。
   // 日替わりが起きないWorldではlog_day===entered_dayのままなので常時付けて実質no-op。
   const { data: session, isLoading } = useRoomSession(id, { day: 'current' });
-  const { sendMessage, craftItem, exit, move, setAccompanying, promoteMob, sellItem, buyItem, buyOutfit, pickupOutfit } =
-    useRoomSessionMutations(id);
+  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -1047,11 +1041,6 @@ export default function ChatPage() {
     await setAccompanying.mutateAsync({ characterId, isAccompanying: !current, roomSessionCharacterId });
   }
 
-  async function handlePromoteMob(roomSessionCharacterId, name) {
-    if (!window.confirm(`${name}をお気に入りキャラとして登録しますか？（以後、記憶・関係値・ステータスを保持する専用キャラになります）`)) return;
-    await promoteMob.mutateAsync(roomSessionCharacterId);
-  }
-
   if (isLoading || !session || !playthrough) return <p>読み込み中...</p>;
 
   return (
@@ -1100,46 +1089,29 @@ export default function ChatPage() {
             ? 'なし'
             : session.participants.map((p) => (
                 <span key={p.id} style={{ marginRight: 8 }}>
-                  {flavorAwareName(p)}
+                  {p.display_name}
                   <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
-                  {session.room_is_place && world?.debug_accompany_toggle_enabled && (
-                    <button
-                      type="button"
-                      onClick={() => toggleAccompanying(p.character_id, p.is_accompanying, p.id)}
-                      style={{
-                        fontSize: 10,
-                        marginLeft: 3,
-                        padding: '1px 5px',
-                        borderRadius: 8,
-                        border: '1px solid #ccc',
-                        background: p.is_accompanying ? '#dbeafe' : 'transparent',
-                        color: p.is_accompanying ? '#2563eb' : '#888',
-                        cursor: 'pointer',
-                      }}
-                      title="デバッグ用: 確認なしで直接切り替える（本来は会話で「同行して」と頼む）"
-                    >
-                      {p.is_accompanying ? '同行中(手動)' : '同行させる(デバッグ)'}
-                    </button>
-                  )}
-                  {Boolean(p.is_accompanying) && p.mob_flavor_preset_id != null && (
-                    <button
-                      type="button"
-                      onClick={() => handlePromoteMob(p.id, flavorAwareName(p))}
-                      style={{
-                        fontSize: 10,
-                        marginLeft: 3,
-                        padding: '1px 5px',
-                        borderRadius: 8,
-                        border: '1px solid #f59e0b',
-                        background: 'transparent',
-                        color: '#b45309',
-                        cursor: 'pointer',
-                      }}
-                      title="記憶・関係値・ステータスを保持するルート専用キャラとして実体化する（キャラエディタには表示されません）"
-                    >
-                      お気に入り登録
-                    </button>
-                  )}
+                  {session.room_is_place &&
+                    world?.debug_accompany_toggle_enabled &&
+                    (!Boolean(p.is_mob) || world?.mob_flavor_mode !== 'off') && (
+                      <button
+                        type="button"
+                        onClick={() => toggleAccompanying(p.character_id, p.is_accompanying, p.id)}
+                        style={{
+                          fontSize: 10,
+                          marginLeft: 3,
+                          padding: '1px 5px',
+                          borderRadius: 8,
+                          border: '1px solid #ccc',
+                          background: p.is_accompanying ? '#dbeafe' : 'transparent',
+                          color: p.is_accompanying ? '#2563eb' : '#888',
+                          cursor: 'pointer',
+                        }}
+                        title="デバッグ用: 確認なしで直接切り替える（本来は会話で「同行して」と頼む）"
+                      >
+                        {p.is_accompanying ? '同行中(手動)' : '同行させる(デバッグ)'}
+                      </button>
+                    )}
                 </span>
               ))}
         </p>
@@ -1151,7 +1123,7 @@ export default function ChatPage() {
           <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {session.participants.map((p) => (
               <div key={p.id} style={{ fontSize: 11 }}>
-                <strong>{p.name}</strong>
+                <strong>{p.display_name}</strong>
                 <StatusInline status={p.status} visibility={session.status_display_visibility.panel} />
               </div>
             ))}
@@ -1249,13 +1221,13 @@ export default function ChatPage() {
                 <p key={p.id} style={{ fontSize: 11, color: '#666', margin: '0 0 2px' }}>
                   {p.cycle_debug.pregnancy ? (
                     <>
-                      {p.name}：<strong>妊娠中・{p.cycle_debug.pregnancy.stage}</strong>（
+                      {p.display_name}：<strong>妊娠中・{p.cycle_debug.pregnancy.stage}</strong>（
                       {p.cycle_debug.pregnancy.day}/{p.cycle_debug.pregnancy.gestationDays}日目
                       {p.cycle_debug.pregnancy.known ? '' : '・本人は気づいていない'}）
                     </>
                   ) : (
                     <>
-                      {p.name}：妊娠しやすさ <strong>{p.cycle_debug.phase}</strong>（周期
+                      {p.display_name}：妊娠しやすさ <strong>{p.cycle_debug.phase}</strong>（周期
                       {p.cycle_debug.dayInCycle}/{p.cycle_debug.cycleLength}日目）
                     </>
                   )}
@@ -1319,7 +1291,7 @@ export default function ChatPage() {
             <div key={m.id} style={{ marginBottom: 6, textAlign: isUser ? 'right' : 'left' }}>
               {!isUser && (
                 <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>
-                  {(participant ? flavorAwareName(participant) : null) ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
+                  {participant?.display_name ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
                   {m.sender_type === 'character' && (
                     <StatusInline status={m.status_snapshot} visibility={session.status_display_visibility.chat_log} />
                   )}
@@ -1467,10 +1439,15 @@ export default function ChatPage() {
           <button
             key={p.id}
             type="button"
-            style={mentionButtonStyle({ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 }, p.name, mentionedNames, '#2563eb')}
-            onClick={() => toggleMention(p.name)}
+            style={mentionButtonStyle(
+              { ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 },
+              p.display_name,
+              mentionedNames,
+              '#2563eb',
+            )}
+            onClick={() => toggleMention(p.display_name)}
           >
-            {mentionOrderPrefix(p.name, mentionedNames)}@{p.name}
+            {mentionOrderPrefix(p.display_name, mentionedNames)}@{p.display_name}
           </button>
         ))}
       </div>

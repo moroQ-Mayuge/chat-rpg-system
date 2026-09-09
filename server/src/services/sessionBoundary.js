@@ -12,6 +12,7 @@ import { maybeRunRelationshipAutoUpdate } from './relationshipAutoUpdate.js';
 import { maybeRunImpressionAutoUpdate } from './impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from './memoryAutoExtract.js';
 import { maybeUpdateConversationSummary } from './conversationSummary.js';
+import { promoteAccompanyingFlavoredMobs } from './mobPromotion.js';
 
 // 継続セッション(worlds.continuous_room_session_enabled、0121)の「区切り方」
 // (0122)。基本モードを3つから選べる：
@@ -83,13 +84,25 @@ export async function closeAndReopenSession(
   world,
   { targetRoomTemplateId = null, carryOverParticipants = null, broadcast = null, reason = null } = {},
 ) {
+  // 同行キャラが次のセッションへ引き継がれる直前——ランダムペルソナ付きの
+  // モブがいれば自動でお気に入りキャラとして実体化する(0128フォローアップ)。
+  // character_idが変わるインスタンスがあり得るため、以後は必ずこの戻り値の
+  // sessionを使う。carryOverParticipantsを呼び出し元が明示的に渡してくる
+  // 場合(end_session/force_room_transfer)は、その組み立てより前に各自でも
+  // 同じ関数を呼んでいる(二重呼び出しは対象0件で即returnするだけなので無害)。
+  session = await promoteAccompanyingFlavoredMobs(session, world);
   await runEndOfSceneHooks(session, world);
 
   const carry =
     carryOverParticipants ??
     (session.participants ?? [])
       .filter((p) => p.is_accompanying)
-      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+      .map((p) => ({
+        character_id: p.character_id,
+        current_outfit_id: p.current_outfit_id,
+        current_transformation_id: p.current_transformation_id,
+        mob_flavor_preset_id: p.mob_flavor_preset_id,
+      }));
 
   endSessionForMove(session.id);
   const newSession = createRoomSession(session.playthrough_id, targetRoomTemplateId ?? session.room_template_id, {

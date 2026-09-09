@@ -68,8 +68,7 @@ const emptyForm = {
   pose_enabled: false,
   scene_change_enabled: true,
   debug_accompany_toggle_enabled: true,
-  mob_random_flavor_enabled: false,
-  mob_flavor_generation_mode: 'preset',
+  mob_flavor_mode: 'off',
   undress_image_generation_enabled: false,
   outfit_change_image_generation_enabled: false,
   auto_outfit_image_cooldown_turns: 2,
@@ -200,8 +199,7 @@ export default function WorldsPage() {
         pose_enabled: Boolean(world.pose_enabled),
         scene_change_enabled: Boolean(world.scene_change_enabled),
         debug_accompany_toggle_enabled: Boolean(world.debug_accompany_toggle_enabled),
-        mob_random_flavor_enabled: Boolean(world.mob_random_flavor_enabled),
-        mob_flavor_generation_mode: world.mob_flavor_generation_mode ?? 'preset',
+        mob_flavor_mode: world.mob_flavor_mode ?? 'off',
         undress_image_generation_enabled: Boolean(world.undress_image_generation_enabled),
         outfit_change_image_generation_enabled: Boolean(world.outfit_change_image_generation_enabled),
         auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
@@ -916,31 +914,21 @@ export default function WorldsPage() {
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>モブのランダムペルソナ付与</h4>
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-              モブ属性キャラが部屋に登場する際、見た目（衣装・外見タグ）はそのままに、ランダムな名前・口調・性格などを付与します（表示名の末尾に「（モブ）」が付きます）。同行させた上で会話画面から「お気に入り登録」すると、記憶・関係値・ステータスを保持するルート専用キャラとして実体化できます（キャラエディタには表示されません）。
+              モブ属性キャラが部屋に登場する際、見た目（衣装・外見タグ）はそのままに、ランダムな名前・口調・性格などを付与します（表示名の末尾に「（モブ）」が付きます）。「従来通り」以外を選んだWorldでは、ペルソナ付きモブを同行させて部屋を移動すると、その時点で自動的に記憶・関係値・ステータスを保持するルート専用キャラとして実体化します（キャラエディタには表示されません）。「従来通り」ではモブは同行できません（見た目だけの通行人のまま）。
             </p>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={form.mob_random_flavor_enabled}
-                onChange={(e) => setForm({ ...form, mob_random_flavor_enabled: e.target.checked })}
-              />
-              このWorldでモブのランダムペルソナ付与を使用する
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: 11, color: '#888' }}>モブのペルソナ・同行</span>
+              <select
+                style={{ display: 'block' }}
+                value={form.mob_flavor_mode}
+                onChange={(e) => setForm({ ...form, mob_flavor_mode: e.target.value })}
+              >
+                <option value="off">従来通り（ペルソナ無し、モブは同行不可）</option>
+                <option value="preset">プリセット抽選（「モブペルソナ」画面で事前登録したものから毎回ランダムに選ぶ）</option>
+                <option value="llm">LLM都度生成（モブの職業・属性タグ等を踏まえてその場でLLMに考えさせる。非同期のため登場は即時、数秒後に反映）</option>
+              </select>
             </label>
-
-            {form.mob_random_flavor_enabled && (
-              <label style={{ display: 'block', marginTop: 8 }}>
-                <span style={{ fontSize: 11, color: '#888' }}>ペルソナの決め方</span>
-                <select
-                  style={{ display: 'block' }}
-                  value={form.mob_flavor_generation_mode}
-                  onChange={(e) => setForm({ ...form, mob_flavor_generation_mode: e.target.value })}
-                >
-                  <option value="preset">プリセット抽選（「モブペルソナ」画面で事前登録したものから毎回ランダムに選ぶ）</option>
-                  <option value="llm">LLM都度生成（モブの職業・属性タグ等を踏まえてその場でLLMに考えさせる。非同期のため登場は即時、数秒後に反映）</option>
-                </select>
-              </label>
-            )}
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>自動画像生成（脱衣・着替え時）</h4>
             <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>

@@ -61,7 +61,7 @@ import { clampLlmDelta } from '../services/llmValueDelta.js';
 import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
 import { triggerPendingMobFlavorGeneration } from '../services/mobPersonaGeneration.js';
-import { promoteMobToFavorite } from '../services/mobPromotion.js';
+import { promoteAccompanyingFlavoredMobs } from '../services/mobPromotion.js';
 
 export const roomSessionsRouter = Router();
 
@@ -569,19 +569,32 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
   // 既知の競合——実際に兄弟セッションの二重生成として観測済み)。
   // withSessionLockで直列化し、ロック取得後に改めてセッションを読み直す。
   const result = await withSessionLock(session.id, async () => {
-    const freshSession = getRoomSession(session.id);
+    let freshSession = getRoomSession(session.id);
     if (!freshSession || freshSession.status !== 'active') {
       return { error: 'session_already_ended' };
     }
 
+    const moveWorld = getWorld(playthroughWorldId);
+    // 同行キャラが引き継がれる直前——ランダムペルソナ付きのモブがいれば自動で
+    // お気に入りキャラとして実体化する(0128フォローアップ)。継続セッション内の
+    // 部屋差し替え(switchRoomWithinSession、下のcut=falseの枝)はセッションを
+    // 畳まないので、closeAndReopenSession経由の昇格が効かない——ここで一度
+    // 昇格させておけば、cut/非cutどちらの経路でもcharacter_idが確定した状態で
+    // 進む。
+    freshSession = await promoteAccompanyingFlavoredMobs(freshSession, moveWorld);
+
     const carryOverParticipants = freshSession.participants
       .filter((p) => p.is_accompanying)
-      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id, mob_flavor_preset_id: p.mob_flavor_preset_id }));
+      .map((p) => ({
+        character_id: p.character_id,
+        current_outfit_id: p.current_outfit_id,
+        current_transformation_id: p.current_transformation_id,
+        mob_flavor_preset_id: p.mob_flavor_preset_id,
+      }));
 
     // Catch-up relationship/memory/impression update (SPEC.md、0121ユーザー決定：
     // 継続セッションでも部屋移動のたびに実行する) — room移動はこのroom_session
     // の会話の一区切りなので、切る/切らないに関わらず必ず走らせる。
-    const moveWorld = getWorld(playthroughWorldId);
     await runEndOfSceneHooks(freshSession, moveWorld);
 
     // 移動コストを先に適用してから境界を判定する(0121/0122)。
@@ -632,17 +645,22 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
 });
 
 roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {
+  const isAccompanying = Boolean(req.body.is_accompanying);
+  if (isAccompanying) {
+    // モブは「モブのランダムペルソナ」がoffのWorldでは同行できない(見た目だけの
+    // 通行人のまま、記憶・関係値も持てないので連れ出す意味が無い)。デバッグ用
+    // 手動トグルでもこのガードは効かせる。
+    const session = getRoomSession(req.params.id);
+    if (!session) return res.status(404).json({ error: 'not_found' });
+    const participant = session.all_participants.find((p) => String(p.character_id) === String(req.params.characterId));
+    if (participant?.is_mob) {
+      const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
+      if (world.mob_flavor_mode === 'off') return res.status(400).json({ error: 'mob_not_accompaniable' });
+    }
+  }
   res.json(
-    setAccompanying(req.params.id, req.params.characterId, Boolean(req.body.is_accompanying), req.body.room_session_character_id ?? null),
+    setAccompanying(req.params.id, req.params.characterId, isAccompanying, req.body.room_session_character_id ?? null),
   );
-});
-
-// 同行中の、ランダムペルソナ付与済みモブを「お気に入りキャラ」として実体化する
-// (手動確認、ChatPage.jsxのボタンから呼ぶ)。
-roomSessionsRouter.post('/:id/participants/:roomSessionCharacterId/promote-mob', (req, res) => {
-  const result = promoteMobToFavorite(req.params.id, req.params.roomSessionCharacterId);
-  if (result.error) return res.status(400).json(result);
-  res.json(result);
 });
 
 // Surfaces change_relationship action results as a transient in-chat notice
@@ -1104,6 +1122,16 @@ async function generateReply(
       await maybeGenerateImageOnOutfitChangeEvent(session, world, fired);
     } catch (err) {
       console.error('Auto outfit image trigger failed:', err);
+    }
+
+    // llmモードのモブペルソナ生成キック漏れ対策(0128フォローアップ): 今回の
+    // イベント処理でcharacter_joinにより新規参加したモブは、セッション作成/
+    // 部屋移動の時点では存在しなかったため生成がキックされていない。ターン
+    // 終了時に毎回拾い直す(fire-and-forget、既存のキックと同じ設計)。
+    try {
+      triggerPendingMobFlavorGeneration(getRoomSession(sessionId), world);
+    } catch (err) {
+      console.error('Mob flavor generation trigger failed:', err);
     }
   } catch (err) {
     console.error('Event engine run failed:', err);

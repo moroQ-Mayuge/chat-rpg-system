@@ -14,27 +14,35 @@ import {
 } from '../db/repositories/roomSessionsRepo.js';
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { broadcast } from '../ws/rooms.js';
+import { generateMobFlavorAsync } from './mobPersonaGeneration.js';
 
 // ペルソナのうち、モブ本体からではなくプリセットから持ってくる項目
 // (mob_flavor_presetsのフィールドと1対1対応)。
 const FLAVOR_FIELDS = ['personality', 'speech_style', 'sentence_ending', 'first_person', 'call_user_as', 'call_others_as'];
 
-// 同行中の、ランダムペルソナ付与済みモブを「お気に入りキャラ」として実体化する
-// (手動確認、子キャラの「起こす」= materializeChildと同じ構造)。見た目・背景は
-// モブ行から継承し、口調・性格系だけプリセットで上書きする。is_mob=falseに
-// なることで、以後の関係値・ステータス・記憶は通常キャラと同じくプレイスルー
-// 単位で永続する。
-export function promoteMobToFavorite(sessionId, roomSessionCharacterId) {
+// 同行中の、ランダムペルソナ付与済みモブを「お気に入りキャラ」として実体化する。
+// 見た目・背景はモブ行から継承し、口調・性格系だけプリセットで上書きする。
+// is_mob=falseになることで、以後の関係値・ステータス・記憶は通常キャラと同じく
+// プレイスルー単位で永続する。
+//
+// options.allowWithoutPreset: trueの場合、プリセット未割当(preset枠が空/llm生成
+// 失敗)でもエラーにせず、モブ自身のname/personality/speech_style等をそのまま
+// 使って実体化する(「ペルソナ無しで実体化」、promoteAccompanyingFlavoredMobs
+// からの自動昇格が使う——同行キャラを引き継ぐ以上、確実にどちらかの形で
+// 実体化させたいため)。手動呼び出し(将来のデバッグ用途等)は既定どおり
+// プリセット必須のまま。
+export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options = {}) {
+  const { allowWithoutPreset = false } = options;
   const session = getRoomSession(sessionId);
   if (!session) return { error: 'session_not_found' };
   const participant = session.all_participants.find((p) => p.id === Number(roomSessionCharacterId));
   if (!participant) return { error: 'participant_not_found' };
-  if (participant.mob_flavor_preset_id == null) return { error: 'no_flavor_assigned' };
+  if (participant.mob_flavor_preset_id == null && !allowWithoutPreset) return { error: 'no_flavor_assigned' };
 
   const mob = getCharacter(participant.character_id);
   if (!mob?.is_mob) return { error: 'not_a_mob' };
-  const preset = getMobFlavorPreset(participant.mob_flavor_preset_id);
-  if (!preset) return { error: 'preset_not_found' };
+  const preset = participant.mob_flavor_preset_id != null ? getMobFlavorPreset(participant.mob_flavor_preset_id) : null;
+  if (participant.mob_flavor_preset_id != null && !preset) return { error: 'preset_not_found' };
 
   const playthrough = getPlaythrough(session.playthrough_id);
 
@@ -56,16 +64,21 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId) {
     default_value: row.value,
   }));
 
+  // プリセットが無い場合(preset枠が空・llm生成失敗)は、元のモブ自身の性格・
+  // 口調をそのまま使う——「ペルソナ無しで実体化」。
+  const flavorSource = preset ?? mob;
+
   const newCharacter = createCharacter({
     ...inherited,
-    // 表示名はプリセット名+「（モブ）」を焼き込む(以後これが本人の正式な名前)。
-    name: `${preset.name}（モブ）`,
-    personality: preset.personality,
-    speech_style: preset.speech_style,
-    sentence_ending: preset.sentence_ending,
-    first_person: preset.first_person,
-    call_user_as: preset.call_user_as,
-    call_others_as: preset.call_others_as,
+    // 表示名は(プリセット名 or 元のモブ名)+「（モブ）」を焼き込む(以後これが
+    // 本人の正式な名前)。
+    name: `${flavorSource.name}（モブ）`,
+    personality: flavorSource.personality,
+    speech_style: flavorSource.speech_style,
+    sentence_ending: flavorSource.sentence_ending,
+    first_person: flavorSource.first_person,
+    call_user_as: flavorSource.call_user_as,
+    call_others_as: flavorSource.call_others_as,
     is_mob: false,
     origin_playthrough_id: playthrough.id,
     is_auto_created: true,
@@ -106,4 +119,33 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId) {
 
   broadcast(sessionId, { type: 'participants_changed' });
   return { character: newCharacter };
+}
+
+// 同行キャラが次のセッション/部屋へ引き継がれる全経路(継続セッションの部屋移動・
+// 区切り再開・end_session/force_room_transferイベント)で、その直前に呼ぶ。
+// 「連れ出して部屋移動した時点でキャラ情報をプールする」— 手動のお気に入り
+// 登録ボタンに代わる自動昇格。world.mob_flavor_mode==='off'なら何もしない
+// (そもそもモブはis_accompanying=trueになれない、setAccompanying.js参照)。
+//
+// llmモードでまだペルソナ未生成のモブは、ここで同期的に生成を待ってから
+// 昇格する(移動そのものは待たせるが、koboldcpp不通等で生成に失敗しても
+// promoteMobToFavoriteのallowWithoutPresetにより元のモブ名+性格のまま
+// 実体化する——同行キャラが消えることは無い)。
+//
+// 戻り値: 呼び出し元が保持していたsessionオブジェクトは古くなる(character_id
+// が変わるため)——常にこの関数の戻り値(再取得したsession)を使うこと。
+export async function promoteAccompanyingFlavoredMobs(session, world) {
+  if (world.mob_flavor_mode === 'off') return session;
+  const targets = session.participants.filter((p) => p.is_active && p.is_accompanying && p.is_mob);
+  if (targets.length === 0) return session;
+
+  for (const p of targets) {
+    if (p.mob_flavor_preset_id == null && world.mob_flavor_mode === 'llm') {
+      await generateMobFlavorAsync(session.id, p.id, p.character_id, world.id);
+    }
+  }
+  for (const p of targets) {
+    promoteMobToFavorite(session.id, p.id, { allowWithoutPreset: true });
+  }
+  return getRoomSession(session.id);
 }

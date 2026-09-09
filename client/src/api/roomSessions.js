@@ -12,7 +12,6 @@ export const roomSessionsApi = {
       is_accompanying: isAccompanying,
       room_session_character_id: roomSessionCharacterId ?? null,
     }),
-  promoteMob: (id, roomSessionCharacterId) => api.post(`/room-sessions/${id}/participants/${roomSessionCharacterId}/promote-mob`, {}),
   sellItem: (id, itemId) => api.post(`/room-sessions/${id}/sell-item`, { item_id: itemId }),
   getShopProducts: (id) => api.get(`/room-sessions/${id}/shop-products`),
   buyItem: (id, itemId) => api.post(`/room-sessions/${id}/buy-item`, { item_id: itemId }),

@@ -4,7 +4,7 @@ import { setParticipantMobFlavorPresetIfUnset } from '../db/repositories/roomSes
 import { generateCharacterSheet } from './characterAssist.js';
 import { broadcast } from '../ws/rooms.js';
 
-// LLM生成モード(worlds.mob_flavor_generation_mode==='llm')用。部屋登場をブロック
+// LLM生成モード(worlds.mob_flavor_mode==='llm')用。部屋登場をブロック
 // しないよう、呼び出し元(roomSessions.jsルート)がレスポンス送出後にfire-and-forget
 // で呼ぶ。childCharacter.jsのgenerateChildDetailsと同じ「指示文＋既存フィールドを
 // 渡してgenerateCharacterSheetにシートを1枚生成させ、使う項目だけ抜き出す」パターン。
@@ -50,7 +50,7 @@ export async function generateMobFlavorAsync(sessionId, roomSessionCharacterId, 
 // 送出後に呼ぶ——「未生成のまま残っている行」を毎回拾い直す設計なので、前回
 // koboldcppが落ちていて生成できなかった行も次の機会に自然にリトライされる。
 export function triggerPendingMobFlavorGeneration(session, world) {
-  if (!world.mob_random_flavor_enabled || world.mob_flavor_generation_mode !== 'llm') return;
+  if (world.mob_flavor_mode !== 'llm') return;
   const pending = (session?.all_participants ?? []).filter((p) => p.is_active && p.is_mob && p.mob_flavor_preset_id == null);
   for (const p of pending) {
     generateMobFlavorAsync(session.id, p.id, p.character_id, world.id).catch((err) =>

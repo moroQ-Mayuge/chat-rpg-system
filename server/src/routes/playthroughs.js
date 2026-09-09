@@ -74,7 +74,15 @@ playthroughsRouter.put('/:id/protagonist', (req, res) => {
 });
 
 playthroughsRouter.get('/:id/active-session', (req, res) => {
-  res.json(getActiveSessionForPlaythrough(req.params.id) ?? null);
+  const session = getActiveSessionForPlaythrough(req.params.id);
+  res.json(session ?? null);
+  // 「続きから」で既存セッションに戻った場合、生成がまだキックされていない
+  // (llmモードのWorldでこのセッション作成時にkoboldcppが落ちていた等)モブが
+  // 残っていないか毎回拾い直す(fire-and-forget、既存のキックと同じ設計)。
+  if (session) {
+    const playthrough = getPlaythrough(req.params.id);
+    triggerPendingMobFlavorGeneration(session, getWorld(playthrough.world_id));
+  }
 });
 
 playthroughsRouter.post('/:id/room-sessions', (req, res) => {

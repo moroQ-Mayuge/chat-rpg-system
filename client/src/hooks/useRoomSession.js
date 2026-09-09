@@ -74,10 +74,6 @@ export function useRoomSessionMutations(id) {
         roomSessionsApi.setAccompanying(id, characterId, isAccompanying, roomSessionCharacterId),
       onSuccess: invalidate,
     }),
-    promoteMob: useMutation({
-      mutationFn: (roomSessionCharacterId) => roomSessionsApi.promoteMob(id, roomSessionCharacterId),
-      onSuccess: invalidate,
-    }),
     sellItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.sellItem(id, itemId), onSuccess: invalidate }),
     buyItem: useMutation({ mutationFn: (itemId) => roomSessionsApi.buyItem(id, itemId), onSuccess: invalidate }),
     buyOutfit: useMutation({ mutationFn: (outfitMasterId) => roomSessionsApi.buyOutfit(id, outfitMasterId), onSuccess: invalidate }),

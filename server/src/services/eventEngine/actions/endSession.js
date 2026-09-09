@@ -4,6 +4,7 @@ import { getWorld } from '../../../db/repositories/worldsRepo.js';
 import { closeAndReopenSession } from '../../sessionBoundary.js';
 import { withSessionLock } from '../../sessionLock.js';
 import { broadcast } from '../../../ws/rooms.js';
+import { promoteAccompanyingFlavoredMobs } from '../../mobPromotion.js';
 
 // { target_room_template_id?: number|null, carry_character_ids?: number[] }
 // セッション境界モード(0122)の追加トリガー: 場面をその場で区切って開き直す。
@@ -21,14 +22,20 @@ import { broadcast } from '../../../ws/rooms.js';
 // ——同じターンの事後フックや/moveと競合しないようにする。
 export async function executeEndSession(params, execCtx) {
   return withSessionLock(execCtx.sessionId, async () => {
-    const session = getRoomSession(execCtx.sessionId);
+    let session = getRoomSession(execCtx.sessionId);
     if (!session || session.status !== 'active') return { skipped: true, reason: 'session_not_active' };
 
     const world = getWorld(getPlaythrough(execCtx.playthroughId).world_id);
+    session = await promoteAccompanyingFlavoredMobs(session, world);
     const carryIds = new Set(params.carry_character_ids ?? []);
     const carryOverParticipants = session.participants
       .filter((p) => p.is_accompanying || carryIds.has(p.character_id))
-      .map((p) => ({ character_id: p.character_id, current_outfit_id: p.current_outfit_id }));
+      .map((p) => ({
+        character_id: p.character_id,
+        current_outfit_id: p.current_outfit_id,
+        current_transformation_id: p.current_transformation_id,
+        mob_flavor_preset_id: p.mob_flavor_preset_id,
+      }));
 
     const newSession = await closeAndReopenSession(session, world, {
       targetRoomTemplateId: params.target_room_template_id ?? null,

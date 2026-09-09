@@ -85,7 +85,7 @@ export default function SessionLogPage() {
             <div key={m.id} style={{ marginBottom: 6, textAlign: isUser ? 'right' : 'left' }}>
               {!isUser && (
                 <p style={{ fontSize: 10, color: '#888', margin: '0 0 2px' }}>
-                  {participant?.name ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
+                  {participant?.display_name ?? '???'} {m.emotion_tag && `[${m.emotion_tag}]`}
                 </p>
               )}
               <div style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 8 }}>

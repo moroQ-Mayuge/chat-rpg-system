@@ -30,7 +30,10 @@ function letterSuffix(occurrenceIndex) {
 // モブにランダム付与されたペルソナ(mob_flavor_presets、部屋登場時に抽選/LLM生成)
 // があれば、以降のA/B連番・同名(2)ロジックはこの名前を基準に行う——ベースの
 // characters.nameは共有マスタなので、ペルソナが無い間はそのまま使う。
-function baseNameFor(p) {
+// roomSessionsRepo.jsのattachParticipantsも(退室済み参加者のdisplay_name計算に)
+// これをそのまま使うため公開している——UI側の@メンション等がこの名前とずれる
+// と、resolveMentions()側の照合(`@${display_name}`)が一致しなくなる。
+export function participantBaseName(p) {
   return p.mob_flavor_name ? `${p.mob_flavor_name}（モブ）` : p.name;
 }
 
@@ -38,7 +41,7 @@ export function withDisambiguatedNames(participants) {
   const nameSeen = new Map();
   const characterIdSeen = new Map();
   return participants.map((p) => {
-    const baseName = baseNameFor(p);
+    const baseName = participantBaseName(p);
     const characterOccurrence = (characterIdSeen.get(p.character_id) ?? 0) + 1;
     characterIdSeen.set(p.character_id, characterOccurrence);
     if (characterOccurrence > 1) {
