@@ -14,12 +14,13 @@ mobFlavorPresetsRouter.get('/', (req, res) => {
 });
 
 mobFlavorPresetsRouter.post('/', (req, res) => {
-  if (!req.body.world_id || !req.body.name) return res.status(400).json({ error: 'world_id_and_name_required' });
+  // 名前とは独立したペルソナ(性格・口調)プール(0129)。個々の項目はどれも任意
+  // (空欄可)のため、必須なのはworld_idのみ。
+  if (!req.body.world_id) return res.status(400).json({ error: 'world_id_required' });
   res.status(201).json(createMobFlavorPreset(req.body));
 });
 
 mobFlavorPresetsRouter.put('/:id', (req, res) => {
-  if (!req.body.name) return res.status(400).json({ error: 'name_required' });
   res.json(updateMobFlavorPreset(req.params.id, req.body));
 });
 

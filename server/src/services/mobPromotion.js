@@ -2,6 +2,7 @@ import { db } from '../db/connection.js';
 import { getCharacter, createCharacter, CHARACTER_TEXT_FIELDS } from '../db/repositories/charactersRepo.js';
 import { attachCharacterToWorld } from '../db/repositories/worldCharactersRepo.js';
 import { getMobFlavorPreset } from '../db/repositories/mobFlavorPresetsRepo.js';
+import { getMobNamePreset } from '../db/repositories/mobNamePresetsRepo.js';
 import { getOutfit, createOutfit, setExpressionImage } from '../db/repositories/outfitsRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { listActiveStatuses, grantStatus } from '../db/repositories/characterStatusStatesRepo.js';
@@ -25,24 +26,32 @@ const FLAVOR_FIELDS = ['personality', 'speech_style', 'sentence_ending', 'first_
 // is_mob=falseになることで、以後の関係値・ステータス・記憶は通常キャラと同じく
 // プレイスルー単位で永続する。
 //
-// options.allowWithoutPreset: trueの場合、プリセット未割当(preset枠が空/llm生成
-// 失敗)でもエラーにせず、モブ自身のname/personality/speech_style等をそのまま
-// 使って実体化する(「ペルソナ無しで実体化」、promoteAccompanyingFlavoredMobs
-// からの自動昇格が使う——同行キャラを引き継ぐ以上、確実にどちらかの形で
-// 実体化させたいため)。手動呼び出し(将来のデバッグ用途等)は既定どおり
-// プリセット必須のまま。
+// options.allowWithoutPreset: trueの場合、ペルソナ・名前が両方とも未割当
+// (プール枠が空/llm生成失敗)でもエラーにせず、モブ自身のname/personality/
+// speech_style等をそのまま使って実体化する(「ペルソナ無しで実体化」、
+// promoteAccompanyingFlavoredMobsからの自動昇格が使う——同行キャラを引き継ぐ
+// 以上、確実にどちらかの形で実体化させたいため)。手動呼び出し(将来のデバッグ
+// 用途等)は既定どおりどちらか一方の割当を必須とする。
+// ペルソナ(mob_flavor_preset_id)と名前(mob_flavor_name_id)は0129で独立プールに
+// 分かれたため、それぞれ個別に「割当済みならそれを使う、無ければモブ自身の
+// 値にフォールバックする」——名前だけ付いていてペルソナは元のモブのまま、
+// といった組み合わせも成立する。
 export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options = {}) {
   const { allowWithoutPreset = false } = options;
   const session = getRoomSession(sessionId);
   if (!session) return { error: 'session_not_found' };
   const participant = session.all_participants.find((p) => p.id === Number(roomSessionCharacterId));
   if (!participant) return { error: 'participant_not_found' };
-  if (participant.mob_flavor_preset_id == null && !allowWithoutPreset) return { error: 'no_flavor_assigned' };
+  if (participant.mob_flavor_preset_id == null && participant.mob_flavor_name_id == null && !allowWithoutPreset) {
+    return { error: 'no_flavor_assigned' };
+  }
 
   const mob = getCharacter(participant.character_id);
   if (!mob?.is_mob) return { error: 'not_a_mob' };
   const preset = participant.mob_flavor_preset_id != null ? getMobFlavorPreset(participant.mob_flavor_preset_id) : null;
   if (participant.mob_flavor_preset_id != null && !preset) return { error: 'preset_not_found' };
+  const namePreset = participant.mob_flavor_name_id != null ? getMobNamePreset(participant.mob_flavor_name_id) : null;
+  if (participant.mob_flavor_name_id != null && !namePreset) return { error: 'name_preset_not_found' };
 
   const playthrough = getPlaythrough(session.playthrough_id);
 
@@ -64,15 +73,17 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options 
     default_value: row.value,
   }));
 
-  // プリセットが無い場合(preset枠が空・llm生成失敗)は、元のモブ自身の性格・
-  // 口調をそのまま使う——「ペルソナ無しで実体化」。
+  // ペルソナが無い場合(preset枠が空・llm生成失敗)は元のモブ自身の性格・口調を、
+  // 名前が無い場合は元のモブ自身の名前を、それぞれ独立にフォールバックする
+  // ——「ペルソナ無しで実体化」。
   const flavorSource = preset ?? mob;
+  const baseName = namePreset?.name ?? mob.name;
 
   const newCharacter = createCharacter({
     ...inherited,
-    // 表示名は(プリセット名 or 元のモブ名)+「（モブ）」を焼き込む(以後これが
-    // 本人の正式な名前)。
-    name: `${flavorSource.name}（モブ）`,
+    // 表示名は(名前プリセット名 or 元のモブ名)+「（モブ）」を焼き込む(以後
+    // これが本人の正式な名前)。
+    name: `${baseName}（モブ）`,
     personality: flavorSource.personality,
     speech_style: flavorSource.speech_style,
     sentence_ending: flavorSource.sentence_ending,

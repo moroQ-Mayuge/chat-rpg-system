@@ -1,6 +1,7 @@
 import { getCharacter } from '../db/repositories/charactersRepo.js';
 import { createMobFlavorPreset } from '../db/repositories/mobFlavorPresetsRepo.js';
-import { setParticipantMobFlavorPresetIfUnset } from '../db/repositories/roomSessionsRepo.js';
+import { createMobNamePreset } from '../db/repositories/mobNamePresetsRepo.js';
+import { setParticipantMobFlavorIfUnset } from '../db/repositories/roomSessionsRepo.js';
 import { generateCharacterSheet } from './characterAssist.js';
 import { broadcast } from '../ws/rooms.js';
 
@@ -25,9 +26,16 @@ export async function generateMobFlavorAsync(sessionId, roomSessionCharacterId, 
     const instruction = `その場に居合わせた通行人・モブキャラクター（${contextParts.join('、') || '詳細不明'}）。この人物像にふさわしい名前・性格・口調を考えてください。`;
 
     const sheet = await generateCharacterSheet(instruction);
-    const preset = createMobFlavorPreset({
+    // LLMは名前と性格・口調を一貫性を持たせて1回で生成するが、保存先は
+    // 0129で独立させた名前プール/ペルソナプールにそれぞれ別行として入れる
+    // (紐付けない方針——将来の抽選では別の組み合わせで再利用され得る)。
+    const namePreset = createMobNamePreset({
       world_id: worldId,
       name: sheet.fields.name || mob.name,
+      is_generated: true,
+    });
+    const preset = createMobFlavorPreset({
+      world_id: worldId,
       personality: sheet.fields.personality,
       speech_style: sheet.fields.speech_style,
       sentence_ending: sheet.fields.sentence_ending,
@@ -37,7 +45,7 @@ export async function generateMobFlavorAsync(sessionId, roomSessionCharacterId, 
       is_generated: true,
     });
 
-    const applied = setParticipantMobFlavorPresetIfUnset(roomSessionCharacterId, preset.id);
+    const applied = setParticipantMobFlavorIfUnset(roomSessionCharacterId, { presetId: preset.id, nameId: namePreset.id });
     if (applied) broadcast(sessionId, { type: 'participants_changed' });
   } catch (err) {
     console.error('mob flavor LLM generation failed:', err);
@@ -45,7 +53,8 @@ export async function generateMobFlavorAsync(sessionId, roomSessionCharacterId, 
 }
 
 // llmモードのWorldで、まだペルソナが決まっていないモブ参加者(is_mob かつ
-// mob_flavor_preset_id未設定)を全員拾い、fire-and-forgetで生成をキックする。
+// mob_flavor_preset_id未設定——生成時は名前・ペルソナを必ず同時に設定するため、
+// これだけを未生成の目印として使える)を全員拾い、fire-and-forgetで生成をキックする。
 // 部屋セッションを新規作成/切替するルート(セッション作成、/move)がレスポンス
 // 送出後に呼ぶ——「未生成のまま残っている行」を毎回拾い直す設計なので、前回
 // koboldcppが落ちていて生成できなかった行も次の機会に自然にリトライされる。
