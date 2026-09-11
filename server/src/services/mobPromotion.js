@@ -3,6 +3,7 @@ import { getCharacter, createCharacter, CHARACTER_TEXT_FIELDS } from '../db/repo
 import { attachCharacterToWorld } from '../db/repositories/worldCharactersRepo.js';
 import { getMobFlavorPreset } from '../db/repositories/mobFlavorPresetsRepo.js';
 import { getMobNamePreset } from '../db/repositories/mobNamePresetsRepo.js';
+import { getMobSurnamePreset } from '../db/repositories/mobSurnamePresetsRepo.js';
 import { getOutfit, createOutfit, setExpressionImage } from '../db/repositories/outfitsRepo.js';
 import { getValue } from '../db/repositories/relationshipStatesRepo.js';
 import { listActiveStatuses, grantStatus } from '../db/repositories/characterStatusStatesRepo.js';
@@ -32,9 +33,10 @@ const FLAVOR_FIELDS = ['personality', 'speech_style', 'sentence_ending', 'first_
 // promoteAccompanyingFlavoredMobsからの自動昇格が使う——同行キャラを引き継ぐ
 // 以上、確実にどちらかの形で実体化させたいため)。手動呼び出し(将来のデバッグ
 // 用途等)は既定どおりどちらか一方の割当を必須とする。
-// ペルソナ(mob_flavor_preset_id)と名前(mob_flavor_name_id)は0129で独立プールに
-// 分かれたため、それぞれ個別に「割当済みならそれを使う、無ければモブ自身の
-// 値にフォールバックする」——名前だけ付いていてペルソナは元のモブのまま、
+// ペルソナ(mob_flavor_preset_id)・下の名前(mob_flavor_name_id)・苗字
+// (mob_flavor_surname_id、0130)はそれぞれ独立プールに分かれているため(0129/
+// 0130)、個別に「割当済みならそれを使う、無ければモブ自身の値にフォールバック
+// する」——名前だけ付いていてペルソナは元のモブのまま、苗字は無く下の名前だけ、
 // といった組み合わせも成立する。
 export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options = {}) {
   const { allowWithoutPreset = false } = options;
@@ -42,7 +44,12 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options 
   if (!session) return { error: 'session_not_found' };
   const participant = session.all_participants.find((p) => p.id === Number(roomSessionCharacterId));
   if (!participant) return { error: 'participant_not_found' };
-  if (participant.mob_flavor_preset_id == null && participant.mob_flavor_name_id == null && !allowWithoutPreset) {
+  if (
+    participant.mob_flavor_preset_id == null &&
+    participant.mob_flavor_name_id == null &&
+    participant.mob_flavor_surname_id == null &&
+    !allowWithoutPreset
+  ) {
     return { error: 'no_flavor_assigned' };
   }
 
@@ -52,6 +59,8 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options 
   if (participant.mob_flavor_preset_id != null && !preset) return { error: 'preset_not_found' };
   const namePreset = participant.mob_flavor_name_id != null ? getMobNamePreset(participant.mob_flavor_name_id) : null;
   if (participant.mob_flavor_name_id != null && !namePreset) return { error: 'name_preset_not_found' };
+  const surnamePreset = participant.mob_flavor_surname_id != null ? getMobSurnamePreset(participant.mob_flavor_surname_id) : null;
+  if (participant.mob_flavor_surname_id != null && !surnamePreset) return { error: 'surname_preset_not_found' };
 
   const playthrough = getPlaythrough(session.playthrough_id);
 
@@ -74,10 +83,12 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options 
   }));
 
   // ペルソナが無い場合(preset枠が空・llm生成失敗)は元のモブ自身の性格・口調を、
-  // 名前が無い場合は元のモブ自身の名前を、それぞれ独立にフォールバックする
-  // ——「ペルソナ無しで実体化」。
+  // それぞれ独立にフォールバックする——「ペルソナ無しで実体化」。名前は
+  // 苗字(surnamePreset)・下の名前(namePreset)がそれぞれ独立に割当済みならそれを
+  // 使い、両方とも無い場合だけ元のモブ自身の名前にフォールバックする(0130)。
   const flavorSource = preset ?? mob;
-  const baseName = namePreset?.name ?? mob.name;
+  const fullNamePreset = [surnamePreset?.surname, namePreset?.name].filter(Boolean).join(' ');
+  const baseName = fullNamePreset || mob.name;
 
   const newCharacter = createCharacter({
     ...inherited,

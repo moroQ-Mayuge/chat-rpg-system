@@ -590,6 +590,8 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
         current_outfit_id: p.current_outfit_id,
         current_transformation_id: p.current_transformation_id,
         mob_flavor_preset_id: p.mob_flavor_preset_id,
+        mob_flavor_name_id: p.mob_flavor_name_id,
+        mob_flavor_surname_id: p.mob_flavor_surname_id,
       }));
 
     // Catch-up relationship/memory/impression update (SPEC.md、0121ユーザー決定：

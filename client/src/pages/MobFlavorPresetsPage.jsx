@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useMobFlavorPresetsForWorld, useMobFlavorPresetMutations } from '../hooks/useMobFlavorPresets.js';
 import { useMobNamePresetsForWorld, useMobNamePresetMutations } from '../hooks/useMobNamePresets.js';
+import { useMobSurnamePresetsForWorld, useMobSurnamePresetMutations } from '../hooks/useMobSurnamePresets.js';
 
 const emptyPersonaForm = { personality: '', speech_style: '', sentence_ending: '', first_person: '', call_user_as: '', call_others_as: '' };
 
@@ -14,6 +15,89 @@ function personaToForm(p) {
     call_user_as: p.call_user_as ?? '',
     call_others_as: p.call_others_as ?? '',
   };
+}
+
+// 苗字プールも名前・ペルソナのどちらとも紐付かない独立した抽選対象(0130)——
+// NamePresetsSectionと同じ構造で、フィールド名だけsurnameに差し替えている。
+function SurnamePresetsSection({ worldId }) {
+  const { data: surnames, isLoading } = useMobSurnamePresetsForWorld(worldId);
+  const { create, update, remove } = useMobSurnamePresetMutations();
+  const [editingId, setEditingId] = useState(null);
+  const [surname, setSurname] = useState('');
+
+  function startEdit(s) {
+    setEditingId(s.id);
+    setSurname(s.surname);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setSurname('');
+  }
+
+  async function handleSave() {
+    if (!surname || worldId == null) return;
+    if (editingId != null) {
+      await update.mutateAsync({ id: editingId, data: { surname } });
+    } else {
+      await create.mutateAsync({ world_id: worldId, surname });
+    }
+    cancelEdit();
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('この苗字を削除しますか？')) return;
+    if (editingId === id) cancelEdit();
+    await remove.mutateAsync(id);
+  }
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <h3 style={{ fontSize: 14, marginBottom: 4 }}>苗字プール</h3>
+      <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+        ランダムに選ばれる苗字だけの一覧です。下の名前プール・ペルソナとは紐付いておらず、部屋登場時に別々に抽選されて組み合わさります（苗字が無ければ名前だけが使われます）。
+      </p>
+      {isLoading ? (
+        <p>読み込み中...</p>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+          {(surnames ?? []).map((s) => (
+            <span
+              key={s.id}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 4px 3px 10px',
+                borderRadius: 14,
+                border: editingId === s.id ? '1px solid #2563eb' : '1px solid #ddd',
+                fontSize: 12,
+              }}
+            >
+              {s.surname}
+              {s.is_generated && (
+                <span style={{ fontSize: 9, color: '#2563eb', border: '1px solid #2563eb', borderRadius: 8, padding: '0 4px' }}>LLM生成</span>
+              )}
+              <button onClick={() => startEdit(s)} style={{ fontSize: 10, padding: '1px 5px' }}>
+                編集
+              </button>
+              <button onClick={() => handleDelete(s.id)} style={{ fontSize: 10, padding: '1px 5px' }}>
+                削除
+              </button>
+            </span>
+          ))}
+          {(surnames ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888', margin: 0 }}>このWorldにはまだ苗字がありません。</p>}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input style={{ width: 200 }} value={surname} onChange={(e) => setSurname(e.target.value)} placeholder="例: 田中" />
+        {editingId != null && <button onClick={cancelEdit}>キャンセル</button>}
+        <button onClick={handleSave} disabled={!surname || worldId == null}>
+          {editingId != null ? '保存' : '追加'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // 名前プールとペルソナ(性格・口調)プールは互いに紐付かない独立した抽選対象
@@ -221,7 +305,7 @@ export default function MobFlavorPresetsPage() {
     <div>
       <h2>モブのランダムペルソナ</h2>
       <p style={{ fontSize: 12, color: '#888', marginTop: -8, marginBottom: 16 }}>
-        World設定「モブのペルソナ・同行」を「プリセット抽選」にした場合、モブ属性キャラが部屋に登場する際に下の名前プールとペルソナプールからそれぞれ独立に1件ずつランダムに選び、見た目はそのままに付与します（表示名の末尾に「（モブ）」が付きます）。名前とペルソナは紐付いていないため、どちらか片方しか登録していなくても構いません。「LLM都度生成」モードではここは使いません（自動生成された名前・ペルソナが「LLM生成」バッジ付きで参考表示されます）。
+        World設定「モブのペルソナ・同行」を「プリセット抽選」にした場合、モブ属性キャラが部屋に登場する際に下の苗字プール・名前プール・ペルソナプールからそれぞれ独立に1件ずつランダムに選び、見た目はそのままに付与します（表示名は「苗字 名前（モブ）」の末尾に「（モブ）」が付きます）。苗字・名前・ペルソナは互いに紐付いていないため、いずれか一部しか登録していなくても構いません。「LLM都度生成」モードではここは使いません（自動生成された名前・ペルソナが「LLM生成」バッジ付きで参考表示されます）。
       </p>
 
       <label style={{ display: 'block', marginBottom: 24 }}>
@@ -239,6 +323,7 @@ export default function MobFlavorPresetsPage() {
         </select>
       </label>
 
+      <SurnamePresetsSection worldId={effectiveWorldId} />
       <NamePresetsSection worldId={effectiveWorldId} />
       <PersonaPresetsSection worldId={effectiveWorldId} />
     </div>

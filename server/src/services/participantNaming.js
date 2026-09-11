@@ -27,14 +27,19 @@ function letterSuffix(occurrenceIndex) {
   return String.fromCharCode('A'.charCodeAt(0) + occurrenceIndex - 1);
 }
 
-// モブにランダム付与されたペルソナ(mob_flavor_presets、部屋登場時に抽選/LLM生成)
-// があれば、以降のA/B連番・同名(2)ロジックはこの名前を基準に行う——ベースの
-// characters.nameは共有マスタなので、ペルソナが無い間はそのまま使う。
+// モブにランダム付与された名前(mob_name_presets)・苗字(mob_surname_presets、
+// 0130)があれば、以降のA/B連番・同名(2)ロジックはこの名前を基準に行う——
+// ベースのcharacters.nameは共有マスタなので、どちらも無い間はそのまま使う。
+// 苗字と(下の)名前は互いに独立な抽選結果(0129/0130)なので、それぞれ片方だけ
+// 割り当て済みの場合も成立する("苗字 名前"の順、和名の区切りに合わせて空白
+// 区切り——[[pregnancy_and_child_design]]の洋名「・」区切りとは別ルール)。
 // roomSessionsRepo.jsのattachParticipantsも(退室済み参加者のdisplay_name計算に)
 // これをそのまま使うため公開している——UI側の@メンション等がこの名前とずれる
 // と、resolveMentions()側の照合(`@${display_name}`)が一致しなくなる。
 export function participantBaseName(p) {
-  return p.mob_flavor_name ? `${p.mob_flavor_name}（モブ）` : p.name;
+  if (!p.mob_flavor_name && !p.mob_flavor_surname) return p.name;
+  const fullName = [p.mob_flavor_surname, p.mob_flavor_name].filter(Boolean).join(' ');
+  return `${fullName}（モブ）`;
 }
 
 export function withDisambiguatedNames(participants) {

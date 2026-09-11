@@ -38,6 +38,8 @@ export async function executeForceRoomTransfer(params, execCtx) {
         current_outfit_id: p.current_outfit_id,
         current_transformation_id: p.current_transformation_id,
         mob_flavor_preset_id: p.mob_flavor_preset_id,
+        mob_flavor_name_id: p.mob_flavor_name_id,
+        mob_flavor_surname_id: p.mob_flavor_surname_id,
       }));
     const newSession = await closeAndReopenSession(session, world, {
       targetRoomTemplateId: target_room_template_id,
