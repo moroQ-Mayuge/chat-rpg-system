@@ -549,26 +549,35 @@ function buildHistoryMessages(session, charBudget) {
   }
   rows.reverse();
 
-  // このセッション内に該当キャラの参加行が残っていれば、そこに割り当て済みの
+  // このセッション内に該当する参加行が残っていれば、そこに割り当て済みの
   // ランダムフレーバー名(モブ、mob_flavor_name)を反映したベース名を使う——素の
   // characters.nameだけを見ると、フレーバー付与済みだが未昇格のモブの過去発言が
   // 共有マスタの元名("モブ女子高生"等)のまま履歴に残り、モデルがそれを模倣して
   // 以後もその名で喋り続けてしまう(現在ターンのキャラカードはdisplay_nameで
   // 正しい名前を見せているのに、モデル自身の過去発言だけ食い違う形になる) —
   // resolveParticipantFuzzy側は現在のdisplay_nameで解決しようとするため一致せず、
-  // アイコン付き発言にならず地の文落ちする不具合の原因だった。参加行が見当たら
-  // ない場合(昇格でcharacter_idが差し替わった後に残る昇格前の発言等)は従来どおり
+  // アイコン付き発言にならず地の文落ちする不具合の原因だった。
+  //
+  // roomSessionCharacterId(migration 0132でmessagesに追加された参加行id)が
+  // 分かればそちらを優先して検索する——character_idと違い、モブお気に入り
+  // 昇格(repointParticipantCharacter)で行のcharacter_idが差し替わっても
+  // 参加行id自体は不変なので、昇格を跨いでも正しく解決できる。無い場合(移行前の
+  // 過去メッセージ等)は従来どおりcharacter_idで検索し、それも見当たらなければ
   // 素のcharacters.nameへフォールバックする。
   const characterNameCache = new Map();
-  function nameFor(characterId) {
-    if (!characterNameCache.has(characterId)) {
-      const participant = session.all_participants.find((p) => p.character_id === characterId);
+  function nameFor({ characterId, roomSessionCharacterId = null }) {
+    const cacheKey = roomSessionCharacterId ?? `char:${characterId}`;
+    if (!characterNameCache.has(cacheKey)) {
+      const participant =
+        roomSessionCharacterId != null
+          ? session.all_participants.find((p) => p.id === roomSessionCharacterId)
+          : session.all_participants.find((p) => p.character_id === characterId);
       const name = participant
         ? participantBaseName(participant)
         : (db.prepare('SELECT name FROM characters WHERE id = ?').get(characterId)?.name ?? '不明');
-      characterNameCache.set(characterId, name);
+      characterNameCache.set(cacheKey, name);
     }
-    return characterNameCache.get(characterId);
+    return characterNameCache.get(cacheKey);
   }
 
   // Interleaves a synthetic departure marker at the point in the replayed
@@ -580,14 +589,19 @@ function buildHistoryMessages(session, charBudget) {
   // is fine since left_at/created_at share second-level resolution anyway.
   const departures = db
     .prepare(
-      `SELECT rsc.character_id, rsc.left_at FROM room_session_characters rsc
+      `SELECT rsc.id AS room_session_character_id, rsc.character_id, rsc.left_at FROM room_session_characters rsc
        WHERE rsc.room_session_id = ? AND rsc.is_active = 0 AND rsc.left_at IS NOT NULL`,
     )
     .all(sessionId);
 
   const timeline = [
     ...rows.map((row) => ({ type: 'message', at: row.created_at, row })),
-    ...departures.map((d) => ({ type: 'departure', at: d.left_at, characterId: d.character_id })),
+    ...departures.map((d) => ({
+      type: 'departure',
+      at: d.left_at,
+      characterId: d.character_id,
+      roomSessionCharacterId: d.room_session_character_id,
+    })),
   ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 
   const messages = [];
@@ -601,7 +615,7 @@ function buildHistoryMessages(session, charBudget) {
 
   for (const entry of timeline) {
     if (entry.type === 'departure') {
-      const name = nameFor(entry.characterId);
+      const name = nameFor({ characterId: entry.characterId, roomSessionCharacterId: entry.roomSessionCharacterId });
       assistantBuffer.push(`[NARRATION]: （ここで${name}は退席した。以降${name}はこの場におらず、発言も行動もしない）`);
       continue;
     }
@@ -610,7 +624,9 @@ function buildHistoryMessages(session, charBudget) {
       flushAssistantBuffer();
       messages.push({ role: 'user', content: row.content });
     } else if (row.sender_type === 'character') {
-      assistantBuffer.push(`[${nameFor(row.character_id)}]: ${row.content} [EMOTION:${row.emotion_tag || 'normal'}]`);
+      assistantBuffer.push(
+        `[${nameFor({ characterId: row.character_id, roomSessionCharacterId: row.room_session_character_id })}]: ${row.content} [EMOTION:${row.emotion_tag || 'normal'}]`,
+      );
     } else if (row.sender_type === 'narration') {
       assistantBuffer.push(`[NARRATION]: ${row.content}`);
     }

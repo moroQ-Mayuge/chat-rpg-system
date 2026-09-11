@@ -209,6 +209,7 @@ async function runScenarioOnce({ scenario, modelName, runId, repetition, sampler
               character_id: p.character_id,
               content: line.text,
               emotion_tag: line.emotionKey ?? null,
+              room_session_character_id: p.id,
             });
           }
         } else if (line.type === 'narration') {

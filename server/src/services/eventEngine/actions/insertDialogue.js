@@ -110,11 +110,15 @@ export async function executeInsertDialogue(params, execCtx) {
   }
 
   const content = mode === 'fixed' ? resolvePlaceholderText(text, execCtx) : await generateCharacterLine(character_id, prompt_hint, execCtx);
+  // 昇格後も名前/アイコン解決が安定するよう、character_idに加えて参加行id
+  // (room_session_character_id、migration 0132)も分かる範囲で残す。
+  const roomSessionCharacterId = execCtx.session.participants.find((p) => p.character_id === character_id)?.id ?? null;
   const message = createMessage(execCtx.sessionId, {
     sender_type: 'character',
     character_id,
     content,
     emotion_tag: emotion_tag ?? fallbackEmotionKey(),
+    room_session_character_id: roomSessionCharacterId,
   });
   broadcast(execCtx.sessionId, { type: 'message_complete', message });
   return { inserted: 'character', character_id };

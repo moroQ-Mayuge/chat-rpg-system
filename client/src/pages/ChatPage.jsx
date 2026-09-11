@@ -965,12 +965,24 @@ export default function ChatPage() {
   // which is active-only and drives the live UI elsewhere) so past messages
   // from someone who since left still resolve a name/expression image
   // instead of "???".
-  function participantFor(characterId) {
-    return session?.all_participants.find((p) => p.character_id === characterId);
+  //
+  // message.room_session_character_id (migration 0132) is preferred when
+  // present: unlike character_id, it stays stable even if the participant
+  // row was later repointed to a different character (mob favorite
+  // promotion), so a message sent before that promotion still resolves to
+  // the right name/icon instead of "???". Older messages predating the
+  // migration have no room_session_character_id and fall back to the old
+  // character_id lookup, same as before.
+  function participantFor(message) {
+    if (message?.room_session_character_id != null) {
+      const byInstance = session?.all_participants.find((p) => p.id === message.room_session_character_id);
+      if (byInstance) return byInstance;
+    }
+    return session?.all_participants.find((p) => p.character_id === message?.character_id);
   }
 
-  function expressionImageFor(characterId, emotionTag) {
-    const participant = participantFor(characterId);
+  function expressionImageFor(message, emotionTag) {
+    const participant = participantFor(message);
     return participant?.expression_images.find((img) => img.llm_tag_key === emotionTag)?.image_path ?? null;
   }
 
@@ -1293,8 +1305,8 @@ export default function ChatPage() {
             );
           }
           const isUser = m.sender_type === 'user';
-          const imagePath = !isUser ? expressionImageFor(m.character_id, m.emotion_tag) : null;
-          const participant = !isUser ? participantFor(m.character_id) : null;
+          const imagePath = !isUser ? expressionImageFor(m, m.emotion_tag) : null;
+          const participant = !isUser ? participantFor(m) : null;
           return (
             <div key={m.id} style={{ marginBottom: 6, textAlign: isUser ? 'right' : 'left' }}>
               {!isUser && (

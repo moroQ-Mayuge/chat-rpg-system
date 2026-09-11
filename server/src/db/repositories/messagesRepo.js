@@ -43,11 +43,15 @@ export function listLogDaysForSession(sessionId) {
 // moment they spoke — チャット欄の顔アイコン付近のログ表示はこれを使う（現在値
 // ではなく発言時点の値なので、後でステータスが変わっても過去メッセージの
 // 表示は変わらない）。narration/user/system messages never carry one.
-// room_session_character_id is transient (not a messages column) -- only
-// used to build the right instance's snapshot when a duplicate mob instance
-// spoke (see room_slot_row_level_random_and_mob_duplication); non-mob
-// characters ignore it entirely (buildStatusSnapshot -> relationshipStatesRepo.js
-// etc. no-op it), so passing undefined is always safe.
+// roomSessionCharacterId is also used to build the right instance's snapshot
+// when a duplicate mob instance spoke (see
+// room_slot_row_level_random_and_mob_duplication); non-mob characters ignore
+// it entirely (buildStatusSnapshot -> relationshipStatesRepo.js etc. no-op
+// it), so passing undefined is always safe. It's ALSO now persisted on the
+// message itself (messages.room_session_character_id, migration 0132) --
+// unlike character_id, this stays stable even if the participant row is
+// later repointed to a different character (mob favorite promotion), so
+// history/chat-log name+icon resolution should prefer it over character_id.
 function buildMessageStatusSnapshot(sessionId, sender_type, character_id, roomSessionCharacterId) {
   if (sender_type !== 'character' || character_id == null) return null;
   const { playthrough_id } = db.prepare('SELECT playthrough_id FROM room_sessions WHERE id = ?').get(sessionId);
@@ -79,8 +83,8 @@ export function createMessage(
   const gameDay = logDay ?? enteredDay;
   const result = db
     .prepare(
-      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot, game_day)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (room_session_id, sender_type, character_id, content_type, content, image_id, emotion_tag, mentioned_character_ids, status_snapshot, game_day, room_session_character_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       sessionId,
@@ -93,6 +97,7 @@ export function createMessage(
       mentioned_character_ids ? JSON.stringify(mentioned_character_ids) : null,
       status_snapshot,
       gameDay,
+      room_session_character_id,
     );
   touchRoomSession(sessionId);
   // ユーザーの発言でのみ判定する。narration/characterメッセージは1ターンに
