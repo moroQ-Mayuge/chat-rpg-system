@@ -48,6 +48,7 @@ import { renderPromptTemplate } from '../services/promptTemplate.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { saveGeneratedImage } from '../storage/imageStorage.js';
 import { runEventEngine } from '../services/eventEngine/index.js';
+import { resolvePregenerationEventOutcomes } from '../services/eventEngine/preResolution.js';
 import { resolveStylePromptForWorld } from '../db/repositories/imageStylePresetsRepo.js';
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
@@ -725,6 +726,31 @@ async function generateReply(
   const world = getWorld(worldId);
   const maxTokens = world.max_response_tokens;
 
+  // イベント処理順の食い違い対策(2026-09-11)：「同行して」のようなkeyword
+  // (user_message)トリガー＋relationship_probability等のoutcome判定だけで
+  // 完結するイベントは、LLMが実際に台詞を書く前にこの時点で成否まで確定できる
+  // ——確定させておき、対象キャラのプロンプトカードにヒントとして注入する
+  // ことで、モデルの台詞と実際の判定結果が食い違わないようにする(既知の制限、
+  // accompany_command_and_probability.md参照)。resolvedConditionCacheは後段の
+  // runEventEngineへそのまま渡し、同じ条件(確率ロール含む)を再評価させない
+  // ——発火自体は今までどおり後段で一度だけ行われる。失敗しても生成は止めず
+  // ヒント無しにフォールバックする。
+  let eventOutcomeHintsByCharacterId = new Map();
+  let resolvedConditionCache = new Map();
+  try {
+    const preResolved = await resolvePregenerationEventOutcomes({
+      sessionId,
+      playthroughId: session.playthrough_id,
+      roomTemplateId: session.room_template_id,
+      userMessage: userMessageContent,
+      mentionedCharacterIds,
+    });
+    eventOutcomeHintsByCharacterId = preResolved.hintsByCharacterId;
+    resolvedConditionCache = preResolved.conditionCache;
+  } catch (err) {
+    console.error('Event pre-resolution failed:', err);
+  }
+
   // The prompt is sized against the model's real context window, so it needs
   // to know how much room this call will ask back for.
   const built = await buildMultiCharacterMessages(session, {
@@ -733,6 +759,7 @@ async function generateReply(
     isInventoryCheck,
     isCraftAttempt,
     responseTokenReserve: maxTokens ?? undefined,
+    eventOutcomeHintsByCharacterId,
   });
   if (!built) return;
 
@@ -1108,6 +1135,7 @@ async function generateReply(
       aiResponseText: fullText,
       mentionedCharacterIds,
       instanceHintByCharacterId,
+      resolvedConditionCache,
     });
     for (const event of fired) {
       broadcast(sessionId, { type: 'event_fired', eventDefinitionId: event.eventDefinitionId, name: event.name });

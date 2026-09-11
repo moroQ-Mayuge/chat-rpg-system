@@ -301,6 +301,13 @@ function buildSystemPrompt(session, participants, options = {}) {
         const cyclePhase = cyclePhaseFor(character, playthrough, world);
         if (cyclePhase) memoryLines.push(`現在の妊娠しやすさ：${cyclePhase}`);
       }
+      // イベントの事前解決パス(preResolution.js、2026-09-11)が生成前に確定させた
+      // outcome(例: 同行の誘いを受けるか断るか)を、妊娠/周期ヒントと同じ
+      // 「現在の状態：〜」形式でキャラカードに焼き込む——モデルが自分の台詞と
+      // 実際の判定結果を矛盾させないようにするための既知の事実として見せる。
+      for (const hint of options.eventOutcomeHintsByCharacterId?.get(character.id) ?? []) {
+        memoryLines.push(`現在の状態：${hint}`);
+      }
       return serializeCharacter(effectiveCharacter, outfit, undressStateLines, impressionLines, memoryLines);
     })
     .join('\n');
@@ -673,6 +680,7 @@ export async function buildMultiCharacterMessages(session, options = {}) {
     isSurroundingsCheck: options.isSurroundingsCheck,
     isCraftAttempt: options.isCraftAttempt,
     isInventoryCheck: options.isInventoryCheck,
+    eventOutcomeHintsByCharacterId: options.eventOutcomeHintsByCharacterId,
   });
   const history = buildHistoryMessages(session, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];

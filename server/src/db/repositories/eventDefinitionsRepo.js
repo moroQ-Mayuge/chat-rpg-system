@@ -133,10 +133,12 @@ export function createEventDefinition(data) {
       .prepare(
         `INSERT INTO event_definitions
           (name, scope, room_template_id, enabled, condition_logic, priority, cooldown_turns, max_fires_per_session, exclusive_group,
-           has_outcome_branch, outcome_logic, outcome_root_label, prerequisite_event_definition_id, requires_prerequisite_outcome,
+           has_outcome_branch, outcome_logic, outcome_root_label, outcome_success_hint_text, outcome_failure_hint_text,
+           prerequisite_event_definition_id, requires_prerequisite_outcome,
            reset_scope, prerequisite_reset_scope, per_character_firing)
          VALUES (@name, @scope, @room_template_id, @enabled, @condition_logic, @priority, @cooldown_turns, @max_fires_per_session, @exclusive_group,
-                 @has_outcome_branch, @outcome_logic, @outcome_root_label, @prerequisite_event_definition_id, @requires_prerequisite_outcome,
+                 @has_outcome_branch, @outcome_logic, @outcome_root_label, @outcome_success_hint_text, @outcome_failure_hint_text,
+                 @prerequisite_event_definition_id, @requires_prerequisite_outcome,
                  @reset_scope, @prerequisite_reset_scope, @per_character_firing)`,
       )
       .run({
@@ -152,6 +154,8 @@ export function createEventDefinition(data) {
         has_outcome_branch: data.has_outcome_branch ? 1 : 0,
         outcome_logic: data.outcome_logic ?? 'AND',
         outcome_root_label: data.outcome_root_label ?? '',
+        outcome_success_hint_text: data.outcome_success_hint_text ?? '',
+        outcome_failure_hint_text: data.outcome_failure_hint_text ?? '',
         prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
         requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
         reset_scope: data.reset_scope ?? 'playthrough',
@@ -172,6 +176,7 @@ export function updateEventDefinition(id, data) {
          condition_logic = @condition_logic, priority = @priority, cooldown_turns = @cooldown_turns,
          max_fires_per_session = @max_fires_per_session, exclusive_group = @exclusive_group,
          has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic, outcome_root_label = @outcome_root_label,
+         outcome_success_hint_text = @outcome_success_hint_text, outcome_failure_hint_text = @outcome_failure_hint_text,
          prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome,
          reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope, per_character_firing = @per_character_firing
        WHERE id = @id`,
@@ -189,6 +194,8 @@ export function updateEventDefinition(id, data) {
       has_outcome_branch: data.has_outcome_branch ? 1 : 0,
       outcome_logic: data.outcome_logic ?? 'AND',
       outcome_root_label: data.outcome_root_label ?? '',
+      outcome_success_hint_text: data.outcome_success_hint_text ?? '',
+      outcome_failure_hint_text: data.outcome_failure_hint_text ?? '',
       prerequisite_event_definition_id: data.prerequisite_event_definition_id ?? null,
       requires_prerequisite_outcome: data.requires_prerequisite_outcome ?? 'any',
       reset_scope: data.reset_scope ?? 'playthrough',

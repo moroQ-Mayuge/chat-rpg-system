@@ -228,6 +228,8 @@ const emptyEvent = {
   has_outcome_branch: false,
   outcome_logic: 'AND',
   outcome_root_label: '',
+  outcome_success_hint_text: '',
+  outcome_failure_hint_text: '',
   prerequisite_event_definition_id: null,
   requires_prerequisite_outcome: 'any',
   prerequisite_reset_scope: 'playthrough',
@@ -2365,6 +2367,32 @@ export default function EventsPage() {
 
           {draft.has_outcome_branch && (
             <div style={{ borderTop: '1px solid #eee', paddingTop: 12, marginBottom: 16 }}>
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>ルート結果のヒント文言（任意）</p>
+                <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+                  このイベントのルート条件がLLM生成前に確定できる場合（keywordはtarget:user_message限定、has_pose/has_item/has_money/llm_judgeを一切含まない場合）、生成前に成否を判定し、下の文言を該当キャラのプロンプトへ「現在の状態：〜」として注入します。モデルが実際の判定結果と矛盾する台詞を書かないようにするためのものです。空欄のままなら何も注入されません。
+                </p>
+                <label style={{ display: 'block', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>成功時</span>
+                  <textarea
+                    style={{ display: 'block', width: '100%' }}
+                    rows={2}
+                    value={draft.outcome_success_hint_text ?? ''}
+                    onChange={(e) => setDraft({ ...draft, outcome_success_hint_text: e.target.value })}
+                    placeholder="例: 相手からの同行の誘いを受け入れることに決めている"
+                  />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>失敗時</span>
+                  <textarea
+                    style={{ display: 'block', width: '100%' }}
+                    rows={2}
+                    value={draft.outcome_failure_hint_text ?? ''}
+                    onChange={(e) => setDraft({ ...draft, outcome_failure_hint_text: e.target.value })}
+                    placeholder="例: 相手からの同行の誘いを断ることに決めている"
+                  />
+                </label>
+              </div>
               <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>結果判定条件（条件群）</p>
               <ConditionGroupRow
                 depth={0}

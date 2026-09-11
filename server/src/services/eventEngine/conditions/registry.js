@@ -10,7 +10,7 @@ import { evaluateHasStatus, matchingCharactersForHasStatus } from './hasStatus.j
 import { evaluateHasOutfit, matchingCharactersForHasOutfit } from './hasOutfit.js';
 import { evaluateHasMoney } from './hasMoney.js';
 import { evaluateHasPose, matchingCharactersForHasPose } from './hasPose.js';
-import { evaluateRelationshipProbability } from './relationshipProbability.js';
+import { evaluateRelationshipProbability, matchingCharactersForRelationshipProbability } from './relationshipProbability.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -43,6 +43,7 @@ const characterMatcherRegistry = {
   has_outfit: matchingCharactersForHasOutfit,
   has_pose: matchingCharactersForHasPose,
   relationship_threshold: matchingCharactersForRelationshipThreshold,
+  relationship_probability: matchingCharactersForRelationshipProbability,
 };
 
 // Returns the array of character ids this one condition is about, or null if
