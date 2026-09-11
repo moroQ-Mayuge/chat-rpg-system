@@ -9,7 +9,7 @@ import { cyclePhaseFor } from './fertilityCycle.js';
 import { pregnancyStateFor, childGrowthStateFor } from './pregnancy.js';
 import { getActivePregnancy, listAwaitingChildAppearance } from '../db/repositories/characterPregnanciesRepo.js';
 import { getUndressStateLines } from './undressState.js';
-import { withDisambiguatedNames } from './participantNaming.js';
+import { withDisambiguatedNames, participantBaseName } from './participantNaming.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { composeCharacterIdentity } from './characterIdentity.js';
 import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
@@ -515,7 +515,8 @@ function buildSystemPrompt(session, participants, options = {}) {
 // rows produced by one earlier generation are re-joined into a single
 // script-format assistant message, since that's how they were originally
 // generated together.
-function buildHistoryMessages(sessionId, charBudget) {
+function buildHistoryMessages(session, charBudget) {
+  const sessionId = session.id;
   // Newest rows, then flipped back to chronological order. This used to be
   // ORDER BY id ASC, which took the OLDEST rows: past that window a session's
   // replayed history froze at its opening scene forever, so the player's own
@@ -541,11 +542,24 @@ function buildHistoryMessages(sessionId, charBudget) {
   }
   rows.reverse();
 
+  // このセッション内に該当キャラの参加行が残っていれば、そこに割り当て済みの
+  // ランダムフレーバー名(モブ、mob_flavor_name)を反映したベース名を使う——素の
+  // characters.nameだけを見ると、フレーバー付与済みだが未昇格のモブの過去発言が
+  // 共有マスタの元名("モブ女子高生"等)のまま履歴に残り、モデルがそれを模倣して
+  // 以後もその名で喋り続けてしまう(現在ターンのキャラカードはdisplay_nameで
+  // 正しい名前を見せているのに、モデル自身の過去発言だけ食い違う形になる) —
+  // resolveParticipantFuzzy側は現在のdisplay_nameで解決しようとするため一致せず、
+  // アイコン付き発言にならず地の文落ちする不具合の原因だった。参加行が見当たら
+  // ない場合(昇格でcharacter_idが差し替わった後に残る昇格前の発言等)は従来どおり
+  // 素のcharacters.nameへフォールバックする。
   const characterNameCache = new Map();
   function nameFor(characterId) {
     if (!characterNameCache.has(characterId)) {
-      const row = db.prepare('SELECT name FROM characters WHERE id = ?').get(characterId);
-      characterNameCache.set(characterId, row?.name ?? '不明');
+      const participant = session.all_participants.find((p) => p.character_id === characterId);
+      const name = participant
+        ? participantBaseName(participant)
+        : (db.prepare('SELECT name FROM characters WHERE id = ?').get(characterId)?.name ?? '不明');
+      characterNameCache.set(characterId, name);
     }
     return characterNameCache.get(characterId);
   }
@@ -660,7 +674,7 @@ export async function buildMultiCharacterMessages(session, options = {}) {
     isCraftAttempt: options.isCraftAttempt,
     isInventoryCheck: options.isInventoryCheck,
   });
-  const history = buildHistoryMessages(session.id, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
+  const history = buildHistoryMessages(session, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];
 
   // options.ephemeralUserTurn: appended to the array sent to the LLM only —
