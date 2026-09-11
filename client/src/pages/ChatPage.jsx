@@ -75,6 +75,14 @@ function StatusInline({ status, visibility }) {
   return <span style={{ fontSize: 9, color: '#666', marginLeft: 6 }}>{parts.join('　')}</span>;
 }
 
+// 同行中のキャラは@メンション一覧の中で見た目上どれも同じ青チップになり、
+// 誰が今連れ出されているか一目で区別できないという指摘(bugreports_2026-09-11
+// 項目5)への対応。通常の参加キャラと違う色にするだけ(選択中は塗りつぶし、
+// 未選択時は文字色)で区別する——mentionButtonStyleへ渡すcolorを切り替えるだけ
+// で済み、選択状態のロジック自体には触れない。
+const ACCOMPANYING_MENTION_COLOR = '#d97706';
+const PARTICIPANT_MENTION_COLOR = '#2563eb';
+
 const COMMAND_ICON_STYLE = {
   fontSize: 12,
   padding: '4px 8px',
@@ -1443,8 +1451,9 @@ export default function ChatPage() {
               { ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 },
               p.display_name,
               mentionedNames,
-              '#2563eb',
+              p.is_accompanying ? ACCOMPANYING_MENTION_COLOR : PARTICIPANT_MENTION_COLOR,
             )}
+            title={p.is_accompanying ? '同行中' : undefined}
             onClick={() => toggleMention(p.display_name)}
           >
             {mentionOrderPrefix(p.display_name, mentionedNames)}@{p.display_name}
