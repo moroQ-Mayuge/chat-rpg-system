@@ -38,7 +38,7 @@ import { maybeHandleSessionBoundary, evaluateBoundary, closeAndReopenSession, ha
 import { withSessionLock } from '../services/sessionLock.js';
 import { createGeneratedImage } from '../db/repositories/generatedImagesRepo.js';
 import { buildMultiCharacterMessages } from '../services/promptBuilder.js';
-import { parseScriptLine, lineContainsKeywordTrace } from '../services/responseParser.js';
+import { parseScriptLine, parseScriptResponse, lineContainsKeywordTrace } from '../services/responseParser.js';
 import { isRefusalText } from '../services/refusalDetection.js';
 import { exploreRoom, makeItemAvailable } from '../services/itemDiscovery.js';
 import { listActionCommandsForWorld } from '../db/repositories/actionCommandsRepo.js';
@@ -1116,6 +1116,41 @@ async function generateReply(
   // 掴んで作ってしまうリスクがある)。
   if (!itemGrantHandledThisTurn && HANDOVER_PHRASES.some((phrase) => fullText.includes(phrase))) {
     console.warn(`[roomSessions] 受け渡し語を含むがITEM_GRANTが無いターンを検出しました (session ${sessionId})`);
+  }
+
+  // アイテム生成失敗時の自動リトライ(2026-09-11、bugreports_2026-09-11項目7)。
+  // 上のHANDOVER_PHRASES診断(タグの痕跡すら無いケース、比喩表現から実在しない
+  // アイテムを生成するリスクがあるためログのみに留める既存方針)とは別に、
+  // こちらは「[ITEM_GRANT]タグを出そうとした痕跡はあるのに全角記号崩れ等で
+  // パースできず処理されなかった」ケース——CRAFT_RESULT返金と同じ検出条件
+  // (lineContainsKeywordTrace)で「モデルは渡すつもりだったが形式を誤っただけ」
+  // と分かる場合に限定する。直前の発言を踏まえてタグだけを正しい形式で出し
+  // 直すよう頼む短い追加呼び出しを1回だけ行い、それでも復旧できなければ
+  // 諦めて警告ログのみ残す(無限リトライはしない)。
+  if (!itemGrantHandledThisTurn && lineContainsKeywordTrace(fullText, 'ITEM_GRANT')) {
+    try {
+      const retryText = await generateChatCompletion({
+        messages: [
+          ...built.messages,
+          { role: 'assistant', content: fullText },
+          {
+            role: 'user',
+            content:
+              '直前の発言でアイテムを渡そうとしていたようですが、[ITEM_GRANT: アイテム名|カテゴリ名]の形式で正しく出力できていませんでした。今渡そうとしていたアイテムを、この形式1行だけで改めて出力してください。',
+          },
+        ],
+        maxTokens: 80,
+      });
+      const retryItemGrant = parseScriptResponse(retryText).turns.find((t) => t.type === 'item_grant');
+      if (retryItemGrant) {
+        handleParsedLine(retryItemGrant);
+        console.warn(`[roomSessions] ITEM_GRANT解析失敗をリトライで復旧しました (session ${sessionId})`);
+      } else {
+        console.warn(`[roomSessions] ITEM_GRANTらしき痕跡がありリトライしましたが復旧できませんでした (session ${sessionId})`);
+      }
+    } catch (err) {
+      console.error('ITEM_GRANT retry failed:', err);
+    }
   }
 
   try {
