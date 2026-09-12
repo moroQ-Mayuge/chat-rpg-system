@@ -1,5 +1,75 @@
 # 変更履歴
 
+## v0.2.0
+
+v0.1.4以降、随時対応枠で積み上がった大規模な機能追加を一括収録した区切りリリース(2026-07-23〜2026-09-11、約190コミット)。個々の機能の設計経緯は`docs/plans/`配下の各PLANドキュメントを参照。
+
+**妊娠・出産・子キャラクター機構**
+- `character_pregnancies`(受胎日ベースで妊娠状態を追跡)、`worlds.pregnancy_enabled`/妊娠期間/受胎率倍率/加齢方式/子の登場タイミングの各設定、`start_pregnancy`/`reveal_pregnancy`/`end_pregnancy`イベントアクションを追加。妊娠しやすさの周期(`fertilityCycle.js`、World単位でOn/Off)、本人が知っている情報だけをLLMへ伝える設計(`pregnancy.js`)
+- 出産→時間跳躍→子キャラの実体化(`materializeChild`)。子の名前は母の`full_name`から和名/洋名の様式を正規表現で自動判定し、洋名なら「・」区切りでミドルネームごと継承。`generateChildDetails`が空欄項目をLLMで埋めつつ、決定済みフィールドを保護しながら「そのままコピーでなく変化を加える」表現に
+- ルート固有キャラ(`origin_playthrough_id`/`is_auto_created`)の属性キー継承、World設定「跳躍時に子が登場」、キャラエクスポートへの`is_mob`・周期設定の同梱
+- 機構自体は実装済みだが、受胎判定等の具体的なイベントはプリセット同梱されておらず各Worldでの自作が必要(手順は`docs/guides/GUIDE_pregnancy_events.md`)——v0.3.xで妊活テスト用の正式プリセット化とあわせて解消予定
+
+**衣装マスタ・衣装所持経済の全面リワーク**(`docs/plans/PLAN_2026-08-02_outfit_spec_revision.md`、全10ステップ)
+- World横断で使い回せる`outfit_masters`テーブルと専用管理画面(`OutfitMastersPage.jsx`)を新設。キャラの既存衣装をマスタへ昇格、または既存マスタを「取り込み(独立コピー)」「参照(共有)」いずれかでキャラへ紐付け可能に
+- 下着(`underwear_upper`/`underwear_lower`)をキャラの通常衣装から独立した専用スロットに分離、日替わりランダム抽選(World単位でOn/Off)
+- 衣装マスタをアイテムと同じように所持・受け渡し・購入・部屋での発見対象にできる新経済——`playthrough_outfit_inventory`、`OUTFIT_GRANT`タグ、着る/渡すUI。買い物コマンド・部屋別入手モード・品揃えのランダム表示と更新周期にも対応
+- `room_session_characters.current_outfit_id`が部屋セッションをまたいで持続するように変更(従来は部屋を移るたびに既定衣装へ戻っていた)
+- キャラ／World／部屋テンプレートのコンテンツバンドル(zip export/import)が衣装マスタ参照にも対応
+
+**変身（トランスフォーメーション）機構**
+- `character_transformations`テーブル・`playthrough_character_transformation`・`composeCharacterIdentity()`合成層を新設し、見た目・名前・技能が変わるキャラ状態(プリキュア/セーラームーン型)を、好感度等の共有状態はそのままにキャラエディタから定義可能に
+- `transform_character`イベントアクション、`transform_request`種別の行動コマンド(「変身のお願い」)、`CharactersPage.jsx`の変身タブUIを追加
+
+**クラフトシステム**
+- 道具＋複数の消費材料＋自由記述の使い方を指定するLLM利用クラフト機構。`command_type='craft'`、`[CRAFT_RESULT:アイテム名|カテゴリ名|消費型|個数]`タグ、`item_categories.is_consumable`の初実用化。デフォルトコマンド化・無制限材料対応・LLMによる消費型判定の頑健化・複数個生成対応
+
+**モデル評価ハーネス**
+- `model_eval`関連テーブル＋`services/modelEval/`(runner+scorers)を新設。13軸のルールベース採点＋モデル自動切替に対応。本番の`buildMultiCharacterMessages`/応答解釈経路をそのまま使って評価するため、採点結果が本番挙動とずれない設計
+
+**セッション境界モード・連続部屋セッション・会話要約**
+- `worlds.continuous_room_session_enabled`で部屋移動時にセッションを継続(`switchRoomWithinSession`)。区切り方(`session_boundary_mode`: 時間帯／日／切らない)を選択可能に拡張、接続/部屋/イベントの追加トリガー、日単位のログ分割(`log_day`)、会話要約(`conversation_summary`)、チェックポイント競合の修正
+
+**同行コマンドの会話コマンド化＋関係値確率判定**(`docs/plans/PLAN_2026-09-07_accompany_command_and_probability.md`)
+- 新条件`relationship_probability`(信頼度/恋愛度/依存度のうち正規化値最大の軸で確率判定)、新アクション`set_accompanying`。「同行して」/「同行をやめて」のキーワードコマンドとして実装(既存の行動コマンド機構を流用、新規コードはプリセットイベント2件のみ)
+- `character_leave`から同行中キャラを完全免除。旧トグルは`worlds.debug_accompany_toggle_enabled`でOn/Off可能なデバッグ用として残置
+
+**脱衣コマンド・衣装変更時の自動画像生成**(`docs/plans/PLAN_2026-09-06_auto_outfit_image_generation.md`)
+- 脱衣コマンド実行時・衣装変更イベント時に、既存の`generate_image`アクションを流用した自動画像生成(独立トグル2つ＋共有クールダウン)
+
+**モブのランダムペルソナ・お気に入り昇格システム**(`docs/plans/PLAN_2026-09-08`〜`PLAN_2026-09-11`、計6本)
+- `worlds.mob_flavor_mode`('off'|'preset'|'llm')。プリセットモードは`mob_surname_presets`/`mob_name_presets`/`mob_flavor_presets`の3つの独立プールからそれぞれ抽選し「苗字 名前（モブ）」の形で組み合わせる(0129/0130)。LLMモードは`generateCharacterSheet`で一貫した名前・性格を都度生成
+- 同行中のフレーバー付きモブは、部屋移動などで次のセッションへ引き継がれた瞬間に`promoteMobToFavorite`で自動的にお気に入りキャラとして実体化(手動ボタンは廃止)。見た目・背景を継承しつつ関係値/ステータス初期値を引き継ぐ
+- 実装過程で見つかった関連不具合を修正：@メンションと表示名の不一致(`display_name`のサーバー一元化、`attachParticipants`/`promptBuilder.js`の会話履歴名前解決)、モブお気に入り昇格で`character_id`が差し替わった後に過去メッセージの名前/アイコンが解決できなくなる不具合(`messages.room_session_character_id`追加、migration 0132)、部屋移動時にモブの名前だけ引き継がれず消えるバグ(`carryOverParticipants`の取りこぼし)
+
+**イベント処理順の事前解決機構**(`docs/plans/PLAN_2026-09-11_event_outcome_pre_resolution.md`)
+- LLM応答生成より前に判定可能(生成テキストに一切依存しないと構造的に断定できる)なイベントだけを`preResolution.js`で事前に判定し、成否を`outcome_success_hint_text`/`outcome_failure_hint_text`(新規カラム、migration 0131)からキャラのプロンプトへヒントとして注入。条件id単位のキャッシュ(`resolvedConditionCache`)を後段の本評価へ引き継ぐことで二重ロール・二重発火を防止
+- 同行の可否等、LLMの台詞が実際の判定結果と食い違う既知の問題を解消
+
+**応答パーサーの堅牢化・診断・自動リトライ**
+- 全角記号(［］｜【】)の正規化、キャラ名のあいまい一致解決(日本語のみ抽出+編集距離)、クラフト材料の安全網(痕跡検知時の自動返金)、受け渡し語のみでITEM_GRANTが無いターンの診断ログ、ITEM_GRANT解析失敗の痕跡検知時の1回リトライ(`generateChatCompletion`の非ストリーミング追加呼び出し)
+
+**ショップ・通貨・所持品の拡充**
+- ランダム化された品揃え(件数・更新周期を設定可能)、NPCの所持アイテムをLLMへ意識させる仕組み(`held_items_prompt_limit`の軽量自動＋「持ち物確認」コマンドでの全件明示表示)
+
+**キャラクターのポーズ／姿勢状態機構**
+- `pose_masters`、`set_pose`アクション／`has_pose`条件、任意のLLM `[POSE:xxx]`タグ、画像生成へのタグ反映(World単位でOn/Off)
+
+**KoboldCpp・基盤まわりの改善**
+- LLM生成・画像生成(img2img/txt2img)を同一GPUキューへ直列化＋タイムアウトを追加し、VRAMクラッシュ・ハングを防止(`koboldClient.js`の`runOnGpu`)
+- 外国語トークンの生成禁止をGBNF文法(生成が不安定)から`banned_tokens`方式(`llmTokenBans.js`)に変更
+- koboldcpp起動ログのアプリ内キャプチャ・閲覧、プロンプト処理バッチサイズ設定
+- ゲーム内の年表示・World単位でカスタマイズ可能な日付フォーマットテンプレート・カレンダー祝日の公開(`dateFormat.js`)
+- npmサプライチェーン攻撃対策(`.npmrc`の依存関係cooldown期間＋`ignore-scripts`既定化。native依存の再ビルド手順をREADME/CLAUDE.mdに明記)
+
+**World4（現代学園ファンタジー）コンテンツの大規模拡充**
+- 39人のキャラクターデータを一括修正(表記・年齢・あだ名・特殊スキル・秘密・弱点・印象)
+- 神社・イベント会場・交番・留置場・病院の5部屋と19キャラクターを追加、`force_room_transfer`イベントアクションを新設した通報→逮捕の連鎖イベント、購買部・食堂・雑貨屋等の生活動線を拡充
+- ランダムモブ用の名前・苗字プリセットをそれぞれ50件、ペルソナプリセットを30件超整備(明らかな男性名の除去含む)
+
+**その他バグ修正・改善多数**
+- 部屋アイテムのセッション単位リセット設定(`reset_items_per_session`)、`${player}`が別キャラに誤置換されるバグ、退室キャラへの記憶付与(`character_leave`)、キャラ切り替え時のフォーム保存レース修正、リリースパッケージ作成スクリプトのテスト/本番モード分離、未参照画像の隔離機能
+
 ## v0.1.4
 
 実プレイのバグ報告・UI/UX要望・データ管理要望への一括対応(9件、うち1件は大規模機能側へ差し戻し)
