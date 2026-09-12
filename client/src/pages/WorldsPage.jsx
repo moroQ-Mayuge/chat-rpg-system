@@ -74,6 +74,8 @@ const emptyForm = {
   auto_outfit_image_cooldown_turns: 2,
   cycle_enabled: false,
   cycle_length_days: 28,
+  call_method_enabled: false,
+  call_method_lore: '',
   pregnancy_enabled: false,
   gestation_days: 84,
   conception_rate_multiplier: 1,
@@ -205,6 +207,8 @@ export default function WorldsPage() {
         auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
         cycle_enabled: Boolean(world.cycle_enabled),
         cycle_length_days: world.cycle_length_days ?? 28,
+        call_method_enabled: Boolean(world.call_method_enabled),
+        call_method_lore: world.call_method_lore ?? '',
         pregnancy_enabled: world.pregnancy_enabled ?? false,
         gestation_days: world.gestation_days ?? 84,
         conception_rate_multiplier: world.conception_rate_multiplier ?? 1,
@@ -1001,6 +1005,34 @@ export default function WorldsPage() {
                 <span style={{ fontSize: 11, color: '#888' }}>
                   既定28日。段階は周期長に対する割合で決まるため、短くしても変化の形は保たれます。
                 </span>
+              </label>
+            )}
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>連絡先の交換・呼び出し</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              チャットコマンドの「連絡先を交換する」「呼び出す」を使えるようにします。連絡先を交換したキャラは、別の部屋にいても呼び出して今の場に来てもらえます（成否は関係値次第）。
+              呼び出し方法（電話・魔法・手紙など）はこのWorldの世界観に合わせて自由に記述してください——LLMがその方法に沿った描写をするための手がかりとして常にプロンプトに載ります。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.call_method_enabled}
+                onChange={(e) => setForm({ ...form, call_method_enabled: e.target.checked })}
+              />
+              このWorldで連絡先の交換・呼び出しを有効にする
+            </label>
+
+            {form.call_method_enabled && (
+              <label style={{ display: 'block', marginTop: 8 }}>
+                <span style={{ fontSize: 11, color: '#888' }}>呼び出し方法の設定文（世界観の説明）</span>
+                <textarea
+                  rows={2}
+                  style={{ width: '100%', display: 'block' }}
+                  placeholder="例：生徒は全員スマートフォンを持ち、メッセージアプリで気軽に連絡を取り合っている。"
+                  value={form.call_method_lore}
+                  onChange={(e) => setForm({ ...form, call_method_lore: e.target.value })}
+                />
               </label>
             )}
 

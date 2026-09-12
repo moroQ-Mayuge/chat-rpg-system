@@ -29,6 +29,7 @@ function parseWorld(row) {
     child_inherit_parent_tags: Boolean(row.child_inherit_parent_tags),
     underwear_random_enabled: Boolean(row.underwear_random_enabled),
     debug_accompany_toggle_enabled: Boolean(row.debug_accompany_toggle_enabled),
+    call_method_enabled: Boolean(row.call_method_enabled),
     time_slot_labels: JSON.parse(row.time_slot_labels),
     weather_options: JSON.parse(row.weather_options),
     season_labels: JSON.parse(row.season_labels),
@@ -154,6 +155,8 @@ export function createWorld({
   // 'off'=従来通り(ペルソナ無し、モブは同行不可) / 'preset'=プリセット抽選 / 'llm'=LLM都度生成。
   // 旧mob_random_flavor_enabled+mob_flavor_generation_modeの2列は0128で統合済み、以後未使用。
   mob_flavor_mode = 'off',
+  call_method_enabled = false,
+  call_method_lore = '',
 }) {
   const result = db
     .prepare(
@@ -164,8 +167,8 @@ export function createWorld({
          currency_enabled, currency_unit, initial_money, self_stat_auto_update_enabled, relationship_update_interval_turns, mature_content_mode_enabled,
          weather_tag_map, time_slot_tag_map, impression_auto_update_enabled, refusal_detection_enabled,
          memory_prompt_limit, memory_auto_extract_enabled, memory_editing_visible, pose_enabled, scene_change_enabled, cycle_enabled, cycle_length_days, llm_value_delta_cap, pregnancy_enabled, gestation_days, conception_rate_multiplier, character_aging, child_appearance, child_maturation_days, child_age_min, child_age_max, birth_lore, child_attribute_tags, warp_world_rules, warp_situation, warp_others_mind, deviation_handling, policy_notice, warp_lore, child_inherit_parent_tags, child_random_attribute_tags, child_random_tag_count, child_name_style, underwear_random_enabled, author_note, date_format_template, held_items_prompt_limit, continuous_room_session_enabled, memory_impression_interval_turns, conversation_summary_interval_turns, session_boundary_mode, session_boundary_defer_to_move, session_max_turns, undress_image_generation_enabled, outfit_change_image_generation_enabled, auto_outfit_image_cooldown_turns, debug_accompany_toggle_enabled,
-         mob_flavor_mode)
-       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         mob_flavor_mode, call_method_enabled, call_method_lore)
+       VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       name,
@@ -243,6 +246,8 @@ export function createWorld({
       auto_outfit_image_cooldown_turns ?? 2,
       debug_accompany_toggle_enabled ? 1 : 0,
       mob_flavor_mode ?? 'off',
+      call_method_enabled ? 1 : 0,
+      call_method_lore ?? '',
     );
   return getWorld(result.lastInsertRowid);
 }
@@ -325,6 +330,8 @@ export function updateWorld(
     auto_outfit_image_cooldown_turns,
     debug_accompany_toggle_enabled,
     mob_flavor_mode,
+    call_method_enabled,
+    call_method_lore,
   },
 ) {
   db.prepare(
@@ -342,7 +349,7 @@ export function updateWorld(
          continuous_room_session_enabled = ?, memory_impression_interval_turns = ?, conversation_summary_interval_turns = ?,
          session_boundary_mode = ?, session_boundary_defer_to_move = ?, session_max_turns = ?,
          undress_image_generation_enabled = ?, outfit_change_image_generation_enabled = ?, auto_outfit_image_cooldown_turns = ?,
-         debug_accompany_toggle_enabled = ?, mob_flavor_mode = ?
+         debug_accompany_toggle_enabled = ?, mob_flavor_mode = ?, call_method_enabled = ?, call_method_lore = ?
      WHERE id = ? AND is_unassigned_bucket = 0`,
   ).run(
     name,
@@ -420,6 +427,8 @@ export function updateWorld(
     auto_outfit_image_cooldown_turns ?? 2,
     debug_accompany_toggle_enabled ? 1 : 0,
     mob_flavor_mode ?? 'off',
+    call_method_enabled ? 1 : 0,
+    call_method_lore ?? '',
     id,
   );
   return getWorld(id);

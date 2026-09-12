@@ -450,6 +450,9 @@ function buildSystemPrompt(session, participants, options = {}) {
     timeWeatherLine,
     matureContentBlock,
     buildWarpConstraintBlock(world),
+    world.call_method_enabled && world.call_method_lore?.trim()
+      ? `[この世界での連絡・呼び出し方法]\n${world.call_method_lore.trim()}`
+      : null,
     conversationSummaryBlock,
     sceneSituationLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
