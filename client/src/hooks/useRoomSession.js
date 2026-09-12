@@ -23,6 +23,17 @@ export function usePickupItems(sessionId) {
   });
 }
 
+// 「呼び出す」コマンド(CallCharacterPanel)向け。連絡先交換済みかつ今この場に
+// いないキャラの一覧——@メンションのチップは参加者からしか作れないため、
+// このパネル専用に別経路で対象を取得する(callable-charactersルート参照)。
+export function useCallableCharacters(sessionId) {
+  return useQuery({
+    queryKey: ['roomSessions', sessionId, 'callable-characters'],
+    queryFn: () => roomSessionsApi.listCallableCharacters(sessionId),
+    enabled: sessionId != null,
+  });
+}
+
 // 「買い物」コマンド(ShopPanel)向け。店でない部屋では空({items:[],outfits:[]})
 // が返る(shop-productsルート側のガード、roomSessions.js参照)。
 export function useShopProducts(sessionId) {
@@ -62,7 +73,10 @@ export function useRoomSessionMutations(id) {
     queryClient.invalidateQueries({ queryKey: ['playthroughs'] });
   };
   return {
-    sendMessage: useMutation({ mutationFn: (content) => roomSessionsApi.sendMessage(id, content), onSuccess: invalidate }),
+    sendMessage: useMutation({
+      mutationFn: ({ content, explicitMentionCharacterIds }) => roomSessionsApi.sendMessage(id, content, explicitMentionCharacterIds),
+      onSuccess: invalidate,
+    }),
     craftItem: useMutation({
       mutationFn: ({ content, craft }) => roomSessionsApi.craftItem(id, content, craft),
       onSuccess: invalidate,

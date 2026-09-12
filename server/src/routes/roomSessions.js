@@ -42,6 +42,8 @@ import { parseScriptLine, parseScriptResponse, lineContainsKeywordTrace } from '
 import { isRefusalText } from '../services/refusalDetection.js';
 import { exploreRoom, makeItemAvailable } from '../services/itemDiscovery.js';
 import { listActionCommandsForWorld } from '../db/repositories/actionCommandsRepo.js';
+import { listCharacterIdsWithFlag } from '../db/repositories/characterFlagsRepo.js';
+import { getCharacter } from '../db/repositories/charactersRepo.js';
 import { generateChatCompletion, generateImage, generateTxt2Image } from '../services/koboldClient.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, suggestSceneTags } from '../services/imagePromptBuilder.js';
 import { renderPromptTemplate } from '../services/promptTemplate.js';
@@ -236,7 +238,16 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
   let mentionedInstanceByCharacterId = new Map();
   if (!isContinuation) {
     const resolved = resolveMentions(content, session.participants);
-    mentionedCharacterIds = resolved.ids;
+    // @メンションのチップは今の部屋の参加者からしか作れない(client/src/pages/
+    // ChatPage.jsxのmentionedNames)ため、「今この場にいない人」を対象にする
+    // コマンド(呼び出す等)はテキスト解析に頼らずここで直接character_idを渡す。
+    // resolved.idsは絶対に信頼できるが、こちらはクライアントの自己申告値
+    // なので、既存の参加者リストに影響しない「追加」としてのみ扱う。
+    const explicitIds = Array.isArray(req.body.explicit_mention_ids)
+      ? req.body.explicit_mention_ids.map(Number).filter(Number.isInteger)
+      : [];
+    mentionedCharacterIds =
+      explicitIds.length > 0 ? [...new Set([...(resolved.ids ?? []), ...explicitIds])] : resolved.ids;
     mentionedInstanceByCharacterId = resolved.instanceByCharacterId;
     message = createMessage(req.params.id, {
       sender_type: 'user',
@@ -261,6 +272,19 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
     console.error('generateReply failed:', err);
     broadcast(req.params.id, { type: 'error', message: err.message });
   });
+});
+
+// 「呼び出す」コマンド(call_character)の対象選択パネル向け。連絡先交換済み
+// (character_flagsのcontact_exchanged)かつ今この場にいないキャラの一覧——
+// 既に同席しているキャラを呼び出しても無意味なので除く。
+roomSessionsRouter.get('/:id/callable-characters', (req, res) => {
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+  const presentIds = new Set(session.participants.map((p) => p.character_id));
+  const ids = listCharacterIdsWithFlag('contact_exchanged', 'playthrough', { playthroughId: session.playthrough_id }).filter(
+    (id) => !presentIds.has(id),
+  );
+  res.json(ids.map((id) => getCharacter(id)).filter(Boolean));
 });
 
 // What's pickable in this room right now (0071). Scoped to the session rather

@@ -3,7 +3,9 @@ import { api } from './client.js';
 export const roomSessionsApi = {
   // day: 'current'(セッションの当日分のみ、0122) | 数値(その日のログのみ) | 省略(全件)
   get: (id, { day } = {}) => api.get(`/room-sessions/${id}${day != null ? `?day=${day}` : ''}`),
-  sendMessage: (id, content) => api.post(`/room-sessions/${id}/messages`, { content }),
+  sendMessage: (id, content, explicitMentionCharacterIds) =>
+    api.post(`/room-sessions/${id}/messages`, { content, explicit_mention_ids: explicitMentionCharacterIds }),
+  listCallableCharacters: (id) => api.get(`/room-sessions/${id}/callable-characters`),
   craftItem: (id, content, craft) => api.post(`/room-sessions/${id}/messages`, { content, craft }),
   exit: (id) => api.post(`/room-sessions/${id}/exit`, {}),
   move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),

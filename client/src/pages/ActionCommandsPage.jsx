@@ -29,6 +29,7 @@ const COMMAND_TYPE_LABELS = {
   transform_request: '変身のお願い',
   free_text: '自由入力',
   craft: 'クラフト',
+  call_character: 'キャラを呼び出す（対象選択）',
 };
 
 // Known top-level categories from the 2026-07-16 taxonomy decision (PC98風
@@ -166,7 +167,7 @@ export default function ActionCommandsPage() {
               {cmd.icon} {cmd.label}{' '}
               <span style={{ fontSize: 11, color: '#888' }}>
                 [{worldLabel(cmd.world_id, worlds)}] {categoryPath(cmd)} ／ {COMMAND_TYPE_LABELS[cmd.command_type]}
-                {cmd.command_type === 'keyword' && ` (${cmd.keyword_text})`}
+                {(cmd.command_type === 'keyword' || cmd.command_type === 'call_character') && ` (${cmd.keyword_text})`}
                 {cmd.command_type === 'item_use' &&
                   ` (${cmd.transfers_to_target ? '対象へ譲渡' : cmd.consumes_item ? '消費型' : '非消費'})`}
                 {(cmd.visible_when_status_ids || cmd.visible_when_room_template_ids) && `／表示条件あり`}
@@ -219,9 +220,11 @@ export default function ActionCommandsPage() {
                 ))}
               </select>
             </label>
-            {form.command_type === 'keyword' && (
+            {(form.command_type === 'keyword' || form.command_type === 'call_character') && (
               <label>
-                <span style={{ fontSize: 11, color: '#888', display: 'block' }}>送信するキーワード</span>
+                <span style={{ fontSize: 11, color: '#888', display: 'block' }}>
+                  {form.command_type === 'call_character' ? '対象選択後に送信する文言（例：呼び出して）' : '送信するキーワード'}
+                </span>
                 <input style={{ width: '100%' }} value={form.keyword_text} onChange={(e) => setForm({ ...form, keyword_text: e.target.value })} />
               </label>
             )}

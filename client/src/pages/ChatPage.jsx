@@ -8,6 +8,7 @@ import {
   usePickupItemMutation,
   useShopProducts,
   usePickupableOutfits,
+  useCallableCharacters,
 } from '../hooks/useRoomSession.js';
 import { useRoomConnections } from '../hooks/useRoomTemplates.js';
 import { useChatStream } from '../hooks/useChatStream.js';
@@ -838,6 +839,52 @@ function TransformRequestPanel({ command, sessionId, participants, onClose, onSe
   );
 }
 
+// 「呼び出す」コマンド専用の対象選択パネル。@メンションのチップは今の部屋の
+// 参加者からしか作れない([id]でリセットされるmentionedNamesの由来元は
+// session.participants)ため、そもそも「今この場にいない人」を選ぶ手段が無い
+// ——連絡先交換済み(かつ今この場にいない)キャラを別経路(callable-characters)
+// で取得し、選んだ相手のidをsendText経由でexplicit_mention_idsとして直接渡す。
+function CallCharacterPanel({ command, sessionId, onClose, onSend }) {
+  const { data: callable } = useCallableCharacters(sessionId);
+  const [targetId, setTargetId] = useState('');
+
+  function submit() {
+    const target = (callable ?? []).find((c) => c.id === Number(targetId));
+    if (!target) return;
+    onSend(`@${target.name} ${command.keyword_text}`, [target.id]);
+    onClose();
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, marginBottom: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 500 }}>{command.label}</span>
+        <button type="button" onClick={onClose} style={{ fontSize: 11 }}>
+          閉じる
+        </button>
+      </div>
+      {(callable ?? []).length === 0 && (
+        <p style={{ fontSize: 12, color: '#888' }}>連絡先を交換済みで、今この場にいない相手がいません</p>
+      )}
+      {(callable ?? []).length > 0 && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select style={{ flex: 1 }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+            <option value="">呼び出す相手を選択</option>
+            {callable.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={submit} disabled={!targetId}>
+            呼び出す
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FreeActionPanel({ onClose, onSend }) {
   const [text, setText] = useState('');
 
@@ -1018,12 +1065,16 @@ export default function ChatPage() {
   // generating the next turn without inserting a user message at all.
   async function handleSend() {
     const sentText = composeSendText(mentionedNames, draft);
-    await sendMessage.mutateAsync(sentText);
+    await sendMessage.mutateAsync({ content: sentText });
     clearDraftAfterSend();
   }
 
-  async function sendText(text) {
-    await sendMessage.mutateAsync(text);
+  // explicitMentionCharacterIds: 今この場にいないキャラを対象にする場合
+  // (CallCharacterPanel等)、@メンション文字列の解析に頼らず対象idを直接渡す
+  // ——@メンションのチップは参加者からしか作れないため、文中の@名前表記は
+  // 見た目用のテキストに過ぎず、実際のターゲット解決はこちらが担う。
+  async function sendText(text, explicitMentionCharacterIds) {
+    await sendMessage.mutateAsync({ content: text, explicitMentionCharacterIds });
   }
 
   // クラフト(1-snoopy-raccoon.md): 材料の消費/tool_not_held・insufficient_material
@@ -1036,7 +1087,7 @@ export default function ChatPage() {
   async function sendKeywordCommand(keywordText) {
     const combined = draft.trim() ? `${draft.trim()} ${keywordText}` : keywordText;
     const sentText = composeSendText(mentionedNames, combined);
-    await sendMessage.mutateAsync(sentText);
+    await sendMessage.mutateAsync({ content: sentText });
     clearDraftAfterSend();
   }
 
@@ -1444,6 +1495,9 @@ export default function ChatPage() {
         />
       )}
       {itemPanel?.command_type === 'free_text' && <FreeActionPanel onClose={() => setItemPanel(null)} onSend={sendText} />}
+      {itemPanel?.command_type === 'call_character' && (
+        <CallCharacterPanel command={itemPanel} sessionId={id} onClose={() => setItemPanel(null)} onSend={sendText} />
+      )}
       {itemPanel?.command_type === 'craft' && (
         <CraftPanel
           command={itemPanel}
