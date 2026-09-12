@@ -902,6 +902,21 @@ export default function ChatPage() {
     setDraft('');
     setMentionedNames([]);
   }, [id]);
+  // 部屋は変わらないまま(idは同じ)、メンション中だったキャラが退室等でいなく
+  // なることがある——@メンション一覧のチップはsession.participants(アクティブ
+  // な参加者のみ)から描画されるので見た目上は消えるが、mentionedNames自体は
+  // 部屋移動でしかクリアされないため、いなくなった名前を選択したまま持ち続けて
+  // しまい、次の送信でその名前への@メンションが本文に紛れ込み続ける不具合が
+  // あった。参加者一覧が変わるたびに、もう存在しない名前を選択から除く
+  // (「@周辺」は参加者名ではないので対象外)。中身が変わらない場合は同じ配列
+  // 参照を返し、無駄な再レンダーを起こさない。
+  useEffect(() => {
+    if (!session) return;
+    setMentionedNames((prev) => {
+      const next = prev.filter((n) => n === '周辺' || session.participants.some((p) => p.display_name === n));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [session?.participants]);
   const { data: worlds } = useWorlds();
   const world = worlds?.find((w) => w.id === playthrough?.world_id);
   // ルート単位で覚える。同じWorldの別ルートを始めれば、方針はもう一度出る。
