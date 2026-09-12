@@ -17,7 +17,7 @@ import { listImageGenerationSettings, updateImageGenerationSettings } from '../d
 import { launchKoboldcpp, stopKoboldcpp, readKoboldcppLog, clearKoboldcppLog } from '../services/koboldcppLauncher.js';
 import { getLaunchSettings, updateLaunchSettings } from '../db/repositories/koboldcppLaunchSettingsRepo.js';
 import { listModelFiles } from '../services/koboldcppModelFiles.js';
-import { testGenerateForKind } from '../services/imageSettingsTestGenerator.js';
+import { testGenerateForKind, testGenerateReferenceScene } from '../services/imageSettingsTestGenerator.js';
 import { findOrphanImages, quarantineOrphanImages } from '../services/orphanImages.js';
 import { getStatusDisplayPreferences, updateStatusDisplayPreferences } from '../db/repositories/statusDisplayPreferencesRepo.js';
 import { getGenerationSettings, updateGenerationSettings } from '../db/repositories/llmGenerationSettingsRepo.js';
@@ -225,6 +225,21 @@ settingsRouter.post('/image-generation-settings/:kind/test-generate', (req, res)
     try {
       const { previewFullCanvas, ...settings } = req.body;
       const result = await testGenerateForKind(req.params.kind, settings, { previewFullCanvas });
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+});
+
+// キャラ×部屋を明示指定してscene/eventのi2i参照生成をテストする(2026-09-12)。
+// 上の/test-generateと違い、フォーム編集中の値ではなく保存済みのsettingsを使う
+// ——「編集内容をプレビュー」ではなく「指定したキャラ・場所の組み合わせで
+// 実際の設定がどう出るか確認する」ためのツール。
+settingsRouter.post('/image-generation-settings/:kind/test-generate-reference-scene', (req, res) => {
+  enqueueImageJob(async () => {
+    try {
+      const result = await testGenerateReferenceScene({ kind: req.params.kind, ...req.body });
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err.message });

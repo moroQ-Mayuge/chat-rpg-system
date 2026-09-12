@@ -1,5 +1,9 @@
 import { db } from '../db/connection.js';
 import { getRoomSession } from '../db/repositories/roomSessionsRepo.js';
+import { getWorld } from '../db/repositories/worldsRepo.js';
+import { getOutfit } from '../db/repositories/outfitsRepo.js';
+import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
+import { listPropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { resolveStylePromptForWorld, resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsRepo.js';
 import { buildSceneTagParts, buildReferenceAnchorCanvas, cropMainRegion, resizeToCanvas } from './imagePromptBuilder.js';
 import { renderPromptTemplate } from './promptTemplate.js';
@@ -95,14 +99,16 @@ function resolveSample(kind) {
 // worldThumbnailGenerator.js) — mirrored here so the preview matches actual behavior.
 const ALWAYS_PROMPT_ONLY_KINDS = new Set(['standing', 'room_background', 'world_thumbnail']);
 
-// Renders the given (possibly unsaved) settings against a real sample record
-// and actually generates an image, so the Settings page can preview a
-// prompt/canvas/parameter edit before saving it. Never persists to any
-// character/room/world entity — output goes to the same test/ folder as the
-// standalone test-generate-image tool.
-export async function testGenerateForKind(kind, settings, options = {}) {
-  const { previewFullCanvas = false } = options;
-  const { variables, referencePaths } = resolveSample(kind);
+// Shared core: given an already-resolved {variables, referencePaths} sample
+// (from either resolveSample()'s automatic pick or resolveExplicitSceneSample()'s
+// user-specified character/room), renders the prompt and actually generates an
+// image. Never persists to any character/room/world entity — output goes to
+// the same test/ folder as the standalone test-generate-image tool.
+// options.mode: explicit override ('anchor_i2i'|'prompt_only'); falls back to
+// settings.default_mode when omitted, same as this always did before mode
+// became an option (testGenerateForKind never passed one).
+async function generateFromResolvedSample(kind, settings, { variables, referencePaths }, options = {}) {
+  const { previewFullCanvas = false, mode } = options;
   const prompt = renderPromptTemplate(settings.prompt_template, variables);
 
   const width = Number(settings.main_width);
@@ -112,7 +118,8 @@ export async function testGenerateForKind(kind, settings, options = {}) {
   const samplerName = settings.sampler_name;
   const negativePrompt = settings.negative_prompt;
 
-  const useAnchor = settings.default_mode === 'anchor_i2i' && referencePaths.length > 0 && !ALWAYS_PROMPT_ONLY_KINDS.has(kind);
+  const resolvedMode = mode || settings.default_mode;
+  const useAnchor = resolvedMode === 'anchor_i2i' && referencePaths.length > 0 && !ALWAYS_PROMPT_ONLY_KINDS.has(kind);
 
   if (!useAnchor) {
     const buffer = await generateTxt2Image({ prompt, negativePrompt, width, height, steps, cfgScale, samplerName });
@@ -138,4 +145,68 @@ export async function testGenerateForKind(kind, settings, options = {}) {
     previewFullCanvas ? await resizeToCanvas(resultBuffer, anchorOffset, width, height) : await cropMainRegion(resultBuffer, anchorOffset, width, height);
   const imagePath = await saveTestImage(finalBuffer, 'png');
   return { imagePath, prompt, usedMode: 'anchor_i2i', previewFullCanvas };
+}
+
+// Renders the given (possibly unsaved) settings against a real sample record
+// and actually generates an image, so the Settings page can preview a
+// prompt/canvas/parameter edit before saving it.
+export async function testGenerateForKind(kind, settings, options = {}) {
+  return generateFromResolvedSample(kind, settings, resolveSample(kind), options);
+}
+
+// キャラ×部屋を明示指定してscene/eventのプレースホルダを組み立てる(2026-09-12、
+// Settings画面の参照生成テストツール向け)。実際のroom_session/playthroughが
+// 無くても、Worldマスタデータだけで7つ全てのプレースホルダを再現できる——
+// location_tags/atmosphere_tagsだけは実セッションが持つ動的な値ではなく部屋
+// テンプレート自身の同名列で代用し(セッション無しで使える唯一の部屋由来テキスト)、
+// weather_tags/time_slot_tagsはプレイスルーの「現在値」が無いため、Worldに
+// 設定された選択肢の先頭を既定値として使う(buildSceneTagPartsが
+// playthrough.current_weather/current_time_slot_labelで引くのと同じ仕組みを
+// 「先頭の選択肢」に差し替えただけ)。
+function resolveExplicitSceneSample({ characterId, outfitId, worldId, roomTemplateId, extraHint }) {
+  const outfit = getOutfit(outfitId);
+  if (!outfit) throw new Error('指定された衣装が見つかりません。');
+  if (Number(outfit.character_id) !== Number(characterId)) {
+    throw new Error('指定された衣装は、指定されたキャラクターのものではありません。');
+  }
+
+  const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(roomTemplateId);
+  if (!template) throw new Error('指定された部屋テンプレートが見つかりません。');
+
+  const world = getWorld(worldId);
+  if (!world) throw new Error('指定されたWorldが見つかりません。');
+
+  const propTags = listPropsForWorldRoom(worldId, roomTemplateId)
+    .map((p) => p.danbooru_tags)
+    .filter(Boolean)
+    .join(', ');
+  const defaultWeather = world.weather_options[0];
+  const defaultTimeSlot = world.time_slot_labels[0];
+
+  return {
+    variables: {
+      style_preset: resolveStylePromptForWorld(worldId),
+      location_tags: template.location_tags || '',
+      atmosphere_tags: template.atmosphere_tags || '',
+      prop_tags: propTags,
+      character_tags: resolveOutfitTags(composeWornOutfit(outfit.character_id, outfit, null), null),
+      weather_tags: (defaultWeather != null ? world.weather_tag_map[defaultWeather] : null) ?? '',
+      time_slot_tags: (defaultTimeSlot != null ? world.time_slot_tag_map[defaultTimeSlot] : null) ?? '',
+      extra_hint: extraHint ?? '',
+    },
+    referencePaths: outfit.standing_image_path ? [outfit.standing_image_path] : [],
+  };
+}
+
+// Settings画面の新規セクション向け: resolveSample()の自動選択(最もidが小さい
+// room_session、実データ次第で不安定)ではなく、ユーザーが明示的に選んだ
+// キャラ・衣装・World・部屋テンプレートでscene/eventをテスト生成する。
+// フォーム編集中の値ではなく保存済みのimage_generation_settingsを使う——
+// 既存のtestGenerateForKind(その場の編集内容をプレビュー)とは目的が異なるため。
+export async function testGenerateReferenceScene({ kind, characterId, outfitId, worldId, roomTemplateId, extraHint, mode, previewFullCanvas }) {
+  if (kind !== 'scene' && kind !== 'event') throw new Error(`この機能はscene/event種別専用です: ${kind}`);
+  const settings = getImageGenerationSettings(kind);
+  if (!settings) throw new Error(`画像生成設定が見つかりません: ${kind}`);
+  const sample = resolveExplicitSceneSample({ characterId, outfitId, worldId, roomTemplateId, extraHint });
+  return generateFromResolvedSample(kind, settings, sample, { mode, previewFullCanvas });
 }

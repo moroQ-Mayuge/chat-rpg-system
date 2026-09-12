@@ -27,6 +27,7 @@ export const settingsApi = {
   listImageGenerationSettings: () => api.get('/settings/image-generation-settings'),
   updateImageGenerationSettings: (kind, data) => api.put(`/settings/image-generation-settings/${kind}`, data),
   testGenerateImageGenerationSettings: (kind, data) => api.post(`/settings/image-generation-settings/${kind}/test-generate`, data),
+  testGenerateReferenceScene: (kind, data) => api.post(`/settings/image-generation-settings/${kind}/test-generate-reference-scene`, data),
   testGenerateImage: (data) => api.post('/settings/test-generate-image', data),
   getStatusDisplayPreferences: () => api.get('/settings/status-display-preferences'),
   updateStatusDisplayPreferences: (data) => api.put('/settings/status-display-preferences', data),

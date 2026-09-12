@@ -26,6 +26,9 @@ import {
 } from '../hooks/useSettings.js';
 import { settingsApi } from '../api/settings.js';
 import StatusDisplayGrid from '../components/ui/StatusDisplayGrid.jsx';
+import { useWorlds } from '../hooks/useWorlds.js';
+import { useCharacters, useCharacter } from '../hooks/useCharacters.js';
+import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 
 const cardStyle = { background: '#f7f7f7', borderRadius: 12, padding: 16 };
 
@@ -463,6 +466,182 @@ function ImageGenerationSettingsSection() {
           <ImageGenerationSettingRow key={s.image_kind} setting={s} />
         ))}
       </div>
+    </div>
+  );
+}
+
+// i2i参照アンカー方式の調整用(2026-09-12)。ImageGenerationSettingRowのテスト
+// 生成は「編集中のフォーム値」を「機械的に選ばれた実データ(最もidが小さい
+// room_session)」でプレビューするのに対し、こちらは「保存済みの設定」を
+// 「ユーザーが明示的に選んだキャラ・衣装・World・部屋テンプレート」で試す——
+// 実際のroom_session/playthroughを一切作らずに済む。
+function ReferenceSceneTestGeneratorSection() {
+  const { data: worlds } = useWorlds();
+  const { data: characters } = useCharacters();
+  const { data: allSettings } = useImageGenerationSettings();
+  const [worldId, setWorldId] = useState(null);
+  const [characterId, setCharacterId] = useState(null);
+  const [outfitId, setOutfitId] = useState(null);
+  const [roomTemplateId, setRoomTemplateId] = useState(null);
+  const [kind, setKind] = useState('event');
+  const [modeOverride, setModeOverride] = useState('');
+  const [extraHint, setExtraHint] = useState('');
+  const [previewFullCanvas, setPreviewFullCanvas] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const { data: character } = useCharacter(characterId);
+  const { data: roomTemplates } = useRoomTemplates(worldId);
+
+  const worldList = (worlds ?? []).filter((w) => !w.is_unassigned_bucket);
+  const outfits = character?.outfits ?? [];
+  const kindSettings = allSettings?.find((s) => s.image_kind === kind);
+  const effectiveMode = modeOverride || kindSettings?.default_mode;
+
+  async function generate() {
+    if (!characterId || !outfitId || !worldId || !roomTemplateId) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const res = await settingsApi.testGenerateReferenceScene(kind, {
+        characterId,
+        outfitId,
+        worldId,
+        roomTemplateId,
+        extraHint,
+        mode: modeOverride || undefined,
+        previewFullCanvas: effectiveMode === 'anchor_i2i' ? previewFullCanvas : undefined,
+      });
+      setResult(res);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  return (
+    <div style={cardStyle}>
+      <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 8px' }}>参照生成テスト（キャラ×場所を指定）</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+        実際の部屋セッションを使わず、指定したキャラ（衣装）と部屋の組み合わせで、保存済みのシーン/イベント画像設定を試せます。i2i参照アンカー方式の調整用。
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 8 }}>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>World</span>
+          <select
+            style={{ width: '100%' }}
+            value={worldId ?? ''}
+            onChange={(e) => {
+              setWorldId(Number(e.target.value) || null);
+              setRoomTemplateId(null);
+            }}
+          >
+            <option value="">選択してください</option>
+            {worldList.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>部屋テンプレート</span>
+          <select
+            style={{ width: '100%' }}
+            value={roomTemplateId ?? ''}
+            onChange={(e) => setRoomTemplateId(Number(e.target.value) || null)}
+            disabled={!worldId}
+          >
+            <option value="">選択してください</option>
+            {(roomTemplates ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>キャラクター</span>
+          <select
+            style={{ width: '100%' }}
+            value={characterId ?? ''}
+            onChange={(e) => {
+              setCharacterId(Number(e.target.value) || null);
+              setOutfitId(null);
+            }}
+          >
+            <option value="">選択してください</option>
+            {(characters ?? []).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>衣装</span>
+          <select
+            style={{ width: '100%' }}
+            value={outfitId ?? ''}
+            onChange={(e) => setOutfitId(Number(e.target.value) || null)}
+            disabled={!characterId}
+          >
+            <option value="">選択してください</option>
+            {outfits.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>画像種別</span>
+          <select style={{ width: '100%' }} value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="event">{IMAGE_KIND_LABELS.event}</option>
+            <option value="scene">{IMAGE_KIND_LABELS.scene}</option>
+          </select>
+        </label>
+        <label>
+          <span style={{ fontSize: 11, color: '#888', display: 'block' }}>生成方式（上書き、任意）</span>
+          <select style={{ width: '100%' }} value={modeOverride} onChange={(e) => setModeOverride(e.target.value)}>
+            <option value="">保存済みの設定に従う{kindSettings ? `（現在: ${MODE_LABELS[kindSettings.default_mode]}）` : ''}</option>
+            {Object.entries(MODE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label style={{ display: 'block', marginBottom: 8 }}>
+        <span style={{ fontSize: 11, color: '#888' }}>追加ヒント（任意）</span>
+        <input style={{ display: 'block', width: '100%' }} value={extraHint} onChange={(e) => setExtraHint(e.target.value)} />
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <button onClick={generate} disabled={isGenerating || !characterId || !outfitId || !worldId || !roomTemplateId}>
+          {isGenerating ? 'テスト生成中...' : 'この組み合わせでテスト生成'}
+        </button>
+        {effectiveMode === 'anchor_i2i' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#888' }}>
+            <input type="checkbox" checked={previewFullCanvas} onChange={(e) => setPreviewFullCanvas(e.target.checked)} />
+            アンカー全体を表示（プレビュー用）
+          </label>
+        )}
+      </div>
+
+      {error && <p style={{ color: 'red', fontSize: 11 }}>エラー: {error}</p>}
+
+      {result && (
+        <div style={{ borderTop: '1px solid #eee', paddingTop: 8 }}>
+          <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+            テスト結果（保存されません / 実際の生成方式: {MODE_LABELS[result.usedMode]}）
+          </p>
+          <img src={result.imagePath} alt="テスト生成結果" style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 6 }} />
+          <p style={{ fontSize: 10, color: '#aaa', fontFamily: 'monospace', wordBreak: 'break-all' }}>{result.prompt}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1414,6 +1593,7 @@ export default function SettingsPage() {
           <StylePresetsSection />
           <ImageFormatSection />
           <ImageGenerationSettingsSection />
+          <ReferenceSceneTestGeneratorSection />
           <StatusDisplayPreferencesSection />
           <OrphanImagesSection />
           <TestGenerateSection />
