@@ -49,6 +49,17 @@ const ITEM_GRANT_PATTERN = /^ITEM_GRANT:\s*(.+)$/;
 const OUTFIT_GRANT_PATTERN = /^OUTFIT_GRANT:\s*(.+)$/;
 const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
 const CRAFT_RESULT_PATTERN = /^CRAFT_RESULT:\s*(.+)$/;
+const PLAYER_STATE_PATTERN = /^PLAYER_STATE:\s*(.+)$/;
+// 「解消された」旨の言い回しは空文字として保存する(promptBuilder.jsが空文字
+// なら行ごと非表示にできる)。impressionAutoUpdate.jsのNO_CHANGE_PATTERNと
+// 同じ発想——「特になし」をそのまま値として持たせ続けると、通常状態に戻った
+// 後もずっと「現在のあなたの状態：特になし」が表示され続けてしまう。
+const PLAYER_STATE_FREE_PATTERN = /^(特に)?(なし|無し|通常|自由|拘束なし|拘束無し|制約なし|制約無し)[。.！!]*$/;
+
+function normalizePlayerStateText(text) {
+  const trimmed = (text ?? '').trim();
+  return PLAYER_STATE_FREE_PATTERN.test(trimmed) ? '' : trimmed;
+}
 
 // Models garble these fixed keywords surprisingly often, spelling NARRATION as
 // "NARR_N_A_T_I_O_N" and the like. Matching them strictly meant such a line
@@ -87,7 +98,7 @@ export function lineContainsKeywordTrace(line, keyword) {
   return normalizeTagWord(line).includes(normalizeTagWord(keyword));
 }
 
-const KNOWN_TAG_KEYWORDS = ['ITEM_GRANT', 'OUTFIT_GRANT', 'CRAFT_RESULT', 'STAT_CHANGE', 'SCENE_CHANGE'];
+const KNOWN_TAG_KEYWORDS = ['ITEM_GRANT', 'OUTFIT_GRANT', 'CRAFT_RESULT', 'STAT_CHANGE', 'SCENE_CHANGE', 'PLAYER_STATE'];
 
 // CRAFT_RESULTの3項目目(消費型/永続型)。省略・未知語は null = 「判定なし」で、
 // アイテムのカテゴリ設定にそのまま従わせる(itemsRepo.jsのis_consumable上書きが
@@ -212,6 +223,10 @@ export function parseScriptLine(rawLine) {
       if (craftPayload) {
         return { ...parseCraftPayload(craftPayload), description: '' };
       }
+      const playerStatePayload = bare[1].match(PLAYER_STATE_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'PLAYER_STATE');
+      if (playerStatePayload) {
+        return { type: 'player_state', text: normalizePlayerStateText(playerStatePayload) };
+      }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
     if (alt) {
@@ -267,6 +282,11 @@ export function parseScriptLine(rawLine) {
     const [characterName, axisName, deltaStr] = statChangePayload.split('|').map((s) => s.trim());
     const delta = deltaStr != null ? parseInt(deltaStr, 10) : NaN;
     return { type: 'stat_change', characterName, axisName, delta: Number.isNaN(delta) ? null : delta };
+  }
+
+  const playerStatePayload = tag.match(PLAYER_STATE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'PLAYER_STATE');
+  if (playerStatePayload) {
+    return { type: 'player_state', text: normalizePlayerStateText(playerStatePayload) };
   }
 
   if (isTagLike(tag, 'SCENE_CHANGE')) {

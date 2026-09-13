@@ -76,6 +76,7 @@ const emptyForm = {
   cycle_length_days: 28,
   call_method_enabled: false,
   call_method_lore: '',
+  player_state_tracking_enabled: true,
   pregnancy_enabled: false,
   gestation_days: 84,
   conception_rate_multiplier: 1,
@@ -209,6 +210,7 @@ export default function WorldsPage() {
         cycle_length_days: world.cycle_length_days ?? 28,
         call_method_enabled: Boolean(world.call_method_enabled),
         call_method_lore: world.call_method_lore ?? '',
+        player_state_tracking_enabled: Boolean(world.player_state_tracking_enabled),
         pregnancy_enabled: world.pregnancy_enabled ?? false,
         gestation_days: world.gestation_days ?? 84,
         conception_rate_multiplier: world.conception_rate_multiplier ?? 1,
@@ -900,6 +902,23 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               OFFにすると、LLMには[SCENE_CHANGE]タグの使い方自体を教えなくなり、万一タグが出力されても無視して画像生成しません。
+            </p>
+
+            <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>プレイヤーの状態の自動追跡</h4>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
+              複数キャラが同席する場面で、プレイヤーの体が同時に別々のキャラへ占有される矛盾した描写（例：AともBとも同時にキスしている）を防ぐため、LLMに[PLAYER_STATE:...]タグでプレイヤーの占有状態を都度報告させ、次のターン以降のプロンプトへ「現在のあなた（プレイヤー）の状態：〜」として反映します。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={form.player_state_tracking_enabled}
+                onChange={(e) => setForm({ ...form, player_state_tracking_enabled: e.target.checked })}
+              />
+              プレイヤーの状態を自動追跡する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              OFFにしても、複数キャラでの同時矛盾描写を避けるための常時有効な一般ルール自体はプロンプトに残ります（タグによる詳細な状態追跡だけがOFFになります）。
             </p>
 
             <h4 style={{ margin: '16px 0 4px', fontSize: 13 }}>同行の手動デバッグ切り替え</h4>

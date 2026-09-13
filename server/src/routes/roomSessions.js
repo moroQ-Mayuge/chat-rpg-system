@@ -855,6 +855,14 @@ async function generateReply(
       return;
     }
 
+    if (parsed.type === 'player_state') {
+      // Defense in depth: same reasoning as scene_change above -- a base
+      // model could emit this unprompted even when the World has it off.
+      if (!world.player_state_tracking_enabled) return;
+      db.prepare('UPDATE room_sessions SET current_player_state = ? WHERE id = ?').run(parsed.text, sessionId);
+      return;
+    }
+
     if (parsed.type === 'item_grant') {
       itemGrantHandledThisTurn = true;
       // Dynamic item generation (chat enhancement backlog item 9): always

@@ -414,6 +414,15 @@ function buildSystemPrompt(session, participants, options = {}) {
   // stored on the session itself, not the room template or playthrough.
   const sceneSituationLine = session.current_scene_situation ? `現在の場面状況：${session.current_scene_situation}` : null;
 
+  // [PLAYER_STATE:...]タグ(モデルの自己申告)経由で更新される、プレイヤーの
+  // 体の占有状態。同じ場面で複数キャラが同時にプレイヤーの同じ部位を使う
+  // 行動(キス等)を取ってしまう矛盾描写を防ぐためのもの——current_scene_situation
+  // と同じくroom_sessions単位で持続し、部屋移動で自動的にリセットされる。
+  const playerStateLine =
+    world.player_state_tracking_enabled && session.current_player_state
+      ? `現在のあなた（プレイヤー）の状態：${session.current_player_state}`
+      : null;
+
   // Explicit, instruction-toned line (not just raw data) so the model
   // actually treats it as a constraint on greetings/behavior rather than
   // background trivia it can ignore -- e.g. without this, characters said
@@ -455,6 +464,7 @@ function buildSystemPrompt(session, participants, options = {}) {
       : null,
     conversationSummaryBlock,
     sceneSituationLine,
+    playerStateLine,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,
     anyPregnant && world.birth_lore.trim() ? `[この世界の出産と成長について]\n${world.birth_lore.trim()}` : null,
@@ -485,6 +495,14 @@ function buildSystemPrompt(session, participants, options = {}) {
     poseKeys.length > 0 && world.pose_enabled
       ? `キャラクターの姿勢が明確に変化した場合（座る・立ち上がる・横になる等）のみ、セリフ末尾のEMOTIONタグの後に [POSE:ポーズキー] を追加してください。姿勢に変化が無いターンでは付けないでください（毎回付ける必要はありません）。ポーズキーは次のいずれかを使ってください：${poseKeys.join(', ')}`
       : null,
+    world.player_state_tracking_enabled
+      ? 'プレイヤーの体が特定の行動で占有されている状態（キスされて口が塞がっている、抱きしめられている等）になった、またはその状態が解消された場合のみ、[PLAYER_STATE: 状態を一行で] を出力してください（通常に戻った場合は「特になし」等）。'
+      : null,
+    // 複数キャラが同時に同席する場面で、プレイヤーの体が一つしかないことを
+    // 見落として矛盾した同時描写(例：AともBとも同時にキスしている)が生じる
+    // ことがある——PLAYER_STATEタグの出し忘れに対する保険として、常時有効の
+    // ルールも別途置いておく。
+    'プレイヤーの体は一つです。同じ場面で複数のキャラクターが同時にプレイヤーの同じ部位（口・手など）を使う行動（キス・抱擁等）を重複して行っているかのように描写しないでください。既に誰かと密着した行為の最中なら、他のキャラは順番を待つ・見守る・声をかけるなど矛盾しない行動にしてください。',
     '同席していないキャラクターの発言は書かないでください。全員が毎回発言する必要はなく、自然な範囲で応答してください。',
     departedNames.length > 0
       ? `特に、以下のキャラクターは既にこの場を離れており、絶対に発言・行動を書いてはいけません：${departedNames.join('、')}`
