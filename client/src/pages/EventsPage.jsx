@@ -90,6 +90,7 @@ const ACTION_TYPES = [
   { value: 'transform_character', label: '変身' },
   { value: 'set_pose', label: 'ポーズ変更' },
   { value: 'set_accompanying', label: '同行フラグ設定' },
+  { value: 'promote_mob_to_favorite', label: 'モブをお気に入りに昇格' },
   { value: 'advance_time', label: '時間経過' },
   { value: 'grant_item', label: 'アイテム付与' },
   { value: 'make_item_available', label: 'アイテムを拾える状態にする' },
@@ -173,6 +174,8 @@ function actionDefaults(type) {
       return { character_id: null, pose_id: null };
     case 'set_accompanying':
       return { character_id: null, is_accompanying: true };
+    case 'promote_mob_to_favorite':
+      return { character_id: null, allow_without_preset: true, grant_flag_key: '', grant_flag_value: '', grant_flag_scope: 'playthrough' };
     case 'advance_time':
       return { slots: 1 };
     case 'make_item_available':
@@ -1303,6 +1306,54 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
             >
               <option value="true">同行させる</option>
               <option value="false">同行をやめさせる</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {action.action_type === 'promote_mob_to_favorite' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'mentioned' || v === 'condition_matched' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="mentioned">@メンション中のキャラ（先頭1人）</option>
+              <option value="condition_matched">条件が一致したキャラ（per_character_firing用）</option>
+              {charOptions}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>ペルソナ未割当でも実体化する</span>
+            <select
+              value={p.allow_without_preset ? 'true' : 'false'}
+              onChange={(e) => setParams({ allow_without_preset: e.target.value === 'true' })}
+            >
+              <option value="true">する（既定）</option>
+              <option value="false">しない（プリセット未割当ならエラー扱い）</option>
+            </select>
+          </label>
+          <span style={{ ...label11, gridColumn: '1 / -1' }}>
+            対象がモブでなければ何もしない(is_mob=falseの実キャラはそのまま)。以下は昇格後（対象がモブでなかった場合は元のキャラ）に立てる任意のフラグ——不要なら空欄のまま。
+          </span>
+          <label>
+            <span style={label11}>フラグキー（任意）</span>
+            <input style={{ width: '100%' }} value={p.grant_flag_key ?? ''} onChange={(e) => setParams({ grant_flag_key: e.target.value })} />
+          </label>
+          <label>
+            <span style={label11}>フラグ値</span>
+            <input style={{ width: '100%' }} value={p.grant_flag_value ?? ''} onChange={(e) => setParams({ grant_flag_value: e.target.value })} placeholder="1" />
+          </label>
+          <label>
+            <span style={label11}>フラグのスコープ</span>
+            <select value={p.grant_flag_scope ?? 'playthrough'} onChange={(e) => setParams({ grant_flag_scope: e.target.value })}>
+              <option value="playthrough">プレイスルー</option>
+              <option value="session">このセッションのみ</option>
             </select>
           </label>
         </div>

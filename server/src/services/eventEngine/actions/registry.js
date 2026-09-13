@@ -26,6 +26,7 @@ import { executeForceRoomTransfer } from './forceRoomTransfer.js';
 import { executeSetPose } from './setPose.js';
 import { executeEndSession } from './endSession.js';
 import { executeSetAccompanying } from './setAccompanying.js';
+import { executePromoteMobToFavorite } from './promoteMobToFavorite.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -56,6 +57,7 @@ export const actionRegistry = {
   set_pose: executeSetPose,
   end_session: executeEndSession,
   set_accompanying: executeSetAccompanying,
+  promote_mob_to_favorite: executePromoteMobToFavorite,
 };
 
 export async function executeAction(action, execCtx) {
