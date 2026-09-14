@@ -5,6 +5,7 @@ import { getAllFlags, getFlag } from '../../db/repositories/sessionFlagsRepo.js'
 import { getMatchingCharacters } from './conditions/registry.js';
 import { computeEligibleEntries, resolveExclusiveGroups, dryRunOutcome } from './index.js';
 import { isPreResolvable } from './preResolutionEligibility.js';
+import { resolveSingleTargetId } from './targetResolution.js';
 
 // キャラを名指ししないper_character_firing以外の発火(characterId===null)で、
 // かつoutcome分岐がある場合、ヒントを誰のキャラカードに載せるかを決める。
@@ -69,9 +70,30 @@ export async function resolvePregenerationEventOutcomes({ sessionId, playthrough
   const firing = resolveExclusiveGroups(eligible);
 
   const hintsByCharacterId = new Map();
+  // 「呼び出す」のようなsuccess=character_joinを伴うイベントは、実際の
+  // addParticipantが生成後(runEventEngineの本パス)まで起きない——このターンの
+  // 応答生成時点では対象キャラはまだ参加者ではなくキャラカードも無いため、
+  // モデルがその名前で台詞を書いてしまっても表示されないよう、呼び出し元
+  // (roomSessions.js)がforbiddenNames相当の抑制リストに使える形で対象idを
+  // 集めておく(実際の抑制はhandleParsedLineのハルシネーション名フォールバック
+  // を経由させない、という形で行われる)。
+  const pendingJoinCharacterIds = new Set();
   for (const { def, characterId } of firing) {
     if (!def.has_outcome_branch) continue;
     const outcome = await dryRunOutcome(def, baseCtx, conditionCache);
+
+    if (outcome === 'success') {
+      for (const action of def.actions ?? []) {
+        if (action.action_type !== 'character_join') continue;
+        if (action.outcome !== 'always' && action.outcome !== 'success') continue;
+        const joinTargetId = characterId ?? resolveSingleTargetId(action.params?.character_id, baseCtx);
+        // 既に参加者なら(character_join実行時にalready_presentでスキップされる
+        // だけの)実質no-op——通常通り喋らせてよいので抑制対象に入れない。
+        const alreadyPresent = joinTargetId != null && session.participants.some((p) => p.character_id === joinTargetId);
+        if (joinTargetId != null && !alreadyPresent) pendingJoinCharacterIds.add(joinTargetId);
+      }
+    }
+
     const hintText = outcome === 'success' ? def.outcome_success_hint_text : def.outcome_failure_hint_text;
     if (!hintText?.trim()) continue;
     const targetId = characterId ?? resolveHintTarget(def, baseCtx);
@@ -80,5 +102,5 @@ export async function resolvePregenerationEventOutcomes({ sessionId, playthrough
     hintsByCharacterId.get(targetId).push(hintText.trim());
   }
 
-  return { conditionCache, hintsByCharacterId };
+  return { conditionCache, hintsByCharacterId, pendingJoinCharacterIds };
 }

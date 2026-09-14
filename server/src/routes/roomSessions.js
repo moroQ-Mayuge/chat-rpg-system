@@ -761,6 +761,7 @@ async function generateReply(
   // ヒント無しにフォールバックする。
   let eventOutcomeHintsByCharacterId = new Map();
   let resolvedConditionCache = new Map();
+  let pendingJoinCharacterIds = new Set();
   try {
     const preResolved = await resolvePregenerationEventOutcomes({
       sessionId,
@@ -771,6 +772,7 @@ async function generateReply(
     });
     eventOutcomeHintsByCharacterId = preResolved.hintsByCharacterId;
     resolvedConditionCache = preResolved.conditionCache;
+    pendingJoinCharacterIds = preResolved.pendingJoinCharacterIds ?? new Set();
   } catch (err) {
     console.error('Event pre-resolution failed:', err);
   }
@@ -815,9 +817,18 @@ async function generateReply(
   // made-up dialogue for the player character defeats the point of the
   // protagonist feature (the player's lines must only ever come from them).
   const protagonist = resolveProtagonist(session.playthrough_id);
-  const forbiddenNames = new Set(
-    protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : [],
-  );
+  // 「呼び出す」のようなイベントで今ターン中に成功確定したcharacter_joinは、
+  // 実際のaddParticipantがこの生成の後(runEventEngine)まで起きない——対象
+  // キャラはまだ参加者ではなくキャラカードも渡していないため、モデルがその
+  // 名前で台詞を書いてしまっても、離脱済みキャラと全く同じ仕組みで表示させない
+  // (ハルシネーション名フォールバックにも回さず完全に破棄する)。
+  const pendingJoinNames = [...pendingJoinCharacterIds]
+    .map((id) => db.prepare('SELECT name FROM characters WHERE id = ?').get(id)?.name)
+    .filter(Boolean);
+  const forbiddenNames = new Set([
+    ...(protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : []),
+    ...pendingJoinNames,
+  ]);
 
   // Which room_session_characters instance most recently spoke, per
   // character_id, over the course of THIS turn's generation -- the fallback
