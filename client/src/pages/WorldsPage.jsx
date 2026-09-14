@@ -77,6 +77,7 @@ const emptyForm = {
   call_method_enabled: false,
   call_method_lore: '',
   player_state_tracking_enabled: true,
+  address_auto_update_enabled: false,
   pregnancy_enabled: false,
   gestation_days: 84,
   conception_rate_multiplier: 1,
@@ -211,6 +212,7 @@ export default function WorldsPage() {
         call_method_enabled: Boolean(world.call_method_enabled),
         call_method_lore: world.call_method_lore ?? '',
         player_state_tracking_enabled: Boolean(world.player_state_tracking_enabled),
+        address_auto_update_enabled: Boolean(world.address_auto_update_enabled),
         pregnancy_enabled: world.pregnancy_enabled ?? false,
         gestation_days: world.gestation_days ?? 84,
         conception_rate_multiplier: world.conception_rate_multiplier ?? 1,
@@ -744,6 +746,18 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               部屋の移動・退室のたびにLLMを1回追加で呼び、その場面に「今後もずっと覚えているような出来事」があれば最大2件まで記録します。台本にない自発的な展開も拾えますが、その分の生成時間がかかります。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={form.address_auto_update_enabled}
+                onChange={(e) => setForm({ ...form, address_auto_update_enabled: e.target.checked })}
+              />
+              会話を踏まえてLLMが「あなたの呼び方」を自動で更新する
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+              上記の記憶自動抽出と同じタイミング（同じ場面が続く間は一定ターンごと、部屋の移動・退室時）でLLMを追加で呼び、キャラがプレイヤーを呼ぶ呼び方が変化すべきか判断させます。手動のイベント（`set_address`アクション）で設定した呼び方も、会話の流れに応じてさらに上書きされ得ます。
             </p>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>

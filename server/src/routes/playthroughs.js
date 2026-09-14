@@ -31,6 +31,10 @@ import {
   listValuesForPlaythrough as listImpressionValuesForPlaythrough,
   setImpressionValue,
 } from '../db/repositories/characterImpressionStatesRepo.js';
+import {
+  listValuesForPlaythrough as listAddressValuesForPlaythrough,
+  setCurrentAddress,
+} from '../db/repositories/characterAddressStatesRepo.js';
 import { materializeChild } from '../services/childCharacter.js';
 import { exportPlaythroughBundle } from '../services/contentBundle/index.js';
 
@@ -225,4 +229,13 @@ playthroughsRouter.put('/:id/impressions', (req, res) => {
   const { character_id, field_key, value } = req.body;
   if (!character_id || !field_key || value == null) return res.status(400).json({ error: 'character_id_field_key_value_required' });
   res.json(setImpressionValue(req.params.id, character_id, field_key, value));
+});
+
+playthroughsRouter.get('/:id/addresses', (req, res) => {
+  res.json(listAddressValuesForPlaythrough(req.params.id));
+});
+playthroughsRouter.put('/:id/addresses', (req, res) => {
+  const { character_id, value } = req.body;
+  if (!character_id || value == null) return res.status(400).json({ error: 'character_id_value_required' });
+  res.json(setCurrentAddress(req.params.id, character_id, value, null, null));
 });

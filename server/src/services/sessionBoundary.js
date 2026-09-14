@@ -11,6 +11,7 @@ import { countUserTurnsForPlaythrough, countUserTurnsForSession, createMessage }
 import { maybeRunRelationshipAutoUpdate } from './relationshipAutoUpdate.js';
 import { maybeRunImpressionAutoUpdate } from './impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from './memoryAutoExtract.js';
+import { maybeRunAddressAutoUpdate } from './addressAutoUpdate.js';
 import { maybeUpdateConversationSummary } from './conversationSummary.js';
 import { promoteAccompanyingFlavoredMobs } from './mobPromotion.js';
 
@@ -41,6 +42,7 @@ export async function runEndOfSceneHooks(session, world) {
   if (session.memory_impression_last_turn < turnNumber) {
     await maybeRunImpressionAutoUpdate(session, world);
     await maybeRunMemoryAutoExtract(session, world);
+    await maybeRunAddressAutoUpdate(session, world);
     setMemoryImpressionCheckpoint(session.id, turnNumber);
   }
 }

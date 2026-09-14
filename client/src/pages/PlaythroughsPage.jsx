@@ -12,6 +12,8 @@ import {
   useRelationshipMutations,
   useImpressionValues,
   useImpressionMutations,
+  useAddressValues,
+  useAddressMutations,
 } from '../hooks/usePlaythroughs.js';
 import { useCharacters } from '../hooks/useCharacters.js';
 import { playthroughsApi } from '../api/playthroughs.js';
@@ -237,9 +239,11 @@ function RelationshipsAndImpressionsPanel({ playthrough }) {
   const [expanded, setExpanded] = useState(false);
   const { data: relationships } = useRelationshipValues(playthrough.id, expanded);
   const { data: impressions } = useImpressionValues(playthrough.id, expanded);
+  const { data: addresses } = useAddressValues(playthrough.id, expanded);
   const { data: characters } = useCharacters();
   const { update: updateRelationship } = useRelationshipMutations(playthrough.id);
   const { update: updateImpression } = useImpressionMutations(playthrough.id);
+  const { update: updateAddress } = useAddressMutations(playthrough.id);
 
   const nameFor = (id) => characters?.find((c) => c.id === id)?.name ?? `#${id}`;
 
@@ -253,7 +257,10 @@ function RelationshipsAndImpressionsPanel({ playthrough }) {
     if (!impressionsByCharacter.has(i.character_id)) impressionsByCharacter.set(i.character_id, []);
     impressionsByCharacter.get(i.character_id).push(i);
   }
-  const characterIds = [...new Set([...relationshipsByCharacter.keys(), ...impressionsByCharacter.keys()])];
+  const addressByCharacter = new Map((addresses ?? []).map((a) => [a.character_id, a]));
+  const characterIds = [
+    ...new Set([...relationshipsByCharacter.keys(), ...impressionsByCharacter.keys(), ...addressByCharacter.keys()]),
+  ];
 
   return (
     <div style={{ marginTop: 6 }}>
@@ -304,6 +311,20 @@ function RelationshipsAndImpressionsPanel({ playthrough }) {
                   />
                 </div>
               ))}
+              {addressByCharacter.has(characterId) && (
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+                  <span style={{ fontSize: 11, color: '#666', width: 140, flexShrink: 0 }}>呼び方</span>
+                  <input
+                    style={{ flex: 1, fontSize: 12 }}
+                    defaultValue={addressByCharacter.get(characterId).value}
+                    onBlur={(e) => {
+                      if (e.target.value !== addressByCharacter.get(characterId).value) {
+                        updateAddress.mutate({ characterId, value: e.target.value });
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ))}
           {characterIds.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ関係・印象の値がありません</p>}

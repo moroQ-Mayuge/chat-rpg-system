@@ -120,6 +120,25 @@ export function useImpressionMutations(playthroughId) {
   };
 }
 
+export function useAddressValues(playthroughId, enabled = true) {
+  return useQuery({
+    queryKey: ['playthroughs', playthroughId, 'addresses'],
+    queryFn: () => playthroughsApi.listAddresses(playthroughId),
+    enabled: playthroughId != null && enabled,
+  });
+}
+
+export function useAddressMutations(playthroughId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'addresses'] });
+  return {
+    update: useMutation({
+      mutationFn: ({ characterId, value }) => playthroughsApi.updateAddress(playthroughId, characterId, value),
+      onSuccess: invalidate,
+    }),
+  };
+}
+
 export function useInventoryMutations(playthroughId) {
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playthroughs', playthroughId, 'inventory'] });

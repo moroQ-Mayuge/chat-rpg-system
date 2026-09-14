@@ -63,6 +63,7 @@ import { maybeRunRelationshipAutoUpdate } from '../services/relationshipAutoUpda
 import { clampLlmDelta } from '../services/llmValueDelta.js';
 import { maybeRunImpressionAutoUpdate } from '../services/impressionAutoUpdate.js';
 import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
+import { maybeRunAddressAutoUpdate } from '../services/addressAutoUpdate.js';
 import { triggerPendingMobFlavorGeneration } from '../services/mobPersonaGeneration.js';
 import { promoteAccompanyingFlavoredMobs } from '../services/mobPromotion.js';
 
@@ -1284,6 +1285,7 @@ async function generateReply(
         if (elapsed > 0 && elapsed >= memoryInterval) {
           await maybeRunImpressionAutoUpdate(currentSession, world);
           await maybeRunMemoryAutoExtract(currentSession, world);
+          await maybeRunAddressAutoUpdate(currentSession, world);
           setMemoryImpressionCheckpoint(currentSession.id, turnNumber);
         }
       }

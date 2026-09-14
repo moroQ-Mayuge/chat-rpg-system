@@ -31,5 +31,7 @@ export const playthroughsApi = {
   listImpressions: (id) => api.get(`/playthroughs/${id}/impressions`),
   updateImpression: (id, characterId, fieldKey, value) =>
     api.put(`/playthroughs/${id}/impressions`, { character_id: characterId, field_key: fieldKey, value }),
+  listAddresses: (id) => api.get(`/playthroughs/${id}/addresses`),
+  updateAddress: (id, characterId, value) => api.put(`/playthroughs/${id}/addresses`, { character_id: characterId, value }),
   materializeChild: (id, pregnancyId) => api.post(`/playthroughs/${id}/pregnancies/${pregnancyId}/child`, {}),
 };
