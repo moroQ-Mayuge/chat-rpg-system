@@ -423,6 +423,13 @@ function buildSystemPrompt(session, participants, options = {}) {
       ? `現在のあなた（プレイヤー）の状態：${session.current_player_state}`
       : null;
 
+  // 「呼び出す」等、このターン中に成功確定したcharacter_joinの対象キャラ向け
+  // の限定ヒント(roomSessions.jsのgenerateReplyで組み立て済み)。まだ参加者
+  // ではないため、性格・口調だけの参考情報を渡した上で短い返事一言だけを
+  // 許可する——外見等のフルのキャラ情報は渡さない。
+  const pendingJoinHintBlock =
+    (options.pendingJoinHintLines?.length ?? 0) > 0 ? options.pendingJoinHintLines.join('\n') : null;
+
   // Explicit, instruction-toned line (not just raw data) so the model
   // actually treats it as a constraint on greetings/behavior rather than
   // background trivia it can ignore -- e.g. without this, characters said
@@ -465,6 +472,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     conversationSummaryBlock,
     sceneSituationLine,
     playerStateLine,
+    pendingJoinHintBlock,
     `この部屋に同席しているキャラクター：${participantNames}`,
     protagonistBlock,
     anyPregnant && world.birth_lore.trim() ? `[この世界の出産と成長について]\n${world.birth_lore.trim()}` : null,
@@ -718,6 +726,7 @@ export async function buildMultiCharacterMessages(session, options = {}) {
     isCraftAttempt: options.isCraftAttempt,
     isInventoryCheck: options.isInventoryCheck,
     eventOutcomeHintsByCharacterId: options.eventOutcomeHintsByCharacterId,
+    pendingJoinHintLines: options.pendingJoinHintLines,
   });
   const history = buildHistoryMessages(session, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];

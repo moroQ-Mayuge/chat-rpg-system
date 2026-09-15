@@ -778,6 +778,23 @@ async function generateReply(
     console.error('Event pre-resolution failed:', err);
   }
 
+  // 「呼び出す」のようなイベントで今ターン中に成功確定したcharacter_joinは、
+  // 実際のaddParticipantがこの生成の後(runEventEngine)まで起きない——対象
+  // キャラはまだ参加者ではなくキャラカードも渡していない。以前は完全に抑制
+  // していたが、呼びかけに対して本人から一切反応が返らず不自然という指摘を
+  // 受け、性格・口調だけの限定情報を渡した上で「短い返事一言程度」だけは
+  // 許可する形に変更した(下のforbiddenNames設定・handleParsedLine参照)。
+  // 外見・秘密等のフルのキャラ情報は渡さない——渡すと「本人として詳しく
+  // 描写してよい」という誤ったライセンスを与えてしまうため。
+  const pendingJoinHintLines = [...pendingJoinCharacterIds]
+    .map((id) => db.prepare('SELECT name, personality, speech_style FROM characters WHERE id = ?').get(id))
+    .filter(Boolean)
+    .map((c) => {
+      const traits = [c.personality, c.speech_style].filter(Boolean).join('／');
+      const traitsNote = traits ? `（性格・口調の参考：${traits}）` : '';
+      return `${c.name}はまだこの場にいませんが、呼びかけに対する短い返事（一言程度）だけは書いてかまいません。姿を描写したり、それ以上の行動・長い台詞を書いたりしないでください${traitsNote}。`;
+    });
+
   // The prompt is sized against the model's real context window, so it needs
   // to know how much room this call will ask back for.
   const built = await buildMultiCharacterMessages(session, {
@@ -787,6 +804,7 @@ async function generateReply(
     isCraftAttempt,
     responseTokenReserve: maxTokens ?? undefined,
     eventOutcomeHintsByCharacterId,
+    pendingJoinHintLines,
   });
   if (!built) return;
 
@@ -818,18 +836,13 @@ async function generateReply(
   // made-up dialogue for the player character defeats the point of the
   // protagonist feature (the player's lines must only ever come from them).
   const protagonist = resolveProtagonist(session.playthrough_id);
-  // 「呼び出す」のようなイベントで今ターン中に成功確定したcharacter_joinは、
-  // 実際のaddParticipantがこの生成の後(runEventEngine)まで起きない——対象
-  // キャラはまだ参加者ではなくキャラカードも渡していないため、モデルがその
-  // 名前で台詞を書いてしまっても、離脱済みキャラと全く同じ仕組みで表示させない
-  // (ハルシネーション名フォールバックにも回さず完全に破棄する)。
-  const pendingJoinNames = [...pendingJoinCharacterIds]
-    .map((id) => db.prepare('SELECT name FROM characters WHERE id = ?').get(id)?.name)
-    .filter(Boolean);
-  const forbiddenNames = new Set([
-    ...(protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : []),
-    ...pendingJoinNames,
-  ]);
+  const forbiddenNames = new Set(
+    protagonist.mode === 'character' ? [protagonist.name, protagonist.nickname].map((s) => s.trim()).filter(Boolean) : [],
+  );
+  // 「呼び出す」対象キャラはここには含めない(pendingJoinHintLines参照、上の
+  // buildMultiCharacterMessages呼び出しの直前で組み立て済み)——短い返事一言
+  // だけは許可する方針のため、resolveParticipantFuzzyが一致せずハルシネーション
+  // 名フォールバック(下記)経由でナレーション扱い表示されるのに任せる。
 
   // Which room_session_characters instance most recently spoke, per
   // character_id, over the course of THIS turn's generation -- the fallback
