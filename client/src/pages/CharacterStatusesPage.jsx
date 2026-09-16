@@ -26,7 +26,7 @@ const DISTURBABLE_FIELDS = [
   ['clothing_lower_outer', '上着（アウター）：下半身'],
   ['underwear_upper', '下着：上半身'],
   ['underwear_lower', '下着：下半身'],
-  ['clothing_legs', '靴下（足回り）：下半身'],
+  ['clothing_legs', '足回り：下半身'],
 ];
 
 // 表記は設定画面・衣装編集と揃える。pullは下方向、asideは横方向。
