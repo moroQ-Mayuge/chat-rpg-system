@@ -204,6 +204,27 @@ export function removeStatus(characterId, statusId, ctx) {
   return { removed: result.changes > 0 };
 }
 
+// 着替え時に脱衣状態を「保持する/リセットする」かをプレイヤーに選ばせる機能
+// (roomSessions.jsのwear-item/wear-outfit/wear-character-outfit)向け。
+// keepUndressState=false: 全脱衣状態トラックを破棄。true: 保持するが、
+// 新しい衣装にそのフィールドが存在しない(空文字)トラックだけは意味を持たない
+// ため強制的に破棄する——disturbs_outfit_field(スタイル/破れ行)と
+// suppresses_outfit_fields(脱がす行)のどちらかに対象フィールドが乗っている。
+// undress_state_プレフィックス規約(undressState.js)に依存する自己完結の実装
+// のため、トラック一覧を個別にインポートする必要が無い。
+export function syncUndressStateToOutfit(characterId, ctx, newOutfit, keepUndressState) {
+  const active = listActiveStatuses(characterId, ctx);
+  for (const status of active) {
+    if (!status.exclusive_group?.startsWith('undress_state_')) continue;
+    if (!keepUndressState) {
+      removeStatus(characterId, status.status_id, ctx);
+      continue;
+    }
+    const field = status.disturbs_outfit_field || status.suppresses_outfit_fields;
+    if (field && !newOutfit?.[field]?.trim()) removeStatus(characterId, status.status_id, ctx);
+  }
+}
+
 export function isLocked(characterId, statusId, ctx) {
   const status = getStatus(statusId);
   if (!status) return false;

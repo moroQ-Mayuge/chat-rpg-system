@@ -20,9 +20,20 @@ export const roomSessionsApi = {
   buyOutfit: (id, outfitMasterId) => api.post(`/room-sessions/${id}/buy-outfit`, { outfit_master_id: outfitMasterId }),
   listPickupableOutfits: (id) => api.get(`/room-sessions/${id}/pickupable-outfits`),
   pickupOutfit: (id, outfitMasterId) => api.post(`/room-sessions/${id}/pickup-outfit`, { outfit_master_id: outfitMasterId }),
-  wearItem: (id, characterId, itemId) => api.post(`/room-sessions/${id}/wear-item`, { character_id: characterId, item_id: itemId }),
-  wearOutfit: (id, characterId, outfitMasterId) =>
-    api.post(`/room-sessions/${id}/wear-outfit`, { character_id: characterId, outfit_master_id: outfitMasterId }),
+  wearItem: (id, characterId, itemId, keepUndressState) =>
+    api.post(`/room-sessions/${id}/wear-item`, { character_id: characterId, item_id: itemId, keep_undress_state: keepUndressState }),
+  wearOutfit: (id, characterId, outfitMasterId, keepUndressState) =>
+    api.post(`/room-sessions/${id}/wear-outfit`, {
+      character_id: characterId,
+      outfit_master_id: outfitMasterId,
+      keep_undress_state: keepUndressState,
+    }),
+  wearCharacterOutfit: (id, characterId, outfitId, keepUndressState) =>
+    api.post(`/room-sessions/${id}/wear-character-outfit`, {
+      character_id: characterId,
+      outfit_id: outfitId,
+      keep_undress_state: keepUndressState,
+    }),
   transformRequest: (id, characterId, transformationId) =>
     api.post(`/room-sessions/${id}/transform-request`, { character_id: characterId, transformation_id: transformationId }),
   listPickupItems: (id) => api.get(`/room-sessions/${id}/pickup-items`),

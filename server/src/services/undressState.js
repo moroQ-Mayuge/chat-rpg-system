@@ -19,6 +19,8 @@ export const UNDRESS_STATE_TRACKS = {
   undress_state_lower_outer: '下半身上着',
   undress_state_lower_base: '下半身中衣',
   undress_state_lower_underwear: '下半身下着',
+  undress_state_lower_socks: '下半身靴下',
+  undress_state_lower_shoes: '下半身靴',
   // 破れは各階層のスタイル(開ける/たくし上げる等)とは独立した軸なので、
   // 同じexclusive_groupに置くとgrantStatusの排他追い出しでスタイルが消えて
   // しまう(L3.5)。専用グループに分けることで「たくし上げた上で破れている」
@@ -29,6 +31,8 @@ export const UNDRESS_STATE_TRACKS = {
   undress_state_lower_outer_torn: '下半身上着の破れ',
   undress_state_lower_base_torn: '下半身中衣の破れ',
   undress_state_lower_underwear_torn: '下半身下着の破れ',
+  undress_state_lower_socks_torn: '下半身靴下の破れ',
+  // 靴はスタイル無しの2段階(通常/脱がす)のみなので破れトラックは存在しない。
 };
 
 // アウター/ベース/下着は完全に独立したトラックのため、例えば上着(アウター)

@@ -16,6 +16,7 @@ import { playthroughsApi } from '../api/playthroughs.js';
 import { useActionCommandsForWorld } from '../hooks/useActionCommands.js';
 import { useInventory, useInventoryMutations, useOutfitInventory, useOutfitInventoryMutations } from '../hooks/usePlaythroughs.js';
 import { useCharacterTransformationsForCharacter } from '../hooks/useCharacterTransformations.js';
+import { useCharacter } from '../hooks/useCharacters.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
@@ -171,6 +172,8 @@ const LAYER_ABOVE = {
   clothing_lower_outer: [],
   clothing_lower: ['clothing_lower_outer'],
   underwear_lower: ['clothing_lower_outer', 'clothing_lower'],
+  shoes: [],
+  clothing_legs: ['shoes'],
 };
 
 // A layer counts as "cleared" (no longer blocking the layer below it) once
@@ -703,15 +706,29 @@ function CraftPanel({ command, playthroughId, onClose, onCraft }) {
 function ItemWearPanel({ command, playthroughId, sessionId, participants, onClose, onSend }) {
   const [targetId, setTargetId] = useState('');
   const { data: wearableItems } = useOutfitInventory(playthroughId, targetId ? Number(targetId) : null);
-  const { wearOutfit } = useRoomSessionMutations(sessionId);
-  const [outfitMasterId, setOutfitMasterId] = useState('');
+  const { data: targetCharacter } = useCharacter(targetId ? Number(targetId) : null);
+  const { wearOutfit, wearCharacterOutfit } = useRoomSessionMutations(sessionId);
+  const [selectedValue, setSelectedValue] = useState('');
+  const [keepUndressState, setKeepUndressState] = useState(true);
+
+  const characterOutfits = targetCharacter?.outfits ?? [];
 
   async function submit() {
-    const entry = (wearableItems ?? []).find((e) => e.outfit_master_id === Number(outfitMasterId));
     const target = participants.find((p) => p.character_id === Number(targetId));
-    if (!entry || !target) return;
-    await wearOutfit.mutateAsync({ characterId: target.character_id, outfitMasterId: entry.outfit_master_id });
-    onSend(`@${target.display_name}が『${entry.name}』を${command.label}`);
+    if (!target || !selectedValue) return;
+    if (selectedValue.startsWith('char:')) {
+      const outfitId = Number(selectedValue.slice('char:'.length));
+      const outfit = characterOutfits.find((o) => o.id === outfitId);
+      if (!outfit) return;
+      await wearCharacterOutfit.mutateAsync({ characterId: target.character_id, outfitId: outfit.id, keepUndressState });
+      onSend(`@${target.display_name}が『${outfit.name}』を${command.label}`);
+    } else {
+      const outfitMasterId = Number(selectedValue.slice('inv:'.length));
+      const entry = (wearableItems ?? []).find((e) => e.outfit_master_id === outfitMasterId);
+      if (!entry) return;
+      await wearOutfit.mutateAsync({ characterId: target.character_id, outfitMasterId: entry.outfit_master_id, keepUndressState });
+      onSend(`@${target.display_name}が『${entry.name}』を${command.label}`);
+    }
     onClose();
   }
 
@@ -731,7 +748,7 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
             value={targetId}
             onChange={(e) => {
               setTargetId(e.target.value);
-              setOutfitMasterId('');
+              setSelectedValue('');
             }}
           >
             <option value="">対象を選択してください</option>
@@ -745,22 +762,40 @@ function ItemWearPanel({ command, playthroughId, sessionId, participants, onClos
         {targetId && (
           <label>
             <span style={{ fontSize: 11, color: '#888', display: 'block' }}>着せる衣装</span>
-            {(wearableItems ?? []).length === 0 ? (
-              <p style={{ fontSize: 12, color: '#888' }}>着られる持ち物がありません</p>
+            {characterOutfits.length === 0 && (wearableItems ?? []).length === 0 ? (
+              <p style={{ fontSize: 12, color: '#888' }}>着られる衣装がありません</p>
             ) : (
-              <select style={{ width: '100%' }} value={outfitMasterId} onChange={(e) => setOutfitMasterId(e.target.value)}>
+              <select style={{ width: '100%' }} value={selectedValue} onChange={(e) => setSelectedValue(e.target.value)}>
                 <option value="">選択してください</option>
-                {wearableItems.map((entry) => (
-                  <option key={entry.outfit_master_id} value={entry.outfit_master_id}>
-                    {entry.name}
-                  </option>
-                ))}
+                {characterOutfits.length > 0 && (
+                  <optgroup label="標準で定義されている衣装">
+                    {characterOutfits.map((outfit) => (
+                      <option key={`char:${outfit.id}`} value={`char:${outfit.id}`}>
+                        {outfit.name}
+                        {outfit.is_default ? '（標準）' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {(wearableItems ?? []).length > 0 && (
+                  <optgroup label="所持している衣装">
+                    {wearableItems.map((entry) => (
+                      <option key={`inv:${entry.outfit_master_id}`} value={`inv:${entry.outfit_master_id}`}>
+                        {entry.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             )}
           </label>
         )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#888' }}>
+          <input type="checkbox" checked={keepUndressState} onChange={(e) => setKeepUndressState(e.target.checked)} />
+          脱衣状態を保持する（新しい衣装に存在しない層は破棄されます）
+        </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={submit} disabled={!targetId || !outfitMasterId}>
+          <button type="button" onClick={submit} disabled={!targetId || !selectedValue}>
             {command.label}
           </button>
         </div>

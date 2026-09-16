@@ -93,11 +93,17 @@ export function useRoomSessionMutations(id) {
     buyOutfit: useMutation({ mutationFn: (outfitMasterId) => roomSessionsApi.buyOutfit(id, outfitMasterId), onSuccess: invalidate }),
     pickupOutfit: useMutation({ mutationFn: (outfitMasterId) => roomSessionsApi.pickupOutfit(id, outfitMasterId), onSuccess: invalidate }),
     wearItem: useMutation({
-      mutationFn: ({ characterId, itemId }) => roomSessionsApi.wearItem(id, characterId, itemId),
+      mutationFn: ({ characterId, itemId, keepUndressState }) => roomSessionsApi.wearItem(id, characterId, itemId, keepUndressState),
       onSuccess: invalidate,
     }),
     wearOutfit: useMutation({
-      mutationFn: ({ characterId, outfitMasterId }) => roomSessionsApi.wearOutfit(id, characterId, outfitMasterId),
+      mutationFn: ({ characterId, outfitMasterId, keepUndressState }) =>
+        roomSessionsApi.wearOutfit(id, characterId, outfitMasterId, keepUndressState),
+      onSuccess: invalidate,
+    }),
+    wearCharacterOutfit: useMutation({
+      mutationFn: ({ characterId, outfitId, keepUndressState }) =>
+        roomSessionsApi.wearCharacterOutfit(id, characterId, outfitId, keepUndressState),
       onSuccess: invalidate,
     }),
     transformRequest: useMutation({

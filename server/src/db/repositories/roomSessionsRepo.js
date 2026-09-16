@@ -23,7 +23,7 @@ import { withDisambiguatedNames, participantBaseName } from '../../services/part
 // The 6 OUTFIT_TAG_FIELDS the undress-state ladder tracks (undressState.js's
 // 6-track convention, L3.4) -- the fields a 脱衣 action command's
 // disturbance_target_field can reference client-side.
-const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'underwear_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_lower'];
+const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'underwear_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_lower', 'clothing_legs', 'shoes'];
 
 // Serializes this participant's current outfit + active undress-ladder
 // modifiers into a plain JSON-friendly shape the client can use to decide

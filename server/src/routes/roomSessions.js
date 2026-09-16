@@ -13,6 +13,8 @@ import {
   setMemoryImpressionCheckpoint,
 } from '../db/repositories/roomSessionsRepo.js';
 import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
+import { getOutfit } from '../db/repositories/outfitsRepo.js';
+import { syncUndressStateToOutfit } from '../db/repositories/characterStatusStatesRepo.js';
 import { listShopProducts, listPickupableOutfits } from '../services/shopProducts.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { resolveProtagonist, applyMovementCost, getPlaythrough, adjustMoney } from '../db/repositories/playthroughsRepo.js';
@@ -486,13 +488,15 @@ roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
 // なれないため、character_id は常にNPC。既に同じマスタから取り込み済みの
 // 衣装インスタンスがあれば使い回す(wearMasterAsCharacter側の挙動)。
 roomSessionsRouter.post('/:id/wear-item', (req, res) => {
-  const { character_id, item_id } = req.body;
+  const { character_id, item_id, keep_undress_state } = req.body;
   if (!character_id || !item_id) return res.status(400).json({ error: 'character_id_and_item_id_required' });
 
   const item = getItem(item_id);
   if (!item?.outfit_master_id) return res.status(400).json({ error: 'not_an_outfit_item' });
 
   const outfit = wearMasterAsCharacter(character_id, item.outfit_master_id);
+  const session = getRoomSession(req.params.id);
+  syncUndressStateToOutfit(character_id, { playthroughId: session.playthrough_id, roomSessionId: req.params.id }, outfit, Boolean(keep_undress_state));
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });
@@ -502,7 +506,7 @@ roomSessionsRouter.post('/:id/wear-item', (req, res) => {
 // 衣装マスタ専用の所持経済版(0096)。itemsを介さずplaythrough_outfit_inventoryを
 // 直接見る——対象NPCがそのマスタを保有していなければ拒否する。
 roomSessionsRouter.post('/:id/wear-outfit', (req, res) => {
-  const { character_id, outfit_master_id } = req.body;
+  const { character_id, outfit_master_id, keep_undress_state } = req.body;
   if (!character_id || !outfit_master_id) return res.status(400).json({ error: 'character_id_and_outfit_master_id_required' });
 
   const session = getRoomSession(req.params.id);
@@ -511,6 +515,28 @@ roomSessionsRouter.post('/:id/wear-outfit', (req, res) => {
   }
 
   const outfit = wearMasterAsCharacter(character_id, outfit_master_id);
+  syncUndressStateToOutfit(character_id, { playthroughId: session.playthrough_id, roomSessionId: req.params.id }, outfit, Boolean(keep_undress_state));
+  updateParticipantOutfit(req.params.id, character_id, outfit.id);
+  broadcast(req.params.id, { type: 'participants_changed' });
+  res.json({ outfit });
+  triggerAutoOutfitImageForWear(req.params.id, character_id);
+});
+
+// キャラ本人がそもそも持っている衣装(outfits.character_id、所持経済とは無関係)
+// への着替え(検討事項として追加、靴下/靴の脱衣機能追加のついで)。wear-outfitと
+// 違いhasOutfit()の所持チェックは行わず、対象がその衣装の持ち主本人かどうかだけ
+// 検証する。
+roomSessionsRouter.post('/:id/wear-character-outfit', (req, res) => {
+  const { character_id, outfit_id, keep_undress_state } = req.body;
+  if (!character_id || !outfit_id) return res.status(400).json({ error: 'character_id_and_outfit_id_required' });
+
+  const outfit = getOutfit(outfit_id);
+  if (!outfit || outfit.character_id !== Number(character_id)) {
+    return res.status(400).json({ error: 'outfit_not_owned_by_character' });
+  }
+
+  const session = getRoomSession(req.params.id);
+  syncUndressStateToOutfit(character_id, { playthroughId: session.playthrough_id, roomSessionId: req.params.id }, outfit, Boolean(keep_undress_state));
   updateParticipantOutfit(req.params.id, character_id, outfit.id);
   broadcast(req.params.id, { type: 'participants_changed' });
   res.json({ outfit });

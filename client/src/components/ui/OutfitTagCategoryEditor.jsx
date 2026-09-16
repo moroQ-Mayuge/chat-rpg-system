@@ -31,7 +31,7 @@ export const OUTFIT_TAG_FIELDS = OUTFIT_TAG_CATEGORIES.map(([key]) => key);
 // The 6 fields the undress-state ladder tracks (undressState.js) -- the only
 // ones where a "disturbance style" ever makes sense. Matches
 // server/src/services/outfitTagCategories.js's garment_operations gating.
-export const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_upper', 'underwear_lower'];
+export const DISTURBABLE_FIELDS = ['clothing_upper_outer', 'clothing_upper', 'clothing_lower_outer', 'clothing_lower', 'underwear_upper', 'underwear_lower', 'clothing_legs'];
 
 // 表記は設定画面(SettingsPage.jsxの露出タグ設定)と揃える。pullを「ずらす」と
 // だけ書くと方向が分からず、asideの「横にずらす」とも紛らわしいので、
