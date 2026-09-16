@@ -173,6 +173,14 @@ const LAYER_ABOVE = {
   clothing_lower: ['clothing_lower_outer'],
   underwear_lower: ['clothing_lower_outer', 'clothing_lower'],
   shoes: [],
+  clothing_legs: [],
+};
+
+// 靴を履いたままでも足回り(靴下・パンスト等)をずり下げたり破ったりはできるが、
+// 完全に脱がす(complete)には靴を脱いでいる必要がある——LAYER_ABOVEの「どの
+// スタイルでも一律に上の層が必要」という前提が合わないこのケースだけ、
+// スタイルがcompleteの時だけ追加でチェックする専用の依存関係として分離する。
+const COMPLETE_ONLY_LAYER_ABOVE = {
   clothing_legs: ['shoes'],
 };
 
@@ -205,7 +213,10 @@ function isDisturbanceCommandVisible(cmd, od) {
   // outfitTagCategories.js's composeFieldValue already builds.
   const alreadyStyled = Boolean(od.disturbedFieldStyles[field]);
   const alreadyTorn = od.tornFields.includes(field);
-  if (style === 'complete') return !alreadySuppressed;
+  if (style === 'complete') {
+    if (!(COMPLETE_ONLY_LAYER_ABOVE[field] ?? []).every((f) => isLayerCleared(od, f))) return false;
+    return !alreadySuppressed;
+  }
   if (alreadySuppressed) return false;
   // Tearing stays available while the layer is merely disturbed -- only a
   // fully removed layer (above) or an already-torn one takes it away.
