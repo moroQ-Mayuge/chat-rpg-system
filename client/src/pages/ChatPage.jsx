@@ -222,6 +222,10 @@ function isDisturbanceCommandVisible(cmd, od) {
   // fully removed layer (above) or an already-torn one takes it away.
   if (style === 'torn') return !alreadyTorn;
   if (alreadyStyled) return false;
+  // 足回り(靴下・パンスト等)は「ずり下げる」以外の脱がし方向が存在しないため、
+  // 他トラックのような衣装ごとのgarment_operations opt-inを要求せず常時許可する
+  // (server側のoutfitTagCategories.js's composeFieldValueも同様に無条件適用)。
+  if (field === 'clothing_legs') return true;
   return (od.garmentOperations?.[field] ?? []).includes(style);
 }
 

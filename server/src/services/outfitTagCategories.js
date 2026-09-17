@@ -75,7 +75,10 @@ function composeFieldValue(outfit, field, style, isTorn, exposureTagSettings) {
   const value = outfit[field];
   if (!value) return '';
   const { structural, rest } = splitStructuralWord(value);
-  const allowedStyles = parseGarmentOperations(outfit)[field] ?? [];
+  // clothing_legs(足回り)には「ずり下げる」以外の脱がし方向が無いため、
+  // 他フィールドのような衣装ごとのgarment_operations opt-inを要求せず常時
+  // 適用する(client側のChatPage.jsx's isDisturbanceCommandVisibleと対応)。
+  const allowedStyles = field === 'clothing_legs' ? [style] : parseGarmentOperations(outfit)[field] ?? [];
   const effectiveStyle = style && allowedStyles.includes(style) ? style : null;
   const styleWord = effectiveStyle ? exposureTagSettings?.[`${effectiveStyle}_tag`] : null;
   const firstSegment = [isTorn ? 'torn' : null, structural, styleWord].filter(Boolean).join(' ');
