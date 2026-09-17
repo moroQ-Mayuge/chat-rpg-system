@@ -18,10 +18,11 @@ export function listAllTriggers() {
   return db.prepare('SELECT * FROM axis_status_triggers ORDER BY id').all();
 }
 
-export function createTrigger({ relationship_axis_id, comparison, threshold_value, status_id }) {
+// world_id: null = 全World共通（character_statuses.world_idと同じ考え方）。
+export function createTrigger({ relationship_axis_id, comparison, threshold_value, status_id, world_id }) {
   const result = db
-    .prepare('INSERT INTO axis_status_triggers (relationship_axis_id, comparison, threshold_value, status_id) VALUES (?, ?, ?, ?)')
-    .run(relationship_axis_id, comparison, threshold_value, status_id);
+    .prepare('INSERT INTO axis_status_triggers (relationship_axis_id, comparison, threshold_value, status_id, world_id) VALUES (?, ?, ?, ?, ?)')
+    .run(relationship_axis_id, comparison, threshold_value, status_id, world_id ?? null);
   return db.prepare('SELECT * FROM axis_status_triggers WHERE id = ?').get(result.lastInsertRowid);
 }
 
@@ -47,6 +48,13 @@ function findActiveRoomSessionId(playthroughId, characterId) {
   return row?.id ?? null;
 }
 
+// 生クエリで解決する理由はfindActiveRoomSessionIdと同じ（playthroughsRepo.jsの
+// importはplaythroughsRepo -> relationshipStatesRepo -> このファイル、という
+// 既存の依存で循環するため）。
+function findWorldIdForPlaythrough(playthroughId) {
+  return db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(playthroughId)?.world_id ?? null;
+}
+
 // How "strict" (hard to satisfy) a trigger's condition is, used to order
 // grants so that when several thresholds on the same axis become met at once
 // (e.g. a big favorability jump satisfies 他人/顔見知り/友人/恋人 all in one
@@ -68,8 +76,17 @@ function strictness(trigger) {
 // respectLockWhenEvicting so a locked exclusive_group member (e.g. a manually
 // pinned relationship stage) blocks the whole cascade until explicitly unlocked
 // or explicitly replaced via change_status.
+//
+// World-scoped(0143): 軸自体はWorld非依存の共有マスタなので、対象を絞らないと
+// 例えばWorld4専用に組んだトリガーがWorld21のキャラにも発火してしまう
+// （grantStatus自体はWorld所属を一切見ないため、そのまま付与が通ってしまう）。
+// このキャラが今実際にプレイ中のWorldをplaythroughIdから引き、
+// world_id IS NULL（全World共通）またはこのWorldのトリガーだけに絞る。
 export function evaluateAxisStatusTriggers(playthroughId, characterId, axisId, newValue) {
-  const triggers = listTriggersForAxis(axisId);
+  const allTriggers = listTriggersForAxis(axisId);
+  if (allTriggers.length === 0) return;
+  const worldId = findWorldIdForPlaythrough(playthroughId);
+  const triggers = allTriggers.filter((t) => t.world_id == null || t.world_id === worldId);
   if (triggers.length === 0) return;
   const roomSessionId = findActiveRoomSessionId(playthroughId, characterId);
   const ctx = { playthroughId, roomSessionId };

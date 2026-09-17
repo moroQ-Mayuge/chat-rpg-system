@@ -280,7 +280,7 @@ export default function CharacterStatusesPage() {
         </div>
       )}
 
-      <AxisStatusTriggersSection statuses={statuses} />
+      <AxisStatusTriggersSection statuses={statuses} worlds={worlds} />
     </div>
   );
 }
@@ -334,9 +334,9 @@ function StatusWorldsSection({ statusId, worlds }) {
   );
 }
 
-const emptyTriggerForm = { relationship_axis_id: '', comparison: '<=', threshold_value: 0, status_id: '' };
+const emptyTriggerForm = { relationship_axis_id: '', comparison: '<=', threshold_value: 0, status_id: '', world_id: '' };
 
-function AxisStatusTriggersSection({ statuses }) {
+function AxisStatusTriggersSection({ statuses, worlds }) {
   const { data: axes, isLoading: axesLoading } = useRelationshipAxes();
   const { data: triggers, isLoading: triggersLoading } = useAxisStatusTriggers();
   const { create, remove } = useAxisStatusTriggerMutations();
@@ -349,6 +349,7 @@ function AxisStatusTriggersSection({ statuses }) {
       comparison: form.comparison,
       threshold_value: Number(form.threshold_value),
       status_id: Number(form.status_id),
+      world_id: form.world_id ? Number(form.world_id) : null,
     });
     setForm(emptyTriggerForm);
   }
@@ -362,12 +363,14 @@ function AxisStatusTriggersSection({ statuses }) {
 
   const axisName = (id) => axes.find((a) => a.id === id)?.name ?? `軸#${id}`;
   const statusName = (id) => statuses.find((s) => s.id === id)?.name ?? `状態#${id}`;
+  const worldName = (id) => (id == null ? '全World共通' : worlds?.find((w) => w.id === id)?.name ?? `World#${id}`);
 
   return (
     <div style={{ marginTop: 24 }}>
       <h3 style={{ fontSize: 15 }}>しきい値トリガー</h3>
       <p style={{ fontSize: 11, color: '#888' }}>
         自己ステータスや関係性軸の値が条件を満たす／外れるとキャラ状態を自動的に付与／解除します。状態がロックされている間は自動解除されません（自動付与は既にロック中でも妨げません）。
+        軸自体はWorld非依存の共有マスタのため、対象Worldを指定しないと他Worldのキャラにも発火します。
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
         {triggers.map((t) => (
@@ -376,6 +379,9 @@ function AxisStatusTriggersSection({ statuses }) {
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #ddd', borderRadius: 6 }}
           >
             <span>
+              <span style={{ fontSize: 10, color: '#666', border: '1px solid #ccc', borderRadius: 4, padding: '1px 4px', marginRight: 6 }}>
+                {worldName(t.world_id)}
+              </span>
               {axisName(t.relationship_axis_id)} {t.comparison} {t.threshold_value} → 「{statusName(t.status_id)}」を自動付与／それ以外で自動解除
             </span>
             <button onClick={() => handleDelete(t.id)}>削除</button>
@@ -428,6 +434,17 @@ function AxisStatusTriggersSection({ statuses }) {
               {statuses.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ flex: 2 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>対象World</span>
+            <select style={{ width: '100%' }} value={form.world_id} onChange={(e) => setForm({ ...form, world_id: e.target.value })}>
+              <option value="">全World共通</option>
+              {(worlds ?? []).map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
                 </option>
               ))}
             </select>
