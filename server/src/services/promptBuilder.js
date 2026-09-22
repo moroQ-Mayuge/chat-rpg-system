@@ -473,14 +473,18 @@ function buildSystemPrompt(session, participants, options = {}) {
     sceneSituationLine,
     playerStateLine,
     pendingJoinHintBlock,
-    `この部屋に同席しているキャラクター：${participantNames}`,
+    disambiguated.length > 0
+      ? `この部屋に同席しているキャラクター：${participantNames}`
+      : 'この部屋には今、あなた（プレイヤー）以外に同席しているキャラクターはいません。',
     protagonistBlock,
     anyPregnant && world.birth_lore.trim() ? `[この世界の出産と成長について]\n${world.birth_lore.trim()}` : null,
     characterCards,
     '「秘密」の項目は関係性や状況に応じて慎重に扱い、安易に暴露しないでください。',
     '',
     'セリフや地の文は自然でくだけた口語にし、説明的で硬い言い回しは避けてください。',
-    'あなたは上記のキャラクターたちになりきって、日本語で応答してください。以下の出力フォーマットに厳密に従ってください。',
+    disambiguated.length > 0
+      ? 'あなたは上記のキャラクターたちになりきって、日本語で応答してください。以下の出力フォーマットに厳密に従ってください。'
+      : '今この場には他のキャラクターは同席していません。日本語で、地の文（ナレーション）としてプレイヤーの行動の結果や場の様子を描写してください（上記に呼びかけへの短い返事が許可されているキャラクターがいる場合は、その指示に従って短い返事だけ書いてかまいません）。以下の出力フォーマットに厳密に従ってください。',
     '[キャラ名]: セリフ本文 [EMOTION:感情キー]',
     '[NARRATION]: 地の文・情景描写（任意、必要な場合のみ）',
     world.scene_change_enabled
@@ -712,7 +716,13 @@ async function trimToTokenBudget(messages, tokenBudget) {
 // replayed history automatically, and lowering it trims rather than overflows.
 // options.responseTokenReserve: room to leave for the completion itself.
 export async function buildMultiCharacterMessages(session, options = {}) {
-  if (!session.participants.length) return null;
+  // 参加者ゼロ(呼び出し待ち・一人でのクラフト・探索等)でも生成は続行する
+  // (2026-09-23)。以前はここで打ち切っていたが、これはgenerateReply内の
+  // runEventEngine呼び出しやクラフト材料の返金判定より前に起きるため、
+  // 「呼び出す」のcharacter_joinが一度も実行されない・クラフト材料が
+  // 返金もされず消えるだけ、という実害を生んでいた。buildSystemPrompt側は
+  // 空配列でも安全（characterCards等は空文字列に落ちるだけ）——
+  // 同席者がいない場合の文言だけ下でナレーション主体に分岐させる。
 
   // Ask the running instance rather than trusting our own launch setting: it
   // may have been started outside the app, or with a different value. The
