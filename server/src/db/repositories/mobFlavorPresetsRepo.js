@@ -48,8 +48,15 @@ export function updateMobFlavorPreset(
   return getMobFlavorPreset(id);
 }
 
+// Same FK gotcha as mobNamePresetsRepo.js's deleteMobNamePreset -- room_session_characters.mob_flavor_preset_id
+// has no ON DELETE clause, so a preset that was ever actually drawn would
+// otherwise fail deletion with a FOREIGN KEY constraint error.
 export function deleteMobFlavorPreset(id) {
-  db.prepare('DELETE FROM mob_flavor_presets WHERE id = ?').run(id);
+  const del = db.transaction(() => {
+    db.prepare('UPDATE room_session_characters SET mob_flavor_preset_id = NULL WHERE mob_flavor_preset_id = ?').run(id);
+    db.prepare('DELETE FROM mob_flavor_presets WHERE id = ?').run(id);
+  });
+  del();
   return { deleted: true };
 }
 

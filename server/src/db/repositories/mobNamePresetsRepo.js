@@ -27,8 +27,18 @@ export function updateMobNamePreset(id, { name }) {
   return getMobNamePreset(id);
 }
 
+// room_session_characters.mob_flavor_name_id (0129) has no ON DELETE clause,
+// so deleting a preset that was ever actually drawn for a participant (that
+// row survives room exit indefinitely, for chat-log resolution) would throw
+// a FOREIGN KEY constraint failed error -- null out the reference first so
+// deletion always succeeds; those old rows just fall back to the mob's base
+// name, same as if it had never drawn one.
 export function deleteMobNamePreset(id) {
-  db.prepare('DELETE FROM mob_name_presets WHERE id = ?').run(id);
+  const del = db.transaction(() => {
+    db.prepare('UPDATE room_session_characters SET mob_flavor_name_id = NULL WHERE mob_flavor_name_id = ?').run(id);
+    db.prepare('DELETE FROM mob_name_presets WHERE id = ?').run(id);
+  });
+  del();
   return { deleted: true };
 }
 
