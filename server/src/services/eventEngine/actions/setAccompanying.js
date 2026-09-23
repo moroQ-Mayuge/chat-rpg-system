@@ -3,9 +3,23 @@ import { getPlaythrough } from '../../../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../../../db/repositories/worldsRepo.js';
 import { resolveSingleTargetId } from '../targetResolution.js';
 
-// { character_id: number|"mentioned"|"condition_matched", is_accompanying: boolean }
+// { character_id: number|"mentioned"|"condition_matched"|"all_accompanying", is_accompanying: boolean }
 export async function executeSetAccompanying(params, execCtx) {
   const { character_id, is_accompanying } = params;
+
+  // 「解散」コマンド用: 現在同行中の全員を一括で対象にする。他のsentinel
+  // (mentioned等)と違いtargetResolution.jsを経由しない——同行中かどうかは
+  // このセッションの現在状態そのものなので、resolveSingleTargetIdの
+  // 単一ターゲット解決とは性質が異なる。
+  if (character_id === 'all_accompanying') {
+    const targets = execCtx.session.participants.filter((p) => p.is_accompanying);
+    if (targets.length === 0) return { skipped: true, reason: 'no_accompanying' };
+    for (const p of targets) {
+      setAccompanying(execCtx.sessionId, p.character_id, Boolean(is_accompanying), p.id);
+    }
+    return { character_ids: targets.map((p) => p.character_id), is_accompanying: Boolean(is_accompanying) };
+  }
+
   const targetId = resolveSingleTargetId(character_id, execCtx);
   if (targetId == null) return { skipped: true, reason: 'no_target' };
 
