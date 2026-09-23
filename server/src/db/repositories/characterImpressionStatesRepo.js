@@ -1,5 +1,6 @@
 import { db } from '../connection.js';
-import { isMobCharacter } from './charactersRepo.js';
+import { isMobCharacter, addImpressionDefaultIfMissing } from './charactersRepo.js';
+import { listTemplatesForWorld } from './worldImpressionFieldTemplatesRepo.js';
 
 // Mirrors characterAddressStatesRepo.js's scopeColumns exactly -- see that
 // file's comment. Unlike a mob's nickname (which intentionally resets every
@@ -13,9 +14,12 @@ function scopeColumns(characterId, playthroughId, roomSessionId, roomSessionChar
   return { playthrough_id: playthroughId, room_session_id: null, room_session_character_id: null };
 }
 
-// All current field values for one character in scope, as [{field_key, value}].
-// Returns [] if never seeded (caller should ensureImpressionStatesSeeded first
-// wherever a character enters play, same as relationship_states).
+// All current field values for one character in scope, as
+// [{field_key, value, update_instruction}]. update_instruction comes from
+// character_impression_defaults(0145) -- a per-field author instruction that
+// impressionAutoUpdate.js folds into its prompt. Returns [] if never seeded
+// (caller should ensureImpressionStatesSeeded first wherever a character
+// enters play, same as relationship_states).
 export function listImpressionValues(playthroughId, characterId, roomSessionId, roomSessionCharacterId) {
   const { playthrough_id, room_session_id, room_session_character_id } = scopeColumns(
     characterId,
@@ -25,8 +29,10 @@ export function listImpressionValues(playthroughId, characterId, roomSessionId, 
   );
   return db
     .prepare(
-      `SELECT field_key, value FROM character_impression_states
-       WHERE character_id = ? AND playthrough_id IS ? AND room_session_id IS ? AND room_session_character_id IS ?`,
+      `SELECT s.field_key, s.value, COALESCE(d.update_instruction, '') AS update_instruction
+       FROM character_impression_states s
+       LEFT JOIN character_impression_defaults d ON d.character_id = s.character_id AND d.field_key = s.field_key
+       WHERE s.character_id = ? AND s.playthrough_id IS ? AND s.room_session_id IS ? AND s.room_session_character_id IS ?`,
     )
     .all(characterId, playthrough_id, room_session_id, room_session_character_id);
 }
@@ -105,22 +111,46 @@ export function setImpressionValue(playthroughId, characterId, fieldKey, value, 
   return { field_key: fieldKey, value };
 }
 
-// Mirrors ensureRelationshipStatesSeeded (roomSessionsRepo.js) exactly --
-// same mob-vs-non-mob seeded-once check, same 3 call sites. A character with
-// no character_impression_defaults rows (never configured any fields) is a
-// no-op, same as an event/character with no relationship axes overridden.
+// キャラ単位ではなくfield_key単位で「まだseedされていない分だけ」追加する
+// (0145で変更)。以前はキャラ単位で「1行でもあれば済み」という判定だったため、
+// 既に登場済みのキャラに後からフィールドを追加しても進行中のプレイスルーには
+// 一切反映されなかった——World単位テンプレート(world_impression_field_templates)
+// の「まだ持っていないキャラには自動でフィールドを作る」を実際に機能させるには
+// この粒度が必須。
+//
+// 先にこのWorldのテンプレートをcharacter_impression_defaultsへ複製してから
+// (addImpressionDefaultIfMissing、既にある行には触れない)、その最新の
+// defaultsを元にseedする。
 export function ensureImpressionStatesSeeded(playthroughId, characterId, roomSessionId, roomSessionCharacterId) {
   const isMob = isMobCharacter(characterId);
-  const alreadySeeded = isMob
-    ? db
-        .prepare(
-          'SELECT 1 FROM character_impression_states WHERE room_session_id = ? AND character_id = ? AND room_session_character_id IS ? LIMIT 1',
-        )
-        .get(roomSessionId, characterId, roomSessionCharacterId ?? null)
-    : db.prepare('SELECT 1 FROM character_impression_states WHERE playthrough_id = ? AND character_id = ? LIMIT 1').get(playthroughId, characterId);
-  if (alreadySeeded) return;
+
+  const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(playthroughId)?.world_id;
+  if (worldId != null) {
+    for (const t of listTemplatesForWorld(worldId)) {
+      addImpressionDefaultIfMissing(characterId, {
+        field_key: t.field_key,
+        default_value: t.default_value,
+        update_instruction: t.update_instruction,
+      });
+    }
+  }
+
   const defaults = db.prepare('SELECT field_key, default_value FROM character_impression_defaults WHERE character_id = ?').all(characterId);
+  if (defaults.length === 0) return;
+
+  const existingKeys = new Set(
+    (isMob
+      ? db
+          .prepare(
+            'SELECT field_key FROM character_impression_states WHERE room_session_id = ? AND character_id = ? AND room_session_character_id IS ?',
+          )
+          .all(roomSessionId, characterId, roomSessionCharacterId ?? null)
+      : db.prepare('SELECT field_key FROM character_impression_states WHERE playthrough_id = ? AND character_id = ?').all(playthroughId, characterId)
+    ).map((r) => r.field_key),
+  );
+
   for (const d of defaults) {
+    if (existingKeys.has(d.field_key)) continue;
     db.prepare(
       `INSERT INTO character_impression_states (playthrough_id, room_session_id, room_session_character_id, character_id, field_key, value, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,

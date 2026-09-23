@@ -53,7 +53,7 @@ function attachAssociations(character) {
     )
     .all(character.id);
   const impressionDefaults = db
-    .prepare('SELECT id, field_key, default_value FROM character_impression_defaults WHERE character_id = ? ORDER BY id ASC')
+    .prepare('SELECT id, field_key, default_value, update_instruction FROM character_impression_defaults WHERE character_id = ? ORDER BY id ASC')
     .all(character.id);
   const outfits = listOutfitsForCharacter(character.id);
   return { ...character, relationship_defaults: relationshipDefaults, impression_defaults: impressionDefaults, outfits };
@@ -130,12 +130,23 @@ function replaceImpressionDefaults(characterId, impressionDefaults) {
   db.prepare('DELETE FROM character_impression_defaults WHERE character_id = ?').run(characterId);
   for (const d of impressionDefaults ?? []) {
     if (!d.field_key?.trim()) continue;
-    db.prepare('INSERT INTO character_impression_defaults (character_id, field_key, default_value) VALUES (?, ?, ?)').run(
-      characterId,
-      d.field_key,
-      d.default_value ?? '',
-    );
+    db.prepare(
+      'INSERT INTO character_impression_defaults (character_id, field_key, default_value, update_instruction) VALUES (?, ?, ?, ?)',
+    ).run(characterId, d.field_key, d.default_value ?? '', d.update_instruction ?? '');
   }
+}
+
+// world_impression_field_templates(0145)がこのキャラにまだ複製されていない
+// field_keyを、そのWorldのプレイスルーへの登場時に埋めるためのヘルパー。
+// 既にある行には触らない(著者が個別編集済みかもしれないため)。
+export function addImpressionDefaultIfMissing(characterId, { field_key, default_value, update_instruction }) {
+  const existing = db
+    .prepare('SELECT 1 FROM character_impression_defaults WHERE character_id = ? AND field_key = ?')
+    .get(characterId, field_key);
+  if (existing) return;
+  db.prepare(
+    'INSERT INTO character_impression_defaults (character_id, field_key, default_value, update_instruction) VALUES (?, ?, ?, ?)',
+  ).run(characterId, field_key, default_value ?? '', update_instruction ?? '');
 }
 
 function buildFieldValues(data) {

@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useWorlds, useWorldMutations, useCalendarHolidays, useCalendarHolidayMutations } from '../hooks/useWorlds.js';
+import {
+  useWorlds,
+  useWorldMutations,
+  useCalendarHolidays,
+  useCalendarHolidayMutations,
+  useImpressionFieldTemplates,
+  useImpressionFieldTemplateMutations,
+} from '../hooks/useWorlds.js';
 import { useStylePresets } from '../hooks/useSettings.js';
 import { useRoomTemplates } from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
@@ -1378,6 +1385,7 @@ export default function WorldsPage() {
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               キャラ編集画面の「あなたとの関係・印象」タブでフィールドを設定しているキャラのみ対象。部屋移動・退出のたびに、直近の会話を踏まえて値を書き換えるか判断します（LLM呼び出しが追加で発生します）。
             </p>
+            {editingId !== 'new' && <ImpressionFieldTemplatesSection worldId={editingId} />}
           </div>
 
           <div style={{ borderTop: '1px solid #ddd', paddingTop: 10, marginTop: 10 }}>
@@ -1583,6 +1591,77 @@ function CalendarHolidaysSection({ worldId }) {
         <input type="number" min="1" style={{ width: 80 }} placeholder="日数" value={dayOfYear} onChange={(e) => setDayOfYear(e.target.value)} />
         <input style={{ flex: 1 }} placeholder="表示名（任意、例：文化祭）" value={label} onChange={(e) => setLabel(e.target.value)} />
         <button onClick={handleAdd} disabled={!dayOfYear}>
+          + 追加
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// World単位の追加印象フィールドテンプレート(0145)。このWorldのキャラが
+// まだ持っていないfield_keyは、そのキャラがこのWorldのプレイスルーに
+// 登場した時点で自動的にcharacter_impression_defaultsへ複製される
+// (characterImpressionStatesRepo.jsのensureImpressionStatesSeeded)。
+function ImpressionFieldTemplatesSection({ worldId }) {
+  const { data: templates } = useImpressionFieldTemplates(worldId);
+  const { create, update, remove } = useImpressionFieldTemplateMutations(worldId);
+  const [fieldKey, setFieldKey] = useState('');
+  const [defaultValue, setDefaultValue] = useState('');
+  const [instruction, setInstruction] = useState('');
+
+  async function handleAdd() {
+    if (!fieldKey.trim()) return;
+    await create.mutateAsync({ field_key: fieldKey.trim(), default_value: defaultValue, update_instruction: instruction });
+    setFieldKey('');
+    setDefaultValue('');
+    setInstruction('');
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p style={{ fontWeight: 500 }}>追加の印象フィールド（World共通）</p>
+      <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+        このWorldの全キャラに持たせる追加フィールドです。まだこのフィールドを持っていないキャラは、このWorldのプレイスルーに登場した時点で自動的に追加されます（既にキャラ側で個別編集済みのフィールドは上書きしません）。上の自動更新設定がONの場合、更新時の指示もLLMへ渡されます。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+        {(templates ?? []).map((t) => (
+          <div key={t.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <input
+                style={{ width: 140, flexShrink: 0 }}
+                value={t.field_key}
+                onChange={(e) => update.mutateAsync({ templateId: t.id, data: { ...t, field_key: e.target.value } })}
+              />
+              <input
+                style={{ flex: 1 }}
+                placeholder="初期値"
+                value={t.default_value}
+                onChange={(e) => update.mutateAsync({ templateId: t.id, data: { ...t, default_value: e.target.value } })}
+              />
+              <button onClick={() => remove.mutateAsync(t.id)}>削除</button>
+            </div>
+            <input
+              style={{ width: '100%' }}
+              placeholder="更新時の指示（任意）"
+              value={t.update_instruction}
+              onChange={(e) => update.mutateAsync({ templateId: t.id, data: { ...t, update_instruction: e.target.value } })}
+            />
+          </div>
+        ))}
+        {(templates ?? []).length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだ追加フィールドはありません</p>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px dashed #ccc', borderRadius: 6, padding: 6 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input style={{ width: 140, flexShrink: 0 }} placeholder="フィールド名（例：料理の好み）" value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} />
+          <input style={{ flex: 1 }} placeholder="初期値（例：まだ何もない）" value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)} />
+        </div>
+        <input
+          style={{ width: '100%' }}
+          placeholder="更新時の指示（任意・例：食事シーンでの反応から具体的な好みを記録する）"
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+        />
+        <button onClick={handleAdd} disabled={!fieldKey.trim()} style={{ alignSelf: 'flex-start' }}>
           + 追加
         </button>
       </div>

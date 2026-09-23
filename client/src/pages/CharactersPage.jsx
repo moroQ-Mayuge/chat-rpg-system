@@ -412,7 +412,7 @@ export default function CharactersPage() {
   }
 
   function addImpressionDefault() {
-    setForm((f) => ({ ...f, impression_defaults: [...f.impression_defaults, { field_key: '', default_value: '' }] }));
+    setForm((f) => ({ ...f, impression_defaults: [...f.impression_defaults, { field_key: '', default_value: '', update_instruction: '' }] }));
   }
 
   function removeImpressionDefault(target) {
@@ -1473,20 +1473,28 @@ export default function CharactersPage() {
                   {(form.impression_defaults ?? [])
                     .filter((d) => !STANDARD_IMPRESSION_FIELD_KEYS.includes(d.field_key))
                     .map((d, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                          <input
+                            style={{ width: 140, flexShrink: 0 }}
+                            placeholder="フィールド名（例：秘密の約束）"
+                            value={d.field_key}
+                            onChange={(e) => updateImpressionDefault(d, { field_key: e.target.value })}
+                          />
+                          <input
+                            style={{ flex: 1 }}
+                            placeholder="初期値（例：まだ何もない）"
+                            value={d.default_value}
+                            onChange={(e) => updateImpressionDefault(d, { default_value: e.target.value })}
+                          />
+                          <button onClick={() => removeImpressionDefault(d)}>削除</button>
+                        </div>
                         <input
-                          style={{ width: 140, flexShrink: 0 }}
-                          placeholder="フィールド名（例：秘密の約束）"
-                          value={d.field_key}
-                          onChange={(e) => updateImpressionDefault(d, { field_key: e.target.value })}
+                          style={{ width: '100%' }}
+                          placeholder="更新時の指示（任意・例：食事シーンでの反応から具体的な好みを記録する）"
+                          value={d.update_instruction ?? ''}
+                          onChange={(e) => updateImpressionDefault(d, { update_instruction: e.target.value })}
                         />
-                        <input
-                          style={{ flex: 1 }}
-                          placeholder="初期値（例：まだ何もない）"
-                          value={d.default_value}
-                          onChange={(e) => updateImpressionDefault(d, { default_value: e.target.value })}
-                        />
-                        <button onClick={() => removeImpressionDefault(d)}>削除</button>
                       </div>
                     ))}
                 </div>

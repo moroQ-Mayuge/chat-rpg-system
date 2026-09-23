@@ -5,6 +5,12 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { listWorlds, getWorld, createWorld, updateWorld, deleteWorld, setThumbnailImage } from '../db/repositories/worldsRepo.js';
 import { listHolidaysForWorld, createHoliday, updateHoliday, deleteHoliday } from '../db/repositories/worldCalendarHolidaysRepo.js';
+import {
+  listTemplatesForWorld,
+  createTemplate as createImpressionFieldTemplate,
+  updateTemplate as updateImpressionFieldTemplate,
+  deleteTemplate as deleteImpressionFieldTemplate,
+} from '../db/repositories/worldImpressionFieldTemplatesRepo.js';
 import { generateWorldThumbnail } from '../services/worldThumbnailGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { exportWorldBundle } from '../services/contentBundle/index.js';
@@ -89,6 +95,23 @@ worldsRouter.put('/:id/calendar-holidays/:holidayId', (req, res) => {
 
 worldsRouter.delete('/:id/calendar-holidays/:holidayId', (req, res) => {
   res.json(deleteHoliday(req.params.holidayId));
+});
+
+worldsRouter.get('/:id/impression-field-templates', (req, res) => {
+  res.json(listTemplatesForWorld(req.params.id));
+});
+
+worldsRouter.post('/:id/impression-field-templates', (req, res) => {
+  if (!req.body.field_key) return res.status(400).json({ error: 'field_key_required' });
+  res.status(201).json(createImpressionFieldTemplate({ ...req.body, world_id: req.params.id }));
+});
+
+worldsRouter.put('/:id/impression-field-templates/:templateId', (req, res) => {
+  res.json(updateImpressionFieldTemplate(req.params.templateId, req.body));
+});
+
+worldsRouter.delete('/:id/impression-field-templates/:templateId', (req, res) => {
+  res.json(deleteImpressionFieldTemplate(req.params.templateId));
 });
 
 worldsRouter.post('/:id/generate-thumbnail-image', (req, res) => {

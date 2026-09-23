@@ -16,4 +16,8 @@ export const worldsApi = {
   createCalendarHoliday: (id, data) => api.post(`/worlds/${id}/calendar-holidays`, data),
   updateCalendarHoliday: (id, holidayId, data) => api.put(`/worlds/${id}/calendar-holidays/${holidayId}`, data),
   removeCalendarHoliday: (id, holidayId) => api.del(`/worlds/${id}/calendar-holidays/${holidayId}`),
+  listImpressionFieldTemplates: (id) => api.get(`/worlds/${id}/impression-field-templates`),
+  createImpressionFieldTemplate: (id, data) => api.post(`/worlds/${id}/impression-field-templates`, data),
+  updateImpressionFieldTemplate: (id, templateId, data) => api.put(`/worlds/${id}/impression-field-templates/${templateId}`, data),
+  removeImpressionFieldTemplate: (id, templateId) => api.del(`/worlds/${id}/impression-field-templates/${templateId}`),
 };

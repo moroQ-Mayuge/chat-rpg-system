@@ -66,8 +66,16 @@ export async function maybeRunImpressionAutoUpdate(session, world) {
   if (withFields.length === 0) return;
 
   const transcript = buildRecentTranscript(session.id, 20);
+  // update_instruction(0145、テンプレートまたはキャラ個別に設定)があれば
+  // フィールドごとに併記する。空なら従来通り値だけ。
   const currentLines = withFields
-    .map(({ participant, fields }) => `${participant.display_name}：` + fields.map((f) => `${f.field_key}=「${f.value}」`).join('、'))
+    .map(
+      ({ participant, fields }) =>
+        `${participant.display_name}：` +
+        fields
+          .map((f) => `${f.field_key}=「${f.value}」${f.update_instruction?.trim() ? `（更新の指示: ${f.update_instruction.trim()}）` : ''}`)
+          .join('、'),
+    )
     .join('\n');
 
   const prompt = [

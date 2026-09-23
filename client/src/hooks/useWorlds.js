@@ -39,3 +39,24 @@ export function useCalendarHolidayMutations(worldId) {
     remove: useMutation({ mutationFn: (holidayId) => worldsApi.removeCalendarHoliday(worldId, holidayId), onSuccess: invalidate }),
   };
 }
+
+export function useImpressionFieldTemplates(worldId) {
+  return useQuery({
+    queryKey: ['worlds', worldId, 'impression-field-templates'],
+    queryFn: () => worldsApi.listImpressionFieldTemplates(worldId),
+    enabled: worldId != null && worldId !== 'new',
+  });
+}
+
+export function useImpressionFieldTemplateMutations(worldId) {
+  const queryClient = useQueryClient();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['worlds', worldId, 'impression-field-templates'] });
+  return {
+    create: useMutation({ mutationFn: (data) => worldsApi.createImpressionFieldTemplate(worldId, data), onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: ({ templateId, data }) => worldsApi.updateImpressionFieldTemplate(worldId, templateId, data),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({ mutationFn: (templateId) => worldsApi.removeImpressionFieldTemplate(worldId, templateId), onSuccess: invalidate }),
+  };
+}
