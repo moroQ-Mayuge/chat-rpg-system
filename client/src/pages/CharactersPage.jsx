@@ -195,6 +195,7 @@ export default function CharactersPage() {
   const { data: allStatuses } = useAllCharacterStatuses();
   const { data: worlds } = useWorlds();
   const [groupAxis, setGroupAxis] = useState('world');
+  const [sortKey, setSortKey] = useLocalStorageState('characters:sortKey', 'name_asc');
   const [hideRouteScoped, setHideRouteScoped] = useLocalStorageState('characters:hideRouteScoped', false);
   const { mobileListOpen, openList, closeList } = useMobileListToggle();
   const [selectedId, setSelectedId] = useState(null);
@@ -729,15 +730,22 @@ export default function CharactersPage() {
     : nonPromotedMobCharacters;
   const routeScopedCount = nonPromotedMobCharacters.filter((c) => c.origin_playthrough_id != null).length;
 
+  const sortedCharacters = [...visibleCharacters].sort((a, b) => {
+    if (sortKey === 'name_desc') return b.name.localeCompare(a.name, 'ja');
+    if (sortKey === 'updated_at') return new Date(b.updated_at ?? b.created_at) - new Date(a.updated_at ?? a.created_at);
+    if (sortKey === 'created_at') return new Date(b.created_at) - new Date(a.created_at);
+    return a.name.localeCompare(b.name, 'ja');
+  });
+
   const characterGroups =
     groupAxis === 'world'
       ? groupByKeys(
-          visibleCharacters,
+          sortedCharacters,
           (c) => c.world_ids,
           (worldId) => worlds.find((w) => w.id === worldId)?.name ?? `World#${worldId}`,
           '未所属',
         )
-      : groupByKeys(visibleCharacters, (c) => parseAttributeTags(c.attribute_tags), (tag) => tag, '未指定');
+      : groupByKeys(sortedCharacters, (c) => parseAttributeTags(c.attribute_tags), (tag) => tag, '未指定');
 
   function renderCharacterRow(c) {
     return (
@@ -819,6 +827,15 @@ export default function CharactersPage() {
             </label>
           ))}
         </div>
+        <label style={{ fontSize: 12 }}>
+          並び順{' '}
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+            <option value="name_asc">名前順（昇順）</option>
+            <option value="name_desc">名前順（降順）</option>
+            <option value="updated_at">更新日順（新しい順）</option>
+            <option value="created_at">追加日順（新しい順）</option>
+          </select>
+        </label>
         {routeScopedCount > 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={hideRouteScoped} onChange={(e) => setHideRouteScoped(e.target.checked)} />

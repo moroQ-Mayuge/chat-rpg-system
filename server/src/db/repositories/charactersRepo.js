@@ -163,8 +163,8 @@ export function createCharacter(data) {
   const placeholders = CHARACTER_TEXT_FIELDS.map((f) => `@${f}`).join(', ');
   const result = db
     .prepare(
-      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day, origin_playthrough_id, is_auto_created, is_promoted_mob)
-       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day, @origin_playthrough_id, @is_auto_created, @is_promoted_mob)`,
+      `INSERT INTO characters (${columns}, event_participation_weight, is_mob, cycle_enabled, cycle_offset_day, origin_playthrough_id, is_auto_created, is_promoted_mob, updated_at)
+       VALUES (${placeholders}, @event_participation_weight, @is_mob, @cycle_enabled, @cycle_offset_day, @origin_playthrough_id, @is_auto_created, @is_promoted_mob, datetime('now'))`,
     )
     .run({
       ...values,
@@ -193,7 +193,7 @@ export function updateCharacter(id, data) {
   const setClause = CHARACTER_TEXT_FIELDS.map((f) => `${f} = @${f}`).join(', ');
   db.prepare(
     `UPDATE characters SET ${setClause}, event_participation_weight = @event_participation_weight, is_mob = @is_mob,
-       cycle_enabled = @cycle_enabled, cycle_offset_day = @cycle_offset_day WHERE id = @id`,
+       cycle_enabled = @cycle_enabled, cycle_offset_day = @cycle_offset_day, updated_at = datetime('now') WHERE id = @id`,
   ).run({
     ...values,
     event_participation_weight: data.event_participation_weight ?? 1.0,
