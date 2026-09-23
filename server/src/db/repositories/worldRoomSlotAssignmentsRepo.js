@@ -129,6 +129,14 @@ export function listTagDerivedWorldIdsByCharacter() {
       const contextTags = roomTags.length > 0 ? roomTags : parseAttributeTags(world.attribute_tags);
       contextTags.forEach((t) => pool.add(t));
 
+      // 部屋プロファイル(0147)の各attribute_tagsも取り込む——プロファイル限定の
+      // タグしか持たないキャラ(今回のイベント会場キャラ等)が、実際には
+      // このWorldで出現しうるのに一覧では「未所属」に落ちてしまう問題への対応。
+      const profileTagRows = db.prepare('SELECT attribute_tags FROM room_profiles WHERE room_template_id = ?').all(room.id);
+      for (const row of profileTagRows) {
+        parseAttributeTags(row.attribute_tags).forEach((t) => pool.add(t));
+      }
+
       const slotTagRows = db
         .prepare(
           `SELECT DISTINCT s.attribute_tags FROM room_template_participant_slots s
