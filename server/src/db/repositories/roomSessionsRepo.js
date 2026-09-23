@@ -4,6 +4,7 @@ import { carryOverAccompanyingStatuses } from './characterStatusStatesRepo.js';
 import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
+import { resolveRoomTextOverrides } from './roomProfilesRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
 import { getPersistedOutfit, setPersistedOutfit } from './playthroughCharacterOutfitRepo.js';
 import { getPersistedTransformation, setPersistedTransformation } from './playthroughCharacterTransformationRepo.js';
@@ -317,6 +318,11 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   const poseEnabled = Boolean(getWorld(playthrough.world_id)?.pose_enabled);
   const defaultPoseId = poseEnabled ? (template.default_pose_id ?? null) : null;
 
+  // 部屋プロファイル(0147)が立っていれば、その雰囲気/場所テキストを部屋本体の
+  // 値より優先してスナップショットする——promptBuilder.jsはこのスナップショット
+  // しか見ないため(ターン毎に部屋マスタを読み直さない)、ここで解決しておく必要がある。
+  const textOverrides = resolveRoomTextOverrides(playthroughId, roomTemplateId, template);
+
   const result = db
     .prepare(
       `INSERT INTO room_sessions
@@ -330,9 +336,9 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       playthrough.current_day,
       playthrough.current_time_slot_index,
       playthrough.current_day,
-      template.location_text,
+      textOverrides.location_text,
       template.location_tags,
-      template.atmosphere_text,
+      textOverrides.atmosphere_text,
       template.atmosphere_tags,
     );
   const sessionId = result.lastInsertRowid;
@@ -479,6 +485,9 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
   const poseEnabled = Boolean(getWorld(playthrough.world_id)?.pose_enabled);
   const defaultPoseId = poseEnabled ? (template.default_pose_id ?? null) : null;
 
+  // 部屋プロファイル(0147)、createRoomSessionと同じ理由でここでも解決する。
+  const textOverrides = resolveRoomTextOverrides(session.playthrough_id, toRoomTemplateId, template);
+
   // entered_day/entered_time_slot_index は「このセッションが始まった時点」を指す
   // ため触らない——継続モードのセッション境界判定(時間帯が変わったか)がこの値を
   // 基準にしている。log_day/boundary_pending(0122)も同じ理由で触らない——
@@ -492,9 +501,9 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
      WHERE id = ?`,
   ).run(
     toRoomTemplateId,
-    template.location_text,
+    textOverrides.location_text,
     template.location_tags,
-    template.atmosphere_text,
+    textOverrides.atmosphere_text,
     template.atmosphere_tags,
     sessionId,
   );

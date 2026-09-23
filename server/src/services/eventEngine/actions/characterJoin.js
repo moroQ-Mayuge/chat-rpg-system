@@ -6,6 +6,7 @@ import { parseAttributeTags, tagsOverlapOrWildcard } from '../../attributeTagMat
 import { resolveSingleTargetId } from '../targetResolution.js';
 import { isEligibleInRoute } from '../../routeScopedCharacters.js';
 import { characterBelongsToWorld, resolveWorldIdForPlaythrough } from '../characterWorldMembership.js';
+import { resolveActiveRoomProfile } from '../../../db/repositories/roomProfilesRepo.js';
 
 function pickWeighted(candidateIds) {
   const weights = candidateIds.map(
@@ -27,7 +28,15 @@ function pickWeighted(candidateIds) {
 // for the require_attribute_match guard below. The room's World is resolved
 // from the playthrough, not the room itself, since rooms are shared master
 // data now and no longer carry a single world_id (0030_room_world_decoupling.sql).
+//
+// A room profile (0147), if this room has one active for this playthrough,
+// wins outright over the room's own static attribute_tags -- same
+// precedence as worldRoomSlotAssignmentsRepo.js's identical patch.
 function getContextTags(roomTemplateId, playthroughId) {
+  const profile = resolveActiveRoomProfile(playthroughId, roomTemplateId);
+  const profileTags = parseAttributeTags(profile?.attribute_tags);
+  if (profileTags.length > 0) return profileTags;
+
   const template = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
   const roomTags = parseAttributeTags(template.attribute_tags);

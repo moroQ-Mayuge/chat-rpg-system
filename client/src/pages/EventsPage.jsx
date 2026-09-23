@@ -109,6 +109,8 @@ const ACTION_TYPES = [
   { value: 'time_skip', label: '時間跳躍（n日後・n年後）' },
   { value: 'force_room_transfer', label: '強制部屋移動（例: 逮捕→留置場）' },
   { value: 'end_session', label: '場面を区切る（同じ部屋か指定部屋で再開）' },
+  { value: 'set_room_profile', label: '部屋プロファイルを強制指定（例: 戦闘フィールド化）' },
+  { value: 'clear_room_profile', label: '部屋プロファイルの強制指定を解除' },
 ];
 
 function conditionDefaults(type) {
@@ -211,6 +213,10 @@ function actionDefaults(type) {
       return { target_room_template_id: null, carry_character_ids: [] };
     case 'end_session':
       return { target_room_template_id: null, carry_character_ids: [] };
+    case 'set_room_profile':
+      return { room_template_id: null, profile_id: null };
+    case 'clear_room_profile':
+      return { room_template_id: null };
     default:
       return {};
   }
@@ -1417,6 +1423,57 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
           <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
             このアクションで場面を区切ると、それ以降のアクションは終了済みの場面を対象にしてしまいます。end_sessionはこのイベントのアクション一覧の最後に置いてください。
           </p>
+        </div>
+      )}
+      {action.action_type === 'set_room_profile' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象の部屋</span>
+            <select
+              value={p.room_template_id ?? ''}
+              onChange={(e) => setParams({ room_template_id: Number(e.target.value) || null, profile_id: null })}
+            >
+              <option value="">選択してください</option>
+              {(roomTemplates ?? []).map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>強制するプロファイル</span>
+            <select
+              value={p.profile_id ?? ''}
+              onChange={(e) => setParams({ profile_id: Number(e.target.value) || null })}
+              disabled={!p.room_template_id}
+            >
+              <option value="">選択してください</option>
+              {(roomTemplates?.find((rt) => rt.id === p.room_template_id)?.profiles ?? []).map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}（{profile.selection_mode === 'random' ? '日替わり抽選' : 'イベントのみ'}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
+            日替わり抽選より優先され、clear_room_profileで解除するまで居座ります。対象の部屋にいる場合、雰囲気/場所テキストは即座に切り替わりますが、出現キャラ自体は変わりません——切り替え後のタグを使ったcharacter_join(タグ一致)を別途組み合わせてください。
+          </p>
+        </div>
+      )}
+      {action.action_type === 'clear_room_profile' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象の部屋</span>
+            <select value={p.room_template_id ?? ''} onChange={(e) => setParams({ room_template_id: Number(e.target.value) || null })}>
+              <option value="">選択してください</option>
+              {(roomTemplates ?? []).map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
       {action.action_type === 'advance_time' && (

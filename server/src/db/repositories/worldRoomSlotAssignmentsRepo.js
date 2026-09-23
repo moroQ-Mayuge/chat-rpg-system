@@ -2,6 +2,7 @@ import { db } from '../connection.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../services/attributeTagMatching.js';
 import { getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
 import { isEligibleInRoute } from '../../services/routeScopedCharacters.js';
+import { resolveActiveRoomProfile } from './roomProfilesRepo.js';
 
 // World level: which concrete character(s) fill a given room-master slot,
 // for this World's instance of that room. A slot with no rows here is
@@ -160,7 +161,17 @@ export function listTagDerivedWorldIdsByCharacter() {
 // characterJoin.js's getContextTags, duplicated here (rather than imported)
 // since that module resolves the World from a playthrough_id and this one
 // already has the worldId directly.
-function getContextTags(worldId, roomTemplateId) {
+//
+// A room profile (0147), if this room has one active for this playthrough,
+// wins outright over the room's own static attribute_tags -- same
+// "overrides, doesn't union" precedence as the room-over-World fallback
+// just above. Empty profile attribute_tags means "no override" and falls
+// through to the normal room/World resolution.
+function getContextTags(worldId, roomTemplateId, playthroughId) {
+  const profile = playthroughId != null ? resolveActiveRoomProfile(playthroughId, roomTemplateId) : null;
+  const profileTags = parseAttributeTags(profile?.attribute_tags);
+  if (profileTags.length > 0) return profileTags;
+
   const template = db.prepare('SELECT attribute_tags FROM room_templates WHERE id = ?').get(roomTemplateId);
   if (!template) return [];
   const roomTags = parseAttributeTags(template.attribute_tags);
@@ -214,7 +225,7 @@ function pickWeightedWithoutReplacement(candidateIds, count) {
 // everyone (2026-07-20) -- below/at the cap, or with no cap set, everyone
 // still matches as before.
 function tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId) {
-  const contextTags = getContextTags(worldId, roomTemplateId);
+  const contextTags = getContextTags(worldId, roomTemplateId, playthroughId);
   if (contextTags.length === 0) return [];
   const matched = db
     .prepare('SELECT id, attribute_tags, is_auto_created, origin_playthrough_id FROM characters')

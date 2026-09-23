@@ -33,6 +33,7 @@ const emptyForm = {
   atmosphere_tags: [],
   worldview: '',
   slots: [],
+  profiles: [],
   prop_category_ids: [],
   item_category_ids: [],
   turns_per_time_slot_enabled: false,
@@ -87,6 +88,15 @@ export default function RoomTemplateEditPage() {
       atmosphere_tags: tagsToArray(existing.atmosphere_tags),
       worldview: existing.worldview || '',
       slots: existing.slots.map((s) => ({ id: s.id, attribute_tags: tagsToArray(s.attribute_tags), note: s.note })),
+      profiles: existing.profiles.map((p) => ({
+        id: p.id,
+        name: p.name,
+        attribute_tags: tagsToArray(p.attribute_tags),
+        atmosphere_text: p.atmosphere_text,
+        location_text: p.location_text,
+        selection_mode: p.selection_mode,
+        weight: p.weight,
+      })),
       prop_category_ids: existing.candidate_prop_categories.map((c) => c.id),
       item_category_ids: existing.candidate_item_categories.map((c) => c.id),
       turns_per_time_slot_enabled: existing.turns_per_time_slot != null,
@@ -125,6 +135,24 @@ export default function RoomTemplateEditPage() {
     setForm((f) => ({ ...f, slots: f.slots.filter((_, i) => i !== index) }));
   }
 
+  function addProfile() {
+    setForm((f) => ({
+      ...f,
+      profiles: [
+        ...f.profiles,
+        { name: '', attribute_tags: [], atmosphere_text: '', location_text: '', selection_mode: 'random', weight: 1 },
+      ],
+    }));
+  }
+
+  function updateProfile(index, patch) {
+    setForm((f) => ({ ...f, profiles: f.profiles.map((p, i) => (i === index ? { ...p, ...patch } : p)) }));
+  }
+
+  function removeProfile(index) {
+    setForm((f) => ({ ...f, profiles: f.profiles.filter((_, i) => i !== index) }));
+  }
+
   function toggleCategory(categoryId) {
     setForm((f) => ({
       ...f,
@@ -154,6 +182,15 @@ export default function RoomTemplateEditPage() {
       atmosphere_tags: tagsToText(form.atmosphere_tags),
       worldview: form.worldview_mode === 'custom' ? form.worldview : null,
       slots: form.slots.map((s, i) => ({ attribute_tags: tagsToText(s.attribute_tags), note: s.note, sort_order: i })),
+      profiles: form.profiles.map((p, i) => ({
+        name: p.name,
+        attribute_tags: tagsToText(p.attribute_tags),
+        atmosphere_text: p.atmosphere_text,
+        location_text: p.location_text,
+        selection_mode: p.selection_mode,
+        weight: Number(p.weight) || 1,
+        sort_order: i,
+      })),
       prop_category_ids: form.prop_category_ids,
       item_category_ids: form.item_category_ids,
       turns_per_time_slot: form.turns_per_time_slot_enabled ? form.turns_per_time_slot : null,
@@ -493,6 +530,73 @@ export default function RoomTemplateEditPage() {
             </div>
             <button style={{ marginTop: 6 }} onClick={addSlot}>
               + 枠を追加
+            </button>
+          </div>
+
+          <div>
+            <p style={{ marginBottom: 4 }}>プロファイル</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              「今日はどんな出現キャラ・雰囲気の部屋か」を複数定義できます。「日替わり抽選」は日替わりでランダムに1つ選ばれ、部屋本体の属性キー/雰囲気より優先されます。「イベントのみ」は自動抽選されず、set_room_profileアクションから名指しされた時だけ有効になります（戦闘フィールド化など）。
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {form.profiles.map((profile, i) => (
+                <div key={profile.id ?? `new-${i}`} style={{ border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                    <input
+                      style={{ flex: 1 }}
+                      placeholder="プロファイル名（例：アイドルイベント）"
+                      value={profile.name}
+                      onChange={(e) => updateProfile(i, { name: e.target.value })}
+                    />
+                    <select
+                      value={profile.selection_mode}
+                      onChange={(e) => updateProfile(i, { selection_mode: e.target.value })}
+                    >
+                      <option value="random">日替わり抽選</option>
+                      <option value="manual">イベントのみ</option>
+                    </select>
+                    {profile.selection_mode === 'random' && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                        重み
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: 48 }}
+                          value={profile.weight}
+                          onChange={(e) => updateProfile(i, { weight: e.target.value })}
+                        />
+                      </label>
+                    )}
+                    <button onClick={() => removeProfile(i)}>削除</button>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 2px' }}>出現キャラの属性キー（空欄なら部屋本体のまま）</p>
+                  <TagChips
+                    tags={profile.attribute_tags}
+                    onChange={(tags) => updateProfile(i, { attribute_tags: tags })}
+                    placeholder="+ 属性キーを追加"
+                  />
+                  <label style={{ display: 'block', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888' }}>雰囲気（空欄なら部屋本体のまま）</span>
+                    <textarea
+                      style={{ display: 'block', width: '100%', height: 36 }}
+                      value={profile.atmosphere_text}
+                      onChange={(e) => updateProfile(i, { atmosphere_text: e.target.value })}
+                    />
+                  </label>
+                  <label style={{ display: 'block', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888' }}>場所（空欄なら部屋本体のまま）</span>
+                    <textarea
+                      style={{ display: 'block', width: '100%', height: 36 }}
+                      value={profile.location_text}
+                      onChange={(e) => updateProfile(i, { location_text: e.target.value })}
+                    />
+                  </label>
+                </div>
+              ))}
+              {form.profiles.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだプロファイルがありません</p>}
+            </div>
+            <button style={{ marginTop: 6 }} onClick={addProfile}>
+              + プロファイルを追加
             </button>
           </div>
 

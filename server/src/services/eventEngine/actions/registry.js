@@ -27,6 +27,8 @@ import { executeSetPose } from './setPose.js';
 import { executeEndSession } from './endSession.js';
 import { executeSetAccompanying } from './setAccompanying.js';
 import { executePromoteMobToFavorite } from './promoteMobToFavorite.js';
+import { executeSetRoomProfile } from './setRoomProfile.js';
+import { executeClearRoomProfile } from './clearRoomProfile.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -58,6 +60,8 @@ export const actionRegistry = {
   end_session: executeEndSession,
   set_accompanying: executeSetAccompanying,
   promote_mob_to_favorite: executePromoteMobToFavorite,
+  set_room_profile: executeSetRoomProfile,
+  clear_room_profile: executeClearRoomProfile,
 };
 
 export async function executeAction(action, execCtx) {
