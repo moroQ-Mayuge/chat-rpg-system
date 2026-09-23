@@ -312,7 +312,10 @@ export async function runEventEngine({
   // "condition_matched" in an action is meaningless there and resolves to no
   // one); a one-element array for a per_character_firing entry, naming the
   // one candidate this particular firing is about -- see targetResolution.js.
-  const buildExecCtx = (characterId) => ({
+  // restrictToOwnWorld(0144): このdefが「対象キャラをこのWorldの所属者に
+  // 限定する」を有効にしているかを、実行するアクション全種へ一括で渡す
+  // (targetResolution.jsが character_id を解決する箇所全てで参照する)。
+  const buildExecCtx = (characterId, def) => ({
     sessionId,
     playthroughId,
     roomTemplateId,
@@ -322,6 +325,7 @@ export async function runEventEngine({
     instanceHintByCharacterId,
     departedCharacterIds,
     matchedCharacterIds: characterId != null ? [characterId] : null,
+    restrictToOwnWorld: Boolean(def?.restrict_to_own_world),
   });
 
   for (const { def, characterId } of firing) {
@@ -333,7 +337,7 @@ export async function runEventEngine({
     let outcome = null;
     const actionResults = [];
     departedCharacterIds = [];
-    const boundBuildExecCtx = () => buildExecCtx(characterId);
+    const boundBuildExecCtx = () => buildExecCtx(characterId, def);
     if (def.has_outcome_branch) {
       outcome = await resolveOutcomeLevel(
         def,

@@ -22,6 +22,7 @@ function attachConditionsAndActions(def) {
     enabled: Boolean(def.enabled),
     has_outcome_branch: Boolean(def.has_outcome_branch),
     per_character_firing: Boolean(def.per_character_firing),
+    restrict_to_own_world: Boolean(def.restrict_to_own_world),
     conditions,
     actions,
     outcome_nodes: outcomeNodes,
@@ -135,11 +136,11 @@ export function createEventDefinition(data) {
           (name, scope, room_template_id, enabled, condition_logic, priority, cooldown_turns, max_fires_per_session, exclusive_group,
            has_outcome_branch, outcome_logic, outcome_root_label, outcome_success_hint_text, outcome_failure_hint_text,
            prerequisite_event_definition_id, requires_prerequisite_outcome,
-           reset_scope, prerequisite_reset_scope, per_character_firing)
+           reset_scope, prerequisite_reset_scope, per_character_firing, restrict_to_own_world)
          VALUES (@name, @scope, @room_template_id, @enabled, @condition_logic, @priority, @cooldown_turns, @max_fires_per_session, @exclusive_group,
                  @has_outcome_branch, @outcome_logic, @outcome_root_label, @outcome_success_hint_text, @outcome_failure_hint_text,
                  @prerequisite_event_definition_id, @requires_prerequisite_outcome,
-                 @reset_scope, @prerequisite_reset_scope, @per_character_firing)`,
+                 @reset_scope, @prerequisite_reset_scope, @per_character_firing, @restrict_to_own_world)`,
       )
       .run({
         name: data.name,
@@ -161,6 +162,7 @@ export function createEventDefinition(data) {
         reset_scope: data.reset_scope ?? 'playthrough',
         prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
         per_character_firing: data.per_character_firing ? 1 : 0,
+        restrict_to_own_world: data.restrict_to_own_world ? 1 : 0,
       });
     replaceConditionsAndActions(result.lastInsertRowid, data);
     return result.lastInsertRowid;
@@ -178,7 +180,8 @@ export function updateEventDefinition(id, data) {
          has_outcome_branch = @has_outcome_branch, outcome_logic = @outcome_logic, outcome_root_label = @outcome_root_label,
          outcome_success_hint_text = @outcome_success_hint_text, outcome_failure_hint_text = @outcome_failure_hint_text,
          prerequisite_event_definition_id = @prerequisite_event_definition_id, requires_prerequisite_outcome = @requires_prerequisite_outcome,
-         reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope, per_character_firing = @per_character_firing
+         reset_scope = @reset_scope, prerequisite_reset_scope = @prerequisite_reset_scope, per_character_firing = @per_character_firing,
+         restrict_to_own_world = @restrict_to_own_world
        WHERE id = @id`,
     ).run({
       id,
@@ -201,6 +204,7 @@ export function updateEventDefinition(id, data) {
       reset_scope: data.reset_scope ?? 'playthrough',
       prerequisite_reset_scope: data.prerequisite_reset_scope ?? 'playthrough',
       per_character_firing: data.per_character_firing ? 1 : 0,
+      restrict_to_own_world: data.restrict_to_own_world ? 1 : 0,
     });
     replaceConditionsAndActions(id, data);
   });

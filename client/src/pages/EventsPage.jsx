@@ -228,6 +228,7 @@ const emptyEvent = {
   exclusive_group: null,
   reset_scope: 'playthrough',
   per_character_firing: false,
+  restrict_to_own_world: false,
   has_outcome_branch: false,
   outcome_logic: 'AND',
   outcome_root_label: '',
@@ -2412,6 +2413,19 @@ export default function EventsPage() {
             {draft.per_character_firing && (
               <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
                 「同席者の誰か1人でも」等の条件に複数人が同時に該当しうる場合（例：2人が同時に妊娠中）、従来は最初に該当した1人でクールダウン／最大発火回数を使い切ってしまい、2人目には二度と発火しませんでした。ONにすると、該当したキャラごとに個別にクールダウン／最大発火回数を数え、排他グループもキャラ単位で働きます。アクション側の対象キャラを「条件が一致したキャラ」にすると、その発火の該当キャラだけを処理対象にできます（「同席者全員」のままだと、まだ条件を満たしていない同席者にも処理が及んでしまいます）。条件に「同席者の誰か1人でも」等のキャラ指定が1つも無い場合、この設定は効きません。
+              </p>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={draft.restrict_to_own_world ?? false}
+                onChange={(e) => setDraft({ ...draft, restrict_to_own_world: e.target.checked })}
+              />
+              世界観をまたいで出現させない
+            </label>
+            {draft.restrict_to_own_world && (
+              <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+                スコープが「全世界観共通」のイベントは、キャラ名やIDを直接指定したアクション（固定キャラの入室・特定キャラへのセリフ挿入・状態変更等）があっても、World側でその指定を弾く仕組みがありません。ONにすると、対象キャラが「今プレイ中のWorldに実際に所属しているか」（固定の部屋配置または明示アタッチ）を確認し、所属していなければそのキャラを対象にしたアクションを黙ってスキップします。タグだけで他Worldへ流用しているキャラ（tag_match選択モードの候補等）はこのチェックの対象外です。
               </p>
             )}
           </div>

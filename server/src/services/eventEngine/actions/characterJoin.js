@@ -5,6 +5,7 @@ import { broadcast } from '../../../ws/rooms.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../attributeTagMatching.js';
 import { resolveSingleTargetId } from '../targetResolution.js';
 import { isEligibleInRoute } from '../../routeScopedCharacters.js';
+import { characterBelongsToWorld, resolveWorldIdForPlaythrough } from '../characterWorldMembership.js';
 
 function pickWeighted(candidateIds) {
   const weights = candidateIds.map(
@@ -95,7 +96,13 @@ export async function executeCharacterJoin(params, execCtx) {
     if (pool.length === 0) return { skipped: true, reason: 'no_eligible_candidates' };
     targetId = pickWeighted(pool);
   } else {
-    const pool = candidate_character_ids.filter((id) => !presentIds.has(id));
+    // candidate_character_ids はtargetResolution.jsを経由しないため、
+    // restrict_to_own_world(0144)はここで別途かける必要がある——実際に
+    // World4専用の「放課後のふらっと参加」がこの経路でWorld21へ漏れた。
+    const worldId = execCtx.restrictToOwnWorld ? resolveWorldIdForPlaythrough(execCtx.playthroughId) : null;
+    const pool = candidate_character_ids.filter(
+      (id) => !presentIds.has(id) && (worldId == null || characterBelongsToWorld(id, worldId)),
+    );
     if (pool.length === 0) return { skipped: true, reason: 'no_eligible_candidates' };
     targetId = selection_mode === 'random_weighted' ? pickWeighted(pool) : pool[Math.floor(Math.random() * pool.length)];
   }
