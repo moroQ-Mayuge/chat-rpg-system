@@ -305,6 +305,9 @@ function buildSystemPrompt(session, participants, options = {}) {
       // outcome(例: 同行の誘いを受けるか断るか)を、妊娠/周期ヒントと同じ
       // 「現在の状態：〜」形式でキャラカードに焼き込む——モデルが自分の台詞と
       // 実際の判定結果を矛盾させないようにするための既知の事実として見せる。
+      // デート中(0152): プレイヤーと二人で過ごしている最中であることを、会話の前提として
+      // 常にキャラカードへ載せる(同行中より一段上の関係=「連れ立って出かけている」状態)。
+      if (p.is_dating) memoryLines.push('現在の状態：あなた（プレイヤー）とデート中');
       for (const hint of options.eventOutcomeHintsByCharacterId?.get(character.id) ?? []) {
         memoryLines.push(`現在の状態：${hint}`);
       }

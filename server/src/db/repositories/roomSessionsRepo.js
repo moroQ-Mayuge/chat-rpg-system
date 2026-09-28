@@ -166,7 +166,7 @@ function attachParticipants(session) {
       `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name, c.is_mob,
               rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying,
               rsc.auto_outfit_image_last_turn, rsc.mob_flavor_preset_id, rsc.mob_flavor_name_id, rsc.mob_flavor_surname_id,
-              rsc.sub_room_id,
+              rsc.sub_room_id, rsc.is_dating,
               mnp.name AS mob_flavor_name, msp.surname AS mob_flavor_surname,
               mfp.personality AS mob_flavor_personality, mfp.speech_style AS mob_flavor_speech_style,
               mfp.sentence_ending AS mob_flavor_sentence_ending, mfp.first_person AS mob_flavor_first_person,
@@ -449,7 +449,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     }
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, is_dating, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         sessionId,
@@ -460,6 +460,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         // 意図的に作っていない）——常にこの部屋の初期ポーズから始まる（World側で無効なら常にnull）。
         defaultPoseId,
         carryOver ? 1 : 0,
+        carryOver?.is_dating ? 1 : 0,
         mobFlavorPresetId,
         mobFlavorNameId,
         mobFlavorSurnameId,
@@ -479,7 +480,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     if (alreadyAccompanying.has(carryOver.character_id)) continue;
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, is_dating, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?)',
       )
       .run(
         sessionId,
@@ -487,6 +488,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         carryOver.current_outfit_id ?? null,
         carryOver.current_transformation_id ?? null,
         defaultPoseId,
+        carryOver.is_dating ? 1 : 0,
         carryOver.mob_flavor_preset_id ?? null,
         carryOver.mob_flavor_name_id ?? null,
         carryOver.mob_flavor_surname_id ?? null,
@@ -567,6 +569,7 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
 // 前の場所のものなので外し、背景をサブ部屋/親のものに戻す。
 //
 // 同席キャラの扱い(Stage 2a): 会話対象は「プレイヤーと同じサブ部屋にいるキャラ」だけ。
+//  - デート中(is_dating、0152)のキャラ → 判定も同伴指定も要らず必ず一緒に移る
 //  - 同所にいて companionRowIds(@メンション中)に入っているキャラ → 一緒に移る
 //    (2cで関係値/LLM判定に置き換わるまでは無条件。呼び出し側が渡した分だけ)
 //  - 同行中(is_accompanying)だが同伴指定なし → 元の位置で一時待機(フラグは残す)
@@ -594,11 +597,15 @@ export function switchSubRoom(sessionId, subRoomId, { companionRowIds = [] } = {
   const joinedRowIds = [];
   const leftBehindRowIds = [];
   const activeRows = db
-    .prepare('SELECT id, is_accompanying, sub_room_id FROM room_session_characters WHERE room_session_id = ? AND is_active = 1')
+    .prepare('SELECT id, is_accompanying, is_dating, sub_room_id FROM room_session_characters WHERE room_session_id = ? AND is_active = 1')
     .all(sessionId);
   for (const row of activeRows) {
     const wasWithPlayer = (row.sub_room_id ?? null) === oldPosition;
-    if (wasWithPlayer && companions.has(row.id)) movedRowIds.push(row.id);
+    if (row.is_dating && (row.sub_room_id ?? null) !== newPosition) {
+      // デート中(0152)は判定も同伴指定も要らず、必ずプレイヤーと一緒に移る
+      // (何らかの理由で別所にいた場合も、プレイヤーの移動先へ合流する)。
+      (wasWithPlayer ? movedRowIds : joinedRowIds).push(row.id);
+    } else if (wasWithPlayer && companions.has(row.id)) movedRowIds.push(row.id);
     else if (arrivingHome && row.is_accompanying && (row.sub_room_id ?? null) !== newPosition) {
       // 待機中だった同行者が(メインへ戻った)プレイヤーに合流する。
       (wasWithPlayer ? movedRowIds : joinedRowIds).push(row.id);
@@ -722,17 +729,30 @@ export function repointParticipantCharacter(roomSessionCharacterId, newCharacter
 // roomSessionCharacterId(任意): 同一character_idのモブが同一部屋に複数同時に
 // 居る場合、指定するとその1インスタンスだけを更新する。未指定時は従来どおり
 // character_id一致の全行に効く(後方互換、通常キャラは重複しないので実質同じ)。
-export function setAccompanying(sessionId, characterId, isAccompanying, roomSessionCharacterId = null) {
+//
+// options.dating(デート中、0152): 同行の上位段階。isAccompanying=falseなら常にデートも解除
+// (デート中は同行を含意する)。trueにすると同行も立てた上でデート中に、falseにすると
+// 同行は残したままデートだけ解除(デート→同行への格下げ)。undefinedなら現状維持
+// (既存の「同行して」がデート中のキャラを格下げしないように)。
+export function setAccompanying(sessionId, characterId, isAccompanying, roomSessionCharacterId = null, { dating } = {}) {
+  const sets = ['is_accompanying = ?'];
+  const params = [isAccompanying ? 1 : 0];
+  if (!isAccompanying) {
+    sets.push('is_dating = 0');
+  } else if (dating !== undefined) {
+    sets.push('is_dating = ?');
+    params.push(dating ? 1 : 0);
+  }
   if (roomSessionCharacterId != null) {
-    db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ? AND id = ?').run(
-      isAccompanying ? 1 : 0,
+    db.prepare(`UPDATE room_session_characters SET ${sets.join(', ')} WHERE room_session_id = ? AND character_id = ? AND id = ?`).run(
+      ...params,
       sessionId,
       characterId,
       roomSessionCharacterId,
     );
   } else {
-    db.prepare('UPDATE room_session_characters SET is_accompanying = ? WHERE room_session_id = ? AND character_id = ?').run(
-      isAccompanying ? 1 : 0,
+    db.prepare(`UPDATE room_session_characters SET ${sets.join(', ')} WHERE room_session_id = ? AND character_id = ?`).run(
+      ...params,
       sessionId,
       characterId,
     );

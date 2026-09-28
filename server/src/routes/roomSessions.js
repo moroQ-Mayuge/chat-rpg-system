@@ -642,6 +642,7 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
       .filter((p) => p.is_accompanying)
       .map((p) => ({
         character_id: p.character_id,
+        is_dating: p.is_dating,
         current_outfit_id: p.current_outfit_id,
         current_transformation_id: p.current_transformation_id,
         mob_flavor_preset_id: p.mob_flavor_preset_id,

@@ -1240,7 +1240,7 @@ export default function ChatPage() {
       {(session.sub_rooms?.length ?? 0) > 0 && (
         <div style={{ marginBottom: 6, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: '#888' }}>
-            場所を変える：（@メンション中のキャラは一緒に移動します。同行中でメンションしていないキャラは元の場所で待機し、元の場所に戻ると合流します）
+            場所を変える：（デート中のキャラと@メンション中のキャラは一緒に移動します。同行中でメンションしていないキャラは元の場所で待機し、元の場所に戻ると合流します）
           </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {/* 親部屋本体(メイン)。サブ部屋にいる間だけ戻れる。現在地はボタンを強調して示す。 */}
@@ -1278,6 +1278,10 @@ export default function ChatPage() {
             : session.participants.map((p) => (
                 <span key={p.id} style={{ marginRight: 8 }}>
                   {p.display_name}
+                  {/* 同行の上位段階(0152): デート中はサブ部屋へも必ず一緒に移る。 */}
+                  {Boolean(p.is_dating) && (
+                    <span style={{ marginLeft: 3, fontSize: 10, color: '#be185d' }}>♡デート中</span>
+                  )}
                   <StatusInline status={p.status} visibility={session.status_display_visibility.strip} />
                   {session.room_is_place &&
                     world?.debug_accompany_toggle_enabled &&

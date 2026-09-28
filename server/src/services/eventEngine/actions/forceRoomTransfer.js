@@ -35,6 +35,7 @@ export async function executeForceRoomTransfer(params, execCtx) {
       .filter((p) => carryIds.has(p.character_id))
       .map((p) => ({
         character_id: p.character_id,
+        is_dating: p.is_dating,
         current_outfit_id: p.current_outfit_id,
         current_transformation_id: p.current_transformation_id,
         mob_flavor_preset_id: p.mob_flavor_preset_id,
