@@ -1175,9 +1175,12 @@ export default function ChatPage() {
 
   // サブ部屋(0150)の切替。subRoomId=null は親部屋本体(メイン)へ戻る。同じ部屋の中の
   // 軽い移動なのでnavigateは不要(セッションは同一、invalidateで再取得される)。
+  // @メンション中の同席キャラは一緒に連れて行く(同所にいる者だけがsession.participantsに
+  // 出ているので、そこから引く)。選択はここで消えない——移動後も同席していれば続けて使える。
   async function handleMoveSubRoom(subRoomId) {
+    const companionIds = session.participants.filter((p) => mentionedNames.includes(p.display_name)).map((p) => p.id);
     try {
-      await moveSubRoom.mutateAsync(subRoomId);
+      await moveSubRoom.mutateAsync({ subRoomId, companionIds });
     } catch (err) {
       if (err.message === 'session_already_ended') {
         const active = await playthroughsApi.getActiveSession(session.playthrough_id);
@@ -1236,7 +1239,9 @@ export default function ChatPage() {
 
       {(session.sub_rooms?.length ?? 0) > 0 && (
         <div style={{ marginBottom: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: '#888' }}>場所を変える：</span>
+          <span style={{ fontSize: 11, color: '#888' }}>
+            場所を変える：（@メンション中のキャラは一緒に移動します。同行中でメンションしていないキャラは元の場所で待機し、元の場所に戻ると合流します）
+          </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {/* 親部屋本体(メイン)。サブ部屋にいる間だけ戻れる。現在地はボタンを強調して示す。 */}
             <button
@@ -1299,6 +1304,24 @@ export default function ChatPage() {
               ))}
         </p>
       </details>
+
+      {/* サブ部屋(0150): 同じ部屋の別の場所にいて会話に加われていない在籍キャラ。
+          同行中なら「待機中」(メインへ戻ると合流する)。 */}
+      {(session.elsewhere_participants?.length ?? 0) > 0 && (
+        <details style={{ marginBottom: 6, flexShrink: 0 }}>
+          <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>
+            別の場所にいる在籍キャラ（{session.elsewhere_participants.length}）
+          </summary>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            {session.elsewhere_participants.map((p) => (
+              <span key={p.id} style={{ marginRight: 8 }}>
+                {p.display_name}（{p.sub_room_name ?? '元の場所'}
+                {p.is_accompanying ? '・待機中' : ''}）
+              </span>
+            ))}
+          </p>
+        </details>
+      )}
 
       {Object.values(session.status_display_visibility.panel).some(Boolean) && (
         <details style={{ marginBottom: 6, flexShrink: 0 }}>

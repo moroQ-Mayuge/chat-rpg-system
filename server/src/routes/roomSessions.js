@@ -637,7 +637,8 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
     // 進む。
     freshSession = await promoteAccompanyingFlavoredMobs(freshSession, moveWorld);
 
-    const carryOverParticipants = freshSession.participants
+    // 同行中のキャラは、サブ部屋(0150)で待機中(別所)でも一緒に移る=在籍者全員から選ぶ。
+    const carryOverParticipants = freshSession.active_participants
       .filter((p) => p.is_accompanying)
       .map((p) => ({
         character_id: p.character_id,
@@ -726,11 +727,20 @@ roomSessionsRouter.post('/:id/sub-room', async (req, res) => {
     const cost = target?.enter_movement_cost ?? 0;
     const playthrough = cost > 0 ? applyMovementCost(fresh.playthrough_id, cost) : getPlaythrough(fresh.playthrough_id);
 
-    switchSubRoom(fresh.id, target?.id ?? null);
+    // 同伴指定(@メンション中のキャラ)は、この時点で会話対象(同所)にいる在籍行のidだけ通す。
+    const companionRowIds = (req.body.companion_ids ?? []).filter((rowId) => fresh.participants.some((p) => p.id === rowId));
+    const moved = switchSubRoom(fresh.id, target?.id ?? null, { companionRowIds });
     // 場所が変わったことを履歴にも残す(部屋間移動と同じ理由: 地の文が無いとモデルが移動に気づけない)。
+    // 誰が一緒に移り、誰が残ったかも書く——会話対象から外れたキャラをモデルが「離れた」と読み取れるように。
+    const namesOf = (rowIds) =>
+      rowIds.map((rowId) => fresh.all_participants.find((p) => p.id === rowId)?.display_name).filter(Boolean);
+    const parts = [target ? `${target.name}へ移動した。` : '元の場所へ戻った。'];
+    if (moved.movedRowIds.length > 0) parts.push(`同行: ${namesOf(moved.movedRowIds).join('、')}。`);
+    if (moved.joinedRowIds.length > 0) parts.push(`${namesOf(moved.joinedRowIds).join('、')}が合流した。`);
+    if (moved.leftBehindRowIds.length > 0) parts.push(`${namesOf(moved.leftBehindRowIds).join('、')}は元の場所に残った。`);
     const message = createMessage(fresh.id, {
       sender_type: 'narration',
-      content: target ? `${target.name}へ移動した。` : '元の場所へ戻った。',
+      content: parts.join(''),
     });
     broadcast(fresh.id, { type: 'message_complete', message });
 

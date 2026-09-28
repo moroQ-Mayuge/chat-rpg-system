@@ -10,7 +10,9 @@ export const roomSessionsApi = {
   exit: (id) => api.post(`/room-sessions/${id}/exit`, {}),
   move: (id, connectionId) => api.post(`/room-sessions/${id}/move`, { connection_id: connectionId }),
   // サブ部屋(0150)の切替。subRoomId=null は親部屋本体(メイン)へ戻る。
-  moveSubRoom: (id, subRoomId) => api.post(`/room-sessions/${id}/sub-room`, { sub_room_id: subRoomId }),
+  // companionIds: 一緒に連れて行く同席キャラ(room_session_charactersのid、@メンション中の分)。
+  moveSubRoom: (id, subRoomId, companionIds = []) =>
+    api.post(`/room-sessions/${id}/sub-room`, { sub_room_id: subRoomId, companion_ids: companionIds }),
   setAccompanying: (id, characterId, isAccompanying, roomSessionCharacterId) =>
     api.post(`/room-sessions/${id}/participants/${characterId}/accompanying`, {
       is_accompanying: isAccompanying,

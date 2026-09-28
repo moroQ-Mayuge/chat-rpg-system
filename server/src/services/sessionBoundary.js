@@ -97,7 +97,7 @@ export async function closeAndReopenSession(
 
   const carry =
     carryOverParticipants ??
-    (session.participants ?? [])
+    (session.active_participants ?? session.participants ?? [])
       .filter((p) => p.is_accompanying)
       .map((p) => ({
         character_id: p.character_id,

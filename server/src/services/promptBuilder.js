@@ -523,6 +523,14 @@ function buildSystemPrompt(session, participants, options = {}) {
     departedNames.length > 0
       ? `特に、以下のキャラクターは既にこの場を離れており、絶対に発言・行動を書いてはいけません：${departedNames.join('、')}`
       : null,
+    // サブ部屋(0150): 同じ部屋の別の場所にいて、今はプレイヤーの近くにいないキャラ。
+    // 退室者と違い部屋には居るが、会話には加われない——発言禁止を名指しで伝える
+    // (万一書かれても、返答の解決は同所の参加者だけが対象なので地の文に落ちる)。
+    (session.elsewhere_participants ?? []).length > 0
+      ? `また、以下のキャラクターはこの部屋の別の場所にいて、今はあなた（プレイヤー）の近くにいません。会話に加わらず、発言・行動を書いてはいけません：${session.elsewhere_participants
+          .map((p) => `${p.display_name}（${p.sub_room_name ?? '元の場所'}）`)
+          .join('、')}`
+      : null,
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
     noSelfSpeechRule,
     surroundingsBlock,

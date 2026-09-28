@@ -28,7 +28,8 @@ export async function executeEndSession(params, execCtx) {
     const world = getWorld(getPlaythrough(execCtx.playthroughId).world_id);
     session = await promoteAccompanyingFlavoredMobs(session, world);
     const carryIds = new Set(params.carry_character_ids ?? []);
-    const carryOverParticipants = session.participants
+    // 在籍者全員から選ぶ(サブ部屋で待機中の同行者も連れて行く)。
+    const carryOverParticipants = session.active_participants
       .filter((p) => p.is_accompanying || carryIds.has(p.character_id))
       .map((p) => ({
         character_id: p.character_id,

@@ -158,7 +158,8 @@ export function promoteMobToFavorite(sessionId, roomSessionCharacterId, options 
 // が変わるため)——常にこの関数の戻り値(再取得したsession)を使うこと。
 export async function promoteAccompanyingFlavoredMobs(session, world) {
   if (world.mob_flavor_mode === 'off') return session;
-  const targets = session.participants.filter((p) => p.is_active && p.is_accompanying && p.is_mob);
+  // 待機中(サブ部屋の別所)の同行モブも引き継がれるので、在籍者全員を対象にする。
+  const targets = (session.active_participants ?? session.participants).filter((p) => p.is_active && p.is_accompanying && p.is_mob);
   if (targets.length === 0) return session;
 
   for (const p of targets) {

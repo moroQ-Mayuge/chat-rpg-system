@@ -166,6 +166,7 @@ function attachParticipants(session) {
       `SELECT rsc.id, rsc.character_id, COALESCE(NULLIF(ct.name, ''), c.name) AS name, c.is_mob,
               rsc.current_outfit_id, rsc.current_transformation_id, rsc.current_pose_id, rsc.is_active, rsc.is_accompanying,
               rsc.auto_outfit_image_last_turn, rsc.mob_flavor_preset_id, rsc.mob_flavor_name_id, rsc.mob_flavor_surname_id,
+              rsc.sub_room_id,
               mnp.name AS mob_flavor_name, msp.surname AS mob_flavor_surname,
               mfp.personality AS mob_flavor_personality, mfp.speech_style AS mob_flavor_speech_style,
               mfp.sentence_ending AS mob_flavor_sentence_ending, mfp.first_person AS mob_flavor_first_person,
@@ -198,15 +199,32 @@ function attachParticipants(session) {
     participant.cycle_debug = buildCycleDebug(participant, cyclePlaythrough, cycleWorld);
   }
 
-  const participants = allParticipants.filter((p) => p.is_active);
+  // サブ部屋(0150): 「会話対象=participants」はプレイヤーと同じサブ部屋にいるactiveな
+  // キャラだけ。別のサブ部屋にいるactiveなキャラは部屋の在籍者のまま
+  // elsewhere_participantsへ回り、LLM入力・@メンション・イベントの同席判定・画像・
+  // 自動更新(いずれもsession.participantsを入口にしている)から自然に外れる。
+  // サブ部屋の無い部屋はセッション側もキャラ側も常にNULLなので全員が同所=従来どおり。
+  const subRooms = listSubRoomsForRoom(session.room_template_id);
+  const subRoomNameById = new Map(subRooms.map((s) => [s.id, s.name]));
+  const playerPosition = session.sub_room_id ?? null;
+  for (const participant of allParticipants) {
+    participant.sub_room_name = subRoomNameById.get(participant.sub_room_id) ?? null;
+  }
+  const activeParticipants = allParticipants.filter((p) => p.is_active);
+  const participants = activeParticipants.filter((p) => (p.sub_room_id ?? null) === playerPosition);
+  const elsewhereParticipants = activeParticipants.filter((p) => (p.sub_room_id ?? null) !== playerPosition);
 
   // display_name: 送信文の@メンション照合(resolveMentions())・chat UIの表示に
-  // 常に使う「実際にどう呼ばれているか」の名前。参加中はwithDisambiguatedNames
+  // 常に使う「実際にどう呼ばれているか」の名前。会話対象(同所)はwithDisambiguatedNames
   // でA/B連番・同名(2)まで解決したもの(promptBuilder.jsがLLMに見せる名前と
   // 完全に一致させる必要がある——ずれるとクライアントが送った@メンションが
-  // サーバー側で解決できなくなる、実際に起きた不具合)。退室済み(all_participants
+  // サーバー側で解決できなくなる、実際に起きた不具合)。そのため連番は同所の
+  // 集合の中だけで採番する(別所の同名モブとは表示名が重なりうるが、別所の分は
+  // 表示専用なので許容)。別所は別途その集合の中で採番し、退室済み(all_participants
   // のみに残る行)は連番の対象外なのでベース名のみ。
-  const displayNameByRowId = new Map(withDisambiguatedNames(participants).map((p) => [p.id, p.display_name]));
+  const displayNameByRowId = new Map(
+    [...withDisambiguatedNames(participants), ...withDisambiguatedNames(elsewhereParticipants)].map((p) => [p.id, p.display_name]),
+  );
   for (const participant of allParticipants) {
     participant.display_name = displayNameByRowId.get(participant.id) ?? participantBaseName(participant);
   }
@@ -220,7 +238,6 @@ function attachParticipants(session) {
 
   // サブ部屋(0150): このセッションの部屋が持つ子の一覧と現在位置の名前。子を持たない
   // 部屋は空配列/nullで、クライアントは何も出さない。
-  const subRooms = listSubRoomsForRoom(session.room_template_id);
   const currentSubRoom = subRooms.find((s) => s.id === session.sub_room_id) ?? null;
 
   return {
@@ -228,6 +245,10 @@ function attachParticipants(session) {
     sub_rooms: subRooms,
     sub_room_name: currentSubRoom?.name ?? null,
     participants,
+    elsewhere_participants: elsewhereParticipants,
+    // 部屋の在籍者全員(同所+別所)。「会話対象」ではなく「この部屋にいる人」を
+    // 数える必要がある処理(部屋間移動の同行者持ち越し、解散など)はこちらを使う。
+    active_participants: activeParticipants,
     all_participants: allParticipants,
     status_display_visibility,
     pending_children: buildPendingChildren(cyclePlaythrough, cycleWorld),
@@ -367,6 +388,9 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
 function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId, options = {}) {
   const playthroughId = playthrough.id;
   const world = getWorld(playthrough.world_id);
+  // 入室(部屋の切替)直後の位置=セッションの現在のサブ部屋(既定サブ部屋、無ければNULL)。
+  // 既定キャストも持ち越し同行者も全員ここから始まる(待機中だった同行者もここで合流する)。
+  const startSubRoomId = db.prepare('SELECT sub_room_id FROM room_sessions WHERE id = ?').get(sessionId)?.sub_room_id ?? null;
   const carryOverByCharacterId = new Map(
     (options.carryOverParticipants ?? []).map((p) => [p.character_id, p]),
   );
@@ -425,7 +449,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     }
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)',
       )
       .run(
         sessionId,
@@ -439,6 +463,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         mobFlavorPresetId,
         mobFlavorNameId,
         mobFlavorSurnameId,
+        startSubRoomId,
       );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
@@ -454,7 +479,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
     if (alreadyAccompanying.has(carryOver.character_id)) continue;
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, is_accompanying, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)',
       )
       .run(
         sessionId,
@@ -465,6 +490,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         carryOver.mob_flavor_preset_id ?? null,
         carryOver.mob_flavor_name_id ?? null,
         carryOver.mob_flavor_surname_id ?? null,
+        startSubRoomId,
       );
     ensureRelationshipStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, carryOver.character_id, sessionId, rscResult.lastInsertRowid);
@@ -521,6 +547,12 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
     startSubRoom?.id ?? null,
     sessionId,
   );
+  // 部屋間移動でも残っている(=同行中の)キャラは、待機中だった者も含めて新しい部屋の
+  // 入口位置で合流する(同行フラグ優先。待機はサブ部屋内の一時的な状態にすぎない)。
+  db.prepare('UPDATE room_session_characters SET sub_room_id = ? WHERE room_session_id = ? AND is_active = 1').run(
+    startSubRoom?.id ?? null,
+    sessionId,
+  );
 
   seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId);
   touchPlaythrough(session.playthrough_id);
@@ -528,12 +560,23 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
 }
 
 // 同じ部屋の中でサブ部屋(0150)だけを切り替える軽い遷移。セッション区切り判定・
-// 退室処理・参加者の入れ替えは一切通さない(同席者の扱いはStage 2で追加する)。
-// subRoomId=null は親部屋本体(メイン)へ戻ることを表す。場面状況(current_scene_situation)
-// は場所が変わるのでリセットし、[PLAYER_STATE](current_player_state)は「手をつないだまま
-// 隣の店へ」のように場所をまたいで続くのが自然なので触らない。SCENE_CHANGEで生成された
-// 場面画像(current_scene_image_id)は前の場所のものなので外し、背景をサブ部屋/親のものに戻す。
-export function switchSubRoom(sessionId, subRoomId) {
+// 退室処理は一切通さない。subRoomId=null は親部屋本体(メイン)へ戻ることを表す。
+// 場面状況(current_scene_situation)は場所が変わるのでリセットし、[PLAYER_STATE]
+// (current_player_state)は「手をつないだまま隣の店へ」のように場所をまたいで続くのが
+// 自然なので触らない。SCENE_CHANGEで生成された場面画像(current_scene_image_id)は
+// 前の場所のものなので外し、背景をサブ部屋/親のものに戻す。
+//
+// 同席キャラの扱い(Stage 2a): 会話対象は「プレイヤーと同じサブ部屋にいるキャラ」だけ。
+//  - 同所にいて companionRowIds(@メンション中)に入っているキャラ → 一緒に移る
+//    (2cで関係値/LLM判定に置き換わるまでは無条件。呼び出し側が渡した分だけ)
+//  - 同行中(is_accompanying)だが同伴指定なし → 元の位置で一時待機(フラグは残す)
+//  - 上記以外の同所キャラ → 元の位置に残る
+//  - 移動先が「メイン」(親部屋本体、または既定サブ部屋=入口)なら、同行中のキャラは
+//    どこで待っていても全員そこへ復帰する
+//  - 移動先にもともといた在籍キャラは位置が変わらないまま自動的に同所になる
+// 戻り値: { session, movedRowIds, joinedRowIds, leftBehindRowIds }(room_session_charactersのid。
+// 移動narrationの組み立て用: moved=一緒に移った, joined=合流(復帰), leftBehind=元の場所に残った)。
+export function switchSubRoom(sessionId, subRoomId, { companionRowIds = [] } = {}) {
   const session = db.prepare('SELECT * FROM room_sessions WHERE id = ?').get(sessionId);
   const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(session.room_template_id);
   const subRoom = subRoomId == null ? null : getSubRoom(subRoomId);
@@ -541,6 +584,29 @@ export function switchSubRoom(sessionId, subRoomId) {
     throw new Error('sub_room_not_in_room');
   }
   const snapshot = resolveRoomSnapshot(session.playthrough_id, session.room_template_id, template, subRoom);
+
+  const oldPosition = session.sub_room_id ?? null;
+  const newPosition = subRoom?.id ?? null;
+  const homePosition = getDefaultSubRoom(session.room_template_id)?.id ?? null;
+  const arrivingHome = newPosition === null || newPosition === homePosition;
+  const companions = new Set(companionRowIds);
+  const movedRowIds = [];
+  const joinedRowIds = [];
+  const leftBehindRowIds = [];
+  const activeRows = db
+    .prepare('SELECT id, is_accompanying, sub_room_id FROM room_session_characters WHERE room_session_id = ? AND is_active = 1')
+    .all(sessionId);
+  for (const row of activeRows) {
+    const wasWithPlayer = (row.sub_room_id ?? null) === oldPosition;
+    if (wasWithPlayer && companions.has(row.id)) movedRowIds.push(row.id);
+    else if (arrivingHome && row.is_accompanying && (row.sub_room_id ?? null) !== newPosition) {
+      // 待機中だった同行者が(メインへ戻った)プレイヤーに合流する。
+      (wasWithPlayer ? movedRowIds : joinedRowIds).push(row.id);
+    } else if (wasWithPlayer && (row.sub_room_id ?? null) !== newPosition) leftBehindRowIds.push(row.id);
+  }
+  for (const rowId of [...movedRowIds, ...joinedRowIds]) {
+    db.prepare('UPDATE room_session_characters SET sub_room_id = ? WHERE id = ?').run(newPosition, rowId);
+  }
   db.prepare(
     `UPDATE room_sessions
      SET current_location_text = ?, current_location_tags = ?, current_atmosphere_text = ?, current_atmosphere_tags = ?,
@@ -554,7 +620,7 @@ export function switchSubRoom(sessionId, subRoomId) {
     subRoom?.id ?? null,
     sessionId,
   );
-  return getRoomSession(sessionId);
+  return { session: getRoomSession(sessionId), movedRowIds, joinedRowIds, leftBehindRowIds };
 }
 
 export function exitRoomSession(id) {
@@ -696,7 +762,22 @@ export function setCurrentSceneImage(id, generatedImageId) {
 // reactivates one who previously left. Also seeds relationship_states for the
 // playthrough if this is the character's first appearance in this route.
 export function addParticipant(sessionId, characterId, outfitId = null) {
-  const session = db.prepare('SELECT playthrough_id, room_template_id FROM room_sessions WHERE id = ?').get(sessionId);
+  const session = db.prepare('SELECT playthrough_id, room_template_id, sub_room_id FROM room_sessions WHERE id = ?').get(sessionId);
+
+  // サブ部屋(0150): すでにこの部屋に在籍している(is_active=1)のに会話対象に
+  // いない=別のサブ部屋にいるキャラは、新規参加ではなくプレイヤーの居る位置へ
+  // 「こちらに来る」だけ。衣装・ポーズ・関係値などは触らない(明示のoutfitIdがある時だけ反映)。
+  const alreadyInRoom = db
+    .prepare('SELECT id FROM room_session_characters WHERE room_session_id = ? AND character_id = ? AND is_active = 1 LIMIT 1')
+    .get(sessionId, characterId);
+  if (alreadyInRoom) {
+    db.prepare('UPDATE room_session_characters SET sub_room_id = ? WHERE id = ?').run(session.sub_room_id ?? null, alreadyInRoom.id);
+    if (outfitId != null) {
+      db.prepare('UPDATE room_session_characters SET current_outfit_id = ? WHERE id = ?').run(outfitId, alreadyInRoom.id);
+    }
+    return getRoomSession(sessionId);
+  }
+
   const world = getWorld(getPlaythrough(session.playthrough_id).world_id);
   const persisted = isMobCharacter(characterId) ? null : getPersistedOutfit(session.playthrough_id, characterId);
   const resolvedOutfitId = outfitId ?? persisted?.outfit_id ?? db.prepare('SELECT id FROM outfits WHERE character_id = ? AND is_default = 1').get(characterId)?.id ?? null;
@@ -724,15 +805,15 @@ export function addParticipant(sessionId, characterId, outfitId = null) {
   let roomSessionCharacterId = existing?.id;
   if (existing) {
     db.prepare(
-      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, current_pose_id = ?, joined_at = datetime('now'), left_at = NULL, mob_flavor_preset_id = ?, mob_flavor_name_id = ?, mob_flavor_surname_id = ?
+      `UPDATE room_session_characters SET is_active = 1, current_outfit_id = ?, current_transformation_id = ?, current_pose_id = ?, joined_at = datetime('now'), left_at = NULL, mob_flavor_preset_id = ?, mob_flavor_name_id = ?, mob_flavor_surname_id = ?, sub_room_id = ?
        WHERE id = ?`,
-    ).run(resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId, mobFlavorNameId, mobFlavorSurnameId, existing.id);
+    ).run(resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId, mobFlavorNameId, mobFlavorSurnameId, session.sub_room_id ?? null, existing.id);
   } else {
     const rscResult = db
       .prepare(
-        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)',
+        'INSERT INTO room_session_characters (room_session_id, character_id, current_outfit_id, current_transformation_id, current_pose_id, is_active, mob_flavor_preset_id, mob_flavor_name_id, mob_flavor_surname_id, sub_room_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)',
       )
-      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId, mobFlavorNameId, mobFlavorSurnameId);
+      .run(sessionId, characterId, resolvedOutfitId, resolvedTransformationId, resolvedPoseId, mobFlavorPresetId, mobFlavorNameId, mobFlavorSurnameId, session.sub_room_id ?? null);
     roomSessionCharacterId = rscResult.lastInsertRowid;
   }
   ensureRelationshipStatesSeeded(session.playthrough_id, characterId, sessionId, roomSessionCharacterId);

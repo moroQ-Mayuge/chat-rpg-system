@@ -31,7 +31,7 @@ export async function executeForceRoomTransfer(params, execCtx) {
     const world = getWorld(getPlaythrough(execCtx.playthroughId).world_id);
     session = await promoteAccompanyingFlavoredMobs(session, world);
     const carryIds = new Set(carry_character_ids ?? []);
-    const carryOverParticipants = session.participants
+    const carryOverParticipants = session.active_participants
       .filter((p) => carryIds.has(p.character_id))
       .map((p) => ({
         character_id: p.character_id,

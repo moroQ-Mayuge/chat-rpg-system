@@ -12,7 +12,8 @@ export async function executeSetAccompanying(params, execCtx) {
   // このセッションの現在状態そのものなので、resolveSingleTargetIdの
   // 単一ターゲット解決とは性質が異なる。
   if (character_id === 'all_accompanying') {
-    const targets = execCtx.session.participants.filter((p) => p.is_accompanying);
+    // 解散は、サブ部屋で待機中(別所)の同行者も含めて全員(0150)。
+    const targets = (execCtx.session.active_participants ?? execCtx.session.participants).filter((p) => p.is_accompanying);
     if (targets.length === 0) return { skipped: true, reason: 'no_accompanying' };
     for (const p of targets) {
       setAccompanying(execCtx.sessionId, p.character_id, Boolean(is_accompanying), p.id);
