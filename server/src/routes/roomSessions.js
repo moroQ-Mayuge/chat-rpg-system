@@ -70,6 +70,12 @@ import { maybeRunMemoryAutoExtract } from '../services/memoryAutoExtract.js';
 import { maybeRunAddressAutoUpdate } from '../services/addressAutoUpdate.js';
 import { triggerPendingMobFlavorGeneration } from '../services/mobPersonaGeneration.js';
 import { promoteAccompanyingFlavoredMobs } from '../services/mobPromotion.js';
+import {
+  withCompanionCandidates,
+  prepareCompanionMove,
+  finalizeCompanionMove,
+  composeSubRoomNarration,
+} from '../services/subRoomCompanions.js';
 
 export const roomSessionsRouter = Router();
 
@@ -729,32 +735,97 @@ roomSessionsRouter.post('/:id/sub-room', async (req, res) => {
     const playthrough = cost > 0 ? applyMovementCost(fresh.playthrough_id, cost) : getPlaythrough(fresh.playthrough_id);
 
     // 同伴指定(@メンション中のキャラ)は、この時点で会話対象(同所)にいる在籍行のidだけ通す。
-    const companionRowIds = (req.body.companion_ids ?? []).filter((rowId) => fresh.participants.some((p) => p.id === rowId));
-    const moved = switchSubRoom(fresh.id, target?.id ?? null, { companionRowIds });
-    // 場所が変わったことを履歴にも残す(部屋間移動と同じ理由: 地の文が無いとモデルが移動に気づけない)。
-    // 誰が一緒に移り、誰が残ったかも書く——会話対象から外れたキャラをモデルが「離れた」と読み取れるように。
-    const namesOf = (rowIds) =>
-      rowIds.map((rowId) => fresh.all_participants.find((p) => p.id === rowId)?.display_name).filter(Boolean);
-    const parts = [target ? `${target.name}へ移動した。` : '元の場所へ戻った。'];
-    if (moved.movedRowIds.length > 0) parts.push(`同行: ${namesOf(moved.movedRowIds).join('、')}。`);
-    if (moved.joinedRowIds.length > 0) parts.push(`${namesOf(moved.joinedRowIds).join('、')}が合流した。`);
-    if (moved.leftBehindRowIds.length > 0) parts.push(`${namesOf(moved.leftBehindRowIds).join('、')}は元の場所に残った。`);
-    const message = createMessage(fresh.id, {
-      sender_type: 'narration',
-      content: parts.join(''),
-    });
-    broadcast(fresh.id, { type: 'message_complete', message });
+    // デート中(0152)は判定も指定も要らず必ず移るので、判定にかける「同伴候補」は
+    // デート中でないキャラだけ(同行中でメンションされた者も含む)。
+    const requestedRowIds = (req.body.companion_ids ?? []).filter((rowId) =>
+      fresh.participants.some((p) => p.id === rowId && !p.is_dating),
+    );
+    // 候補はここでは動かさない(元の位置に残す)。生成中はプロンプト上だけ同席扱いにし
+    // (withCompanionCandidates)、同伴すると確定した候補の位置更新は生成後の
+    // finalizeCompanionMove(subRoomCompanions.js)で行う。
+    const moved = switchSubRoom(fresh.id, target?.id ?? null, { companionRowIds: [] });
+    // 行き先が「メイン」で同行中のキャラが自動で合流した場合などは、判定にかけない。
+    const candidateRowIds = requestedRowIds.filter(
+      (rowId) => !moved.movedRowIds.includes(rowId) && !moved.joinedRowIds.includes(rowId),
+    );
+    const names = Object.fromEntries(fresh.all_participants.map((p) => [p.id, p.display_name]));
+    const namesOf = (rowIds) => rowIds.map((rowId) => names[rowId]).filter(Boolean);
+
+    let companionTurn = null;
+    if (candidateRowIds.length === 0) {
+      // 場所が変わったことを履歴にも残す(部屋間移動と同じ理由: 地の文が無いとモデルが移動に気づけない)。
+      // 誰が一緒に移り、誰が残ったかも書く——会話対象から外れたキャラをモデルが「離れた」と読み取れるように。
+      const message = createMessage(fresh.id, {
+        sender_type: 'narration',
+        content: composeSubRoomNarration({
+          targetName: target?.name ?? null,
+          movedNames: namesOf(moved.movedRowIds),
+          joinedNames: namesOf(moved.joinedRowIds),
+          leftBehindNames: namesOf(moved.leftBehindRowIds),
+        }),
+      });
+      broadcast(fresh.id, { type: 'message_complete', message });
+    } else {
+      // @メンション付きの移動は1回のチャットターンとして扱う(移動宣言をユーザー発言として
+      // 保存し、候補に断る/ついて行く台詞を書かせる)。地の文の結果報告は生成後に確定した
+      // 同伴者に基づいて入る(finalizeCompanionMove)。
+      const candidates = candidateRowIds.map((rowId) => fresh.participants.find((p) => p.id === rowId));
+      const content = `（${candidates.map((p) => `@${p.display_name}`).join(' ')}と一緒に${target?.name ?? '元の場所'}へ移動する）`;
+      const characterIds = candidates.map((p) => p.character_id);
+      const userMessage = createMessage(fresh.id, { sender_type: 'user', content, mentioned_character_ids: characterIds });
+      broadcast(fresh.id, { type: 'message_complete', message: userMessage });
+      companionTurn = {
+        content,
+        characterIds,
+        instanceByCharacterId: new Map(candidates.map((p) => [p.character_id, p.id])),
+        companionMove: {
+          candidateRowIds,
+          targetPosition: target?.id ?? null,
+          targetName: target?.name ?? null,
+          movedRowIds: moved.movedRowIds,
+          joinedRowIds: moved.joinedRowIds,
+          leftBehindRowIds: moved.leftBehindRowIds,
+          names,
+          preSuccessRowIds: new Set(),
+          taggedRowIds: new Set(),
+          finalized: false,
+        },
+      };
+    }
 
     // 移動コストで日が変わった場合の日替わり処理(部屋間移動と同じ)。
     const after = getRoomSession(fresh.id);
     if (playthrough.current_day !== after.log_day) {
       await handleDayRollover(after, world, playthrough, { broadcast });
     }
-    return { session: getRoomSession(fresh.id), playthrough };
+    return { session: getRoomSession(fresh.id), playthrough, companionTurn };
   });
 
   if (result.error) return res.status(409).json(result);
-  res.json(result);
+  const { companionTurn, ...response } = result;
+  res.json({ ...response, companion_pending: Boolean(companionTurn) });
+
+  if (companionTurn) {
+    generateReply(
+      req.params.id,
+      companionTurn.content,
+      companionTurn.characterIds,
+      false,
+      companionTurn.instanceByCharacterId,
+      null,
+      companionTurn.companionMove,
+    ).catch((err) => {
+      console.error('generateReply (sub-room companion move) failed:', err);
+      // 生成が失敗しても移動の結果報告が欠けないよう確定させる(事前判定が済んでいた
+      // 候補だけが同伴し、判定前に落ちていたら全員が元の位置に残る)。
+      try {
+        finalizeCompanionMove(req.params.id, companionTurn.companionMove);
+      } catch (finalizeErr) {
+        console.error('Companion move finalize after failure failed:', finalizeErr);
+      }
+      broadcast(req.params.id, { type: 'error', message: err.message });
+    });
+  }
 });
 
 roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {
@@ -810,9 +881,13 @@ async function generateReply(
   isContinuation = false,
   mentionedInstanceByCharacterId = new Map(),
   craft = null,
+  // サブ部屋(0150)への@メンション付き移動のターンだけ渡される(/:id/sub-room、subRoomCompanions.js)。
+  companionMove = null,
 ) {
   const isCraftAttempt = Boolean(craft);
-  const session = getRoomSession(sessionId);
+  // 同伴判定ターン(companionMove)では、元の位置に残っている候補をこの生成の間だけ
+  // 会話対象として見せる(DBの位置は動かさない。subRoomCompanions.js冒頭参照)。
+  const session = companionMove ? withCompanionCandidates(getRoomSession(sessionId), companionMove) : getRoomSession(sessionId);
   // A messages array ending on role 'assistant' (i.e. no new user turn at
   // all) reliably returns an EMPTY completion, so a continuation turn has to
   // append SOMETHING. This used to be a lone space, which the project's
@@ -863,6 +938,18 @@ async function generateReply(
     console.error('Event pre-resolution failed:', err);
   }
 
+  // 同伴候補の関係値による成否を生成前に確定し、ヒントとして各キャラカードへ注入する
+  // (@メンション付きサブ部屋移動のターンのみ)。失敗しても生成は止めず、候補は全員
+  // 「ついて行かない」扱いのまま(=元の位置へ戻る)にフォールバックする。
+  let companionMoveHintLines = [];
+  if (companionMove) {
+    try {
+      companionMoveHintLines = prepareCompanionMove(companionMove, session, eventOutcomeHintsByCharacterId);
+    } catch (err) {
+      console.error('Companion move preparation failed:', err);
+    }
+  }
+
   // 「呼び出す」のようなイベントで今ターン中に成功確定したcharacter_joinは、
   // 実際のaddParticipantがこの生成の後(runEventEngine)まで起きない——対象
   // キャラはまだ参加者ではなくキャラカードも渡していない。以前は完全に抑制
@@ -890,8 +977,12 @@ async function generateReply(
     responseTokenReserve: maxTokens ?? undefined,
     eventOutcomeHintsByCharacterId,
     pendingJoinHintLines,
+    companionMoveHintLines,
   });
-  if (!built) return;
+  if (!built) {
+    if (companionMove) finalizeCompanionMove(sessionId, companionMove);
+    return;
+  }
 
   broadcast(sessionId, { type: 'generation_start' });
 
@@ -970,6 +1061,21 @@ async function generateReply(
       // model could emit this unprompted even when the World has it off.
       if (!world.player_state_tracking_enabled) return;
       db.prepare('UPDATE room_sessions SET current_player_state = ? WHERE id = ?').run(parsed.text, sessionId);
+      return;
+    }
+
+    if (parsed.type === 'follow') {
+      // 同伴候補のうち、LLMが「強引に連れて行った」と判断した者を記録する(事前判定の
+      // 結果への上書き)。候補以外の名前・移動ターンでないターンのタグは無視する
+      // (defense in depth: モデルが指示なしに出力し得る)。実際の位置更新は生成後の
+      // finalizeCompanionMoveで一括して行う。
+      if (!companionMove) return;
+      for (const name of parsed.characterNames ?? []) {
+        const participant = resolveParticipantFuzzy(name);
+        if (participant && companionMove.candidateRowIds.includes(participant.id)) {
+          companionMove.taggedRowIds.add(participant.id);
+        }
+      }
       return;
     }
 
@@ -1226,9 +1332,14 @@ async function generateReply(
   }
 
   if (refused) {
+    if (companionMove) finalizeCompanionMove(sessionId, companionMove);
     broadcast(sessionId, { type: 'generation_done' });
     return;
   }
+
+  // 同伴しなかった候補を元の位置へ戻す(同伴者=事前判定の成功者 ∪ [FOLLOW]指名)。
+  // イベントエンジン(下)が最終的な位置で同席判定できるよう、その前に確定させる。
+  if (companionMove) finalizeCompanionMove(sessionId, companionMove);
 
   // 材料は送信時点で既に消費済み(POST /:id/messagesのcraft分岐)なので、LLMが
   // CRAFT_RESULTを一切認識できないまま終わると材料だけ失われる。全角記号崩れ

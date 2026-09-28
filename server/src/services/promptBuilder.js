@@ -432,6 +432,9 @@ function buildSystemPrompt(session, participants, options = {}) {
   // 許可する——外見等のフルのキャラ情報は渡さない。
   const pendingJoinHintBlock =
     (options.pendingJoinHintLines?.length ?? 0) > 0 ? options.pendingJoinHintLines.join('\n') : null;
+  // サブ部屋(0150)への@メンション付き移動のターンだけ: 同伴候補の扱いと[FOLLOW]タグの案内。
+  const companionMoveBlock =
+    (options.companionMoveHintLines?.length ?? 0) > 0 ? options.companionMoveHintLines.join('\n') : null;
 
   // Explicit, instruction-toned line (not just raw data) so the model
   // actually treats it as a constraint on greetings/behavior rather than
@@ -535,6 +538,8 @@ function buildSystemPrompt(session, participants, options = {}) {
           .join('、')}`
       : null,
     'ユーザーの発言や、次のユーザーターンを先取りして書かないでください。',
+    // 同伴判定ターンの結果(候補ごとの了承/断り)は、直近の指示として効くよう出力形式の後ろ寄りに置く。
+    companionMoveBlock,
     noSelfSpeechRule,
     surroundingsBlock,
     shopBlock,
@@ -752,6 +757,7 @@ export async function buildMultiCharacterMessages(session, options = {}) {
     isInventoryCheck: options.isInventoryCheck,
     eventOutcomeHintsByCharacterId: options.eventOutcomeHintsByCharacterId,
     pendingJoinHintLines: options.pendingJoinHintLines,
+    companionMoveHintLines: options.companionMoveHintLines,
   });
   const history = buildHistoryMessages(session, tokenBudget * CHARS_PER_TOKEN * PREFILTER_SLACK);
   const messages = [{ role: 'system', content: systemPrompt }, ...history];

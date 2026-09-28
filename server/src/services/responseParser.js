@@ -50,6 +50,15 @@ const OUTFIT_GRANT_PATTERN = /^OUTFIT_GRANT:\s*(.+)$/;
 const STAT_CHANGE_PATTERN = /^STAT_CHANGE:\s*(.+)$/;
 const CRAFT_RESULT_PATTERN = /^CRAFT_RESULT:\s*(.+)$/;
 const PLAYER_STATE_PATTERN = /^PLAYER_STATE:\s*(.+)$/;
+// サブ部屋への同伴(0150、Stage 2c): プレイヤーの移動に@メンションされたキャラが
+// 実際について行った場合にLLMが出す。複数人は読点/カンマ区切りで1行に書ける。
+const FOLLOW_PATTERN = /^FOLLOW:\s*(.+)$/;
+function parseFollowNames(payload) {
+  return payload
+    .split(/[,、，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 // 「解消された」旨の言い回しは空文字として保存する(promptBuilder.jsが空文字
 // なら行ごと非表示にできる)。impressionAutoUpdate.jsのNO_CHANGE_PATTERNと
 // 同じ発想——「特になし」をそのまま値として持たせ続けると、通常状態に戻った
@@ -98,7 +107,7 @@ export function lineContainsKeywordTrace(line, keyword) {
   return normalizeTagWord(line).includes(normalizeTagWord(keyword));
 }
 
-const KNOWN_TAG_KEYWORDS = ['ITEM_GRANT', 'OUTFIT_GRANT', 'CRAFT_RESULT', 'STAT_CHANGE', 'SCENE_CHANGE', 'PLAYER_STATE'];
+const KNOWN_TAG_KEYWORDS = ['ITEM_GRANT', 'OUTFIT_GRANT', 'CRAFT_RESULT', 'STAT_CHANGE', 'SCENE_CHANGE', 'PLAYER_STATE', 'FOLLOW'];
 
 // CRAFT_RESULTの3項目目(消費型/永続型)。省略・未知語は null = 「判定なし」で、
 // アイテムのカテゴリ設定にそのまま従わせる(itemsRepo.jsのis_consumable上書きが
@@ -185,6 +194,7 @@ function matchPayloadTag(tag, keyword) {
 //   { type: 'outfit_grant', outfitMasterName, description }
 //   { type: 'craft_result', itemName, categoryName, isConsumable, quantity, description }
 //   { type: 'stat_change', characterName, axisName, delta }
+//   { type: 'follow', characterNames }
 //   { type: 'character', characterName, text, emotionKey }
 // A line with no recognizable [Tag]: prefix is treated as its own narration
 // turn (rather than merged into a previous turn) — necessary for incremental
@@ -226,6 +236,10 @@ export function parseScriptLine(rawLine) {
       const playerStatePayload = bare[1].match(PLAYER_STATE_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'PLAYER_STATE');
       if (playerStatePayload) {
         return { type: 'player_state', text: normalizePlayerStateText(playerStatePayload) };
+      }
+      const followPayload = bare[1].match(FOLLOW_PATTERN)?.[1] ?? matchPayloadTag(bare[1], 'FOLLOW');
+      if (followPayload) {
+        return { type: 'follow', characterNames: parseFollowNames(followPayload) };
       }
     }
     const alt = line.match(NAME_THEN_BRACKET_PATTERN);
@@ -287,6 +301,13 @@ export function parseScriptLine(rawLine) {
   const playerStatePayload = tag.match(PLAYER_STATE_PATTERN)?.[1] ?? matchPayloadTag(tag, 'PLAYER_STATE');
   if (playerStatePayload) {
     return { type: 'player_state', text: normalizePlayerStateText(playerStatePayload) };
+  }
+
+  // "[FOLLOW: 名前]"のほか、他の行と同じ"[FOLLOW]: 名前"の形で書かれる場合も拾う。
+  const followPayload =
+    tag.match(FOLLOW_PATTERN)?.[1] ?? matchPayloadTag(tag, 'FOLLOW') ?? (isTagLike(tag, 'FOLLOW') ? rest.trim() : null);
+  if (followPayload) {
+    return { type: 'follow', characterNames: parseFollowNames(followPayload) };
   }
 
   if (isTagLike(tag, 'SCENE_CHANGE')) {
