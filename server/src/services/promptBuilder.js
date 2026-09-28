@@ -462,6 +462,10 @@ function buildSystemPrompt(session, participants, options = {}) {
 
   return [
     `場所：${session.current_location_text}`,
+    // サブ部屋(0150)にいる間だけ、その名前を1行足す(場所文が親から継承されている
+    // 場合でも、部屋の中のどこにいるかがモデルに伝わる)。サブ部屋の無い部屋・親部屋
+    // 本体にいる間はnullで、この行は出ない(従来どおり)。
+    session.sub_room_name ? `部屋の中の位置：${session.sub_room_name}` : null,
     `雰囲気：${session.current_atmosphere_text}`,
     timeWeatherLine,
     matureContentBlock,

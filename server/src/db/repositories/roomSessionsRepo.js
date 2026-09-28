@@ -4,7 +4,7 @@ import { carryOverAccompanyingStatuses } from './characterStatusStatesRepo.js';
 import { buildStatusSnapshot } from './statusSnapshotRepo.js';
 import { getStatusDisplayPreferences } from './statusDisplayPreferencesRepo.js';
 import { listDefaultParticipantCharacterIdsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
-import { resolveRoomTextOverrides } from './roomProfilesRepo.js';
+import { resolveRoomSnapshot, getDefaultSubRoom, getSubRoom, listSubRoomsForRoom } from './roomSubRoomsRepo.js';
 import { isMobCharacter } from './charactersRepo.js';
 import { getPersistedOutfit, setPersistedOutfit } from './playthroughCharacterOutfitRepo.js';
 import { getPersistedTransformation, setPersistedTransformation } from './playthroughCharacterTransformationRepo.js';
@@ -218,8 +218,15 @@ function attachParticipants(session) {
   const playerPrefs = getStatusDisplayPreferences();
   const status_display_visibility = computeStatusDisplayVisibility(worldSettings, playerPrefs);
 
+  // サブ部屋(0150): このセッションの部屋が持つ子の一覧と現在位置の名前。子を持たない
+  // 部屋は空配列/nullで、クライアントは何も出さない。
+  const subRooms = listSubRoomsForRoom(session.room_template_id);
+  const currentSubRoom = subRooms.find((s) => s.id === session.sub_room_id) ?? null;
+
   return {
     ...session,
+    sub_rooms: subRooms,
+    sub_room_name: currentSubRoom?.name ?? null,
     participants,
     all_participants: allParticipants,
     status_display_visibility,
@@ -290,9 +297,10 @@ export function getActiveSessionForPlaythrough(playthroughId) {
 export function getRoomSession(id) {
   const row = db
     .prepare(
-      `SELECT rs.*, rt.background_image_path AS room_background_image_path, rt.is_place AS room_is_place, rt.is_shop AS room_is_shop, rt.outfit_acquisition_mode AS room_outfit_acquisition_mode, gi.file_path AS current_scene_image_path
+      `SELECT rs.*, COALESCE(NULLIF(sr.background_image_path, ''), rt.background_image_path) AS room_background_image_path, rt.is_place AS room_is_place, rt.is_shop AS room_is_shop, rt.outfit_acquisition_mode AS room_outfit_acquisition_mode, gi.file_path AS current_scene_image_path
        FROM room_sessions rs
        JOIN room_templates rt ON rt.id = rs.room_template_id
+       LEFT JOIN room_sub_rooms sr ON sr.id = rs.sub_room_id
        LEFT JOIN generated_images gi ON gi.id = rs.current_scene_image_id
        WHERE rs.id = ?`,
     )
@@ -321,14 +329,17 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
   // 部屋プロファイル(0147)が立っていれば、その雰囲気/場所テキストを部屋本体の
   // 値より優先してスナップショットする——promptBuilder.jsはこのスナップショット
   // しか見ないため(ターン毎に部屋マスタを読み直さない)、ここで解決しておく必要がある。
-  const textOverrides = resolveRoomTextOverrides(playthroughId, roomTemplateId, template);
+  // サブ部屋(0150)が定義されていて既定(入口)が指定されていれば、そこから始まる。
+  // 無ければsub_room_id=NULL(親部屋本体)で、従来どおりの結果になる。
+  const startSubRoom = getDefaultSubRoom(roomTemplateId);
+  const snapshot = resolveRoomSnapshot(playthroughId, roomTemplateId, template, startSubRoom);
 
   const result = db
     .prepare(
       `INSERT INTO room_sessions
         (room_template_id, playthrough_id, entered_day, entered_time_slot_index, log_day,
-         current_location_text, current_location_tags, current_atmosphere_text, current_atmosphere_tags, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+         current_location_text, current_location_tags, current_atmosphere_text, current_atmosphere_tags, sub_room_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
     )
     .run(
       roomTemplateId,
@@ -336,10 +347,11 @@ export function createRoomSession(playthroughId, roomTemplateId, options = {}) {
       playthrough.current_day,
       playthrough.current_time_slot_index,
       playthrough.current_day,
-      textOverrides.location_text,
-      template.location_tags,
-      textOverrides.atmosphere_text,
-      template.atmosphere_tags,
+      snapshot.location_text,
+      snapshot.location_tags,
+      snapshot.atmosphere_text,
+      snapshot.atmosphere_tags,
+      startSubRoom?.id ?? null,
     );
   const sessionId = result.lastInsertRowid;
 
@@ -486,7 +498,8 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
   const defaultPoseId = poseEnabled ? (template.default_pose_id ?? null) : null;
 
   // 部屋プロファイル(0147)、createRoomSessionと同じ理由でここでも解決する。
-  const textOverrides = resolveRoomTextOverrides(session.playthrough_id, toRoomTemplateId, template);
+  const startSubRoom = getDefaultSubRoom(toRoomTemplateId);
+  const snapshot = resolveRoomSnapshot(session.playthrough_id, toRoomTemplateId, template, startSubRoom);
 
   // entered_day/entered_time_slot_index は「このセッションが始まった時点」を指す
   // ため触らない——継続モードのセッション境界判定(時間帯が変わったか)がこの値を
@@ -497,19 +510,50 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
     `UPDATE room_sessions
      SET room_template_id = ?, current_location_text = ?, current_location_tags = ?,
          current_atmosphere_text = ?, current_atmosphere_tags = ?, current_scene_situation = '',
-         updated_at = datetime('now')
+         sub_room_id = ?, updated_at = datetime('now')
      WHERE id = ?`,
   ).run(
     toRoomTemplateId,
-    textOverrides.location_text,
-    template.location_tags,
-    textOverrides.atmosphere_text,
-    template.atmosphere_tags,
+    snapshot.location_text,
+    snapshot.location_tags,
+    snapshot.atmosphere_text,
+    snapshot.atmosphere_tags,
+    startSubRoom?.id ?? null,
     sessionId,
   );
 
   seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId);
   touchPlaythrough(session.playthrough_id);
+  return getRoomSession(sessionId);
+}
+
+// 同じ部屋の中でサブ部屋(0150)だけを切り替える軽い遷移。セッション区切り判定・
+// 退室処理・参加者の入れ替えは一切通さない(同席者の扱いはStage 2で追加する)。
+// subRoomId=null は親部屋本体(メイン)へ戻ることを表す。場面状況(current_scene_situation)
+// は場所が変わるのでリセットし、[PLAYER_STATE](current_player_state)は「手をつないだまま
+// 隣の店へ」のように場所をまたいで続くのが自然なので触らない。SCENE_CHANGEで生成された
+// 場面画像(current_scene_image_id)は前の場所のものなので外し、背景をサブ部屋/親のものに戻す。
+export function switchSubRoom(sessionId, subRoomId) {
+  const session = db.prepare('SELECT * FROM room_sessions WHERE id = ?').get(sessionId);
+  const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(session.room_template_id);
+  const subRoom = subRoomId == null ? null : getSubRoom(subRoomId);
+  if (subRoomId != null && subRoom?.room_template_id !== session.room_template_id) {
+    throw new Error('sub_room_not_in_room');
+  }
+  const snapshot = resolveRoomSnapshot(session.playthrough_id, session.room_template_id, template, subRoom);
+  db.prepare(
+    `UPDATE room_sessions
+     SET current_location_text = ?, current_location_tags = ?, current_atmosphere_text = ?, current_atmosphere_tags = ?,
+         current_scene_situation = '', current_scene_image_id = NULL, sub_room_id = ?, updated_at = datetime('now')
+     WHERE id = ?`,
+  ).run(
+    snapshot.location_text,
+    snapshot.location_tags,
+    snapshot.atmosphere_text,
+    snapshot.atmosphere_tags,
+    subRoom?.id ?? null,
+    sessionId,
+  );
   return getRoomSession(sessionId);
 }
 

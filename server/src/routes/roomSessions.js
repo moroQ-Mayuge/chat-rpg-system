@@ -10,8 +10,10 @@ import {
   updateParticipantTransformation,
   updateParticipantPose,
   switchRoomWithinSession,
+  switchSubRoom,
   setMemoryImpressionCheckpoint,
 } from '../db/repositories/roomSessionsRepo.js';
+import { getSubRoom } from '../db/repositories/roomSubRoomsRepo.js';
 import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
 import { getOutfit } from '../db/repositories/outfitsRepo.js';
 import { syncUndressStateToOutfit } from '../db/repositories/characterStatusStatesRepo.js';
@@ -696,6 +698,52 @@ roomSessionsRouter.post('/:id/move', async (req, res) => {
   // 部屋移動をブロックしないよう、応答送出後にモブのペルソナLLM生成を
   // fire-and-forgetでキックする(llmモードのWorldのみ、対象がいれば)。
   triggerPendingMobFlavorGeneration(result.session, getWorld(playthroughWorldId));
+});
+
+// 同じ部屋の中でサブ部屋(0150)だけを切り替える。/moveと違い別の部屋へは行かず、
+// セッション区切り判定も退室処理も通さない軽い遷移(同一セッション内)。
+// sub_room_id=null は親部屋本体(メイン)へ戻る。移動コスト(enter_movement_cost)が
+// 0より大きいサブ部屋へ入る時だけ、部屋間移動と同じ予算(applyMovementCost)を消費する。
+roomSessionsRouter.post('/:id/sub-room', async (req, res) => {
+  const session = getRoomSession(req.params.id);
+  if (!session) return res.status(404).json({ error: 'not_found' });
+
+  const targetId = req.body.sub_room_id ?? null;
+  const target = targetId == null ? null : getSubRoom(targetId);
+  if (targetId != null && target?.room_template_id !== session.room_template_id) {
+    return res.status(400).json({ error: 'invalid_sub_room' });
+  }
+  if ((session.sub_room_id ?? null) === (target?.id ?? null)) {
+    return res.json({ session, playthrough: getPlaythrough(session.playthrough_id) });
+  }
+
+  const playthroughWorldId = getPlaythrough(session.playthrough_id).world_id;
+  const result = await withSessionLock(session.id, async () => {
+    const fresh = getRoomSession(session.id);
+    if (!fresh || fresh.status !== 'active') return { error: 'session_already_ended' };
+
+    const world = getWorld(playthroughWorldId);
+    const cost = target?.enter_movement_cost ?? 0;
+    const playthrough = cost > 0 ? applyMovementCost(fresh.playthrough_id, cost) : getPlaythrough(fresh.playthrough_id);
+
+    switchSubRoom(fresh.id, target?.id ?? null);
+    // 場所が変わったことを履歴にも残す(部屋間移動と同じ理由: 地の文が無いとモデルが移動に気づけない)。
+    const message = createMessage(fresh.id, {
+      sender_type: 'narration',
+      content: target ? `${target.name}へ移動した。` : '元の場所へ戻った。',
+    });
+    broadcast(fresh.id, { type: 'message_complete', message });
+
+    // 移動コストで日が変わった場合の日替わり処理(部屋間移動と同じ)。
+    const after = getRoomSession(fresh.id);
+    if (playthrough.current_day !== after.log_day) {
+      await handleDayRollover(after, world, playthrough, { broadcast });
+    }
+    return { session: getRoomSession(fresh.id), playthrough };
+  });
+
+  if (result.error) return res.status(409).json(result);
+  res.json(result);
 });
 
 roomSessionsRouter.post('/:id/participants/:characterId/accompanying', (req, res) => {

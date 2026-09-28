@@ -11,6 +11,7 @@ import {
   useRoomWorldMutations,
 } from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
+import { roomTemplatesApi } from '../api/roomTemplates.js';
 
 function tagsToArray(text) {
   return (text || '')
@@ -34,6 +35,7 @@ const emptyForm = {
   worldview: '',
   slots: [],
   profiles: [],
+  sub_rooms: [],
   prop_category_ids: [],
   item_category_ids: [],
   turns_per_time_slot_enabled: false,
@@ -97,6 +99,17 @@ export default function RoomTemplateEditPage() {
         selection_mode: p.selection_mode,
         weight: p.weight,
       })),
+      sub_rooms: (existing.sub_rooms ?? []).map((s) => ({
+        id: s.id,
+        name: s.name,
+        is_default: Boolean(s.is_default),
+        location_text: s.location_text,
+        atmosphere_text: s.atmosphere_text,
+        location_tags: tagsToArray(s.location_tags),
+        atmosphere_tags: tagsToArray(s.atmosphere_tags),
+        background_image_path: s.background_image_path ?? '',
+        enter_movement_cost: s.enter_movement_cost ?? 0,
+      })),
       prop_category_ids: existing.candidate_prop_categories.map((c) => c.id),
       item_category_ids: existing.candidate_item_categories.map((c) => c.id),
       turns_per_time_slot_enabled: existing.turns_per_time_slot != null,
@@ -153,6 +166,59 @@ export default function RoomTemplateEditPage() {
     setForm((f) => ({ ...f, profiles: f.profiles.filter((_, i) => i !== index) }));
   }
 
+  function addSubRoom() {
+    setForm((f) => ({
+      ...f,
+      sub_rooms: [
+        ...f.sub_rooms,
+        {
+          name: '',
+          is_default: false,
+          location_text: '',
+          atmosphere_text: '',
+          location_tags: [],
+          atmosphere_tags: [],
+          background_image_path: '',
+          enter_movement_cost: 0,
+        },
+      ],
+    }));
+  }
+
+  // 既定(入口)は親に高々1件。1つをONにしたら他は自動でOFFにする。
+  function updateSubRoom(index, patch) {
+    setForm((f) => ({
+      ...f,
+      sub_rooms: f.sub_rooms.map((s, i) => {
+        if (i === index) return { ...s, ...patch };
+        return patch.is_default ? { ...s, is_default: false } : s;
+      }),
+    }));
+  }
+
+  function removeSubRoom(index) {
+    setForm((f) => ({ ...f, sub_rooms: f.sub_rooms.filter((_, i) => i !== index) }));
+  }
+
+  function moveSubRoom(index, delta) {
+    setForm((f) => {
+      const target = index + delta;
+      if (target < 0 || target >= f.sub_rooms.length) return f;
+      const next = [...f.sub_rooms];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...f, sub_rooms: next };
+    });
+  }
+
+  // 背景はファイルを保存してパスだけ受け取り、フォームへ入れる(DBへは部屋の保存時に反映)。
+  async function handleSubRoomBackgroundUpload(index, e) {
+    const file = e.target.files[0];
+    if (!file || isNew) return;
+    const result = await roomTemplatesApi.uploadSubRoomBackgroundImage(id, file);
+    updateSubRoom(index, { background_image_path: result.background_image_path });
+    e.target.value = '';
+  }
+
   function toggleCategory(categoryId) {
     setForm((f) => ({
       ...f,
@@ -190,6 +256,18 @@ export default function RoomTemplateEditPage() {
         selection_mode: p.selection_mode,
         weight: Number(p.weight) || 1,
         sort_order: i,
+      })),
+      // idを送ることでサーバー側が同じ行を更新する(進行中セッションの位置が保存で消えない)。
+      sub_rooms: form.sub_rooms.map((s) => ({
+        id: s.id,
+        name: s.name,
+        is_default: s.is_default,
+        location_text: s.location_text,
+        atmosphere_text: s.atmosphere_text,
+        location_tags: tagsToText(s.location_tags),
+        atmosphere_tags: tagsToText(s.atmosphere_tags),
+        background_image_path: s.background_image_path,
+        enter_movement_cost: Number(s.enter_movement_cost) || 0,
       })),
       prop_category_ids: form.prop_category_ids,
       item_category_ids: form.item_category_ids,
@@ -597,6 +675,103 @@ export default function RoomTemplateEditPage() {
             </div>
             <button style={{ marginTop: 6 }} onClick={addProfile}>
               + プロファイルを追加
+            </button>
+          </div>
+
+          <div>
+            <p style={{ marginBottom: 4 }}>サブ部屋</p>
+            <p style={{ fontSize: 11, color: '#888', margin: '0 0 4px' }}>
+              この部屋の中の区画（カフェの窓際席・商店街の各店舗など）を定義します。空欄の項目は部屋本体（またはアクティブなプロファイル）の値を引き継ぎます。プレイヤーはチャット画面の「場所を変える」から移動でき、「既定（入口）」に設定した1つから入室します（無ければ部屋本体から始まります）。同じ入口・同じセッションのまま軽く移る区画向けで、別の建物などは別の部屋として作ってください。
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {form.sub_rooms.map((sub, i) => (
+                <div key={sub.id ?? `new-${i}`} style={{ border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                    <input
+                      style={{ flex: 1 }}
+                      placeholder="サブ部屋名（例：窓際の席）"
+                      value={sub.name}
+                      onChange={(e) => updateSubRoom(i, { name: e.target.value })}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                      <input
+                        type="checkbox"
+                        checked={sub.is_default}
+                        onChange={(e) => updateSubRoom(i, { is_default: e.target.checked })}
+                      />
+                      既定（入口）
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                      移動コスト
+                      <input
+                        type="number"
+                        min={0}
+                        style={{ width: 48 }}
+                        value={sub.enter_movement_cost}
+                        onChange={(e) => updateSubRoom(i, { enter_movement_cost: e.target.value })}
+                      />
+                    </label>
+                    <button onClick={() => moveSubRoom(i, -1)} disabled={i === 0} title="上へ">
+                      ↑
+                    </button>
+                    <button onClick={() => moveSubRoom(i, 1)} disabled={i === form.sub_rooms.length - 1} title="下へ">
+                      ↓
+                    </button>
+                    <button onClick={() => removeSubRoom(i)}>削除</button>
+                  </div>
+                  <label style={{ display: 'block', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888' }}>場所（空欄なら部屋本体のまま）</span>
+                    <textarea
+                      style={{ display: 'block', width: '100%', height: 36 }}
+                      value={sub.location_text}
+                      onChange={(e) => updateSubRoom(i, { location_text: e.target.value })}
+                    />
+                  </label>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 2px' }}>場所タグ（空欄なら部屋本体のまま）</p>
+                  <TagChips
+                    tags={sub.location_tags}
+                    onChange={(tags) => updateSubRoom(i, { location_tags: tags })}
+                    placeholder="+ 場所タグを追加"
+                  />
+                  <label style={{ display: 'block', marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: '#888' }}>雰囲気（空欄なら部屋本体のまま）</span>
+                    <textarea
+                      style={{ display: 'block', width: '100%', height: 36 }}
+                      value={sub.atmosphere_text}
+                      onChange={(e) => updateSubRoom(i, { atmosphere_text: e.target.value })}
+                    />
+                  </label>
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 2px' }}>雰囲気タグ（空欄なら部屋本体のまま）</p>
+                  <TagChips
+                    tags={sub.atmosphere_tags}
+                    onChange={(tags) => updateSubRoom(i, { atmosphere_tags: tags })}
+                    placeholder="+ 雰囲気タグを追加"
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <div
+                      style={{
+                        width: 64,
+                        height: 36,
+                        borderRadius: 4,
+                        background: sub.background_image_path ? `url(${sub.background_image_path}) center/cover` : '#eee',
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: '#888' }}>背景画像（未設定なら部屋本体のまま）</span>
+                    {isNew ? (
+                      <span style={{ fontSize: 11, color: '#888' }}>部屋を保存してから設定できます</span>
+                    ) : (
+                      <input type="file" accept="image/*" onChange={(e) => handleSubRoomBackgroundUpload(i, e)} />
+                    )}
+                    {sub.background_image_path && (
+                      <button onClick={() => updateSubRoom(i, { background_image_path: '' })}>画像を外す</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {form.sub_rooms.length === 0 && <p style={{ fontSize: 12, color: '#888' }}>まだサブ部屋がありません</p>}
+            </div>
+            <button style={{ marginTop: 6 }} onClick={addSubRoom}>
+              + サブ部屋を追加
             </button>
           </div>
 

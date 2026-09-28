@@ -1,5 +1,6 @@
 import { db } from '../../../db/connection.js';
-import { clearRoomProfileOverride, resolveRoomTextOverrides } from '../../../db/repositories/roomProfilesRepo.js';
+import { clearRoomProfileOverride } from '../../../db/repositories/roomProfilesRepo.js';
+import { getSubRoom, resolveRoomSnapshot } from '../../../db/repositories/roomSubRoomsRepo.js';
 
 // { room_template_id } -- removes an event-forced room profile override
 // (0147), reverting to today's auto-rolled pick (or the room's own static
@@ -14,10 +15,15 @@ export async function executeClearRoomProfile(params, execCtx) {
   if (execCtx.session?.room_template_id === room_template_id) {
     const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(room_template_id);
     if (template) {
-      const textOverrides = resolveRoomTextOverrides(execCtx.playthroughId, room_template_id, template);
+      const snapshot = resolveRoomSnapshot(
+        execCtx.playthroughId,
+        room_template_id,
+        template,
+        getSubRoom(execCtx.session.sub_room_id),
+      );
       db.prepare('UPDATE room_sessions SET current_location_text = ?, current_atmosphere_text = ? WHERE id = ?').run(
-        textOverrides.location_text,
-        textOverrides.atmosphere_text,
+        snapshot.location_text,
+        snapshot.atmosphere_text,
         execCtx.sessionId,
       );
     }

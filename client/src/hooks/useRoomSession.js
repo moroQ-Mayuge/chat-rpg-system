@@ -83,6 +83,7 @@ export function useRoomSessionMutations(id) {
     }),
     exit: useMutation({ mutationFn: () => roomSessionsApi.exit(id), onSuccess: invalidate }),
     move: useMutation({ mutationFn: (connectionId) => roomSessionsApi.move(id, connectionId), onSuccess: invalidate }),
+    moveSubRoom: useMutation({ mutationFn: (subRoomId) => roomSessionsApi.moveSubRoom(id, subRoomId), onSuccess: invalidate }),
     setAccompanying: useMutation({
       mutationFn: ({ characterId, isAccompanying, roomSessionCharacterId }) =>
         roomSessionsApi.setAccompanying(id, characterId, isAccompanying, roomSessionCharacterId),

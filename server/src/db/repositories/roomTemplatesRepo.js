@@ -1,6 +1,7 @@
 import { db } from '../connection.js';
 import { listSlotsForRoom, replaceSlotsForRoom } from './roomParticipantSlotsRepo.js';
 import { listProfilesForRoom, replaceProfilesForRoom } from './roomProfilesRepo.js';
+import { listSubRoomsForRoom, syncSubRoomsForRoom } from './roomSubRoomsRepo.js';
 import { listCandidateCategoriesForRoom, replaceCandidateCategoriesForRoom } from './roomPropCategoriesRepo.js';
 import {
   listCandidateCategoriesForRoom as listCandidateItemCategoriesForRoom,
@@ -23,6 +24,7 @@ function attachAssociations(row) {
     ...row,
     slots: listSlotsForRoom(row.id),
     profiles: listProfilesForRoom(row.id),
+    sub_rooms: listSubRoomsForRoom(row.id),
     candidate_prop_categories: listCandidateCategoriesForRoom(row.id),
     candidate_item_categories: listCandidateItemCategoriesForRoom(row.id),
     world_ids: worldIds,
@@ -100,6 +102,7 @@ export function createRoomTemplate(data) {
   const id = result.lastInsertRowid;
   replaceSlotsForRoom(id, data.slots);
   replaceProfilesForRoom(id, data.profiles);
+  if (Array.isArray(data.sub_rooms)) syncSubRoomsForRoom(id, data.sub_rooms);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
   replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);
   // 新規作成直後はどのWorldにも属していないので、見失われないよう「未所属」
@@ -150,6 +153,8 @@ export function updateRoomTemplate(id, data) {
   });
   replaceSlotsForRoom(id, data.slots);
   replaceProfilesForRoom(id, data.profiles);
+  // sub_roomsを送らない呼び出し元(バンドル取り込み等)で既存のサブ部屋を消さない。
+  if (Array.isArray(data.sub_rooms)) syncSubRoomsForRoom(id, data.sub_rooms);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
   replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);
   return getRoomTemplate(id);

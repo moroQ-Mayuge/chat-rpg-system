@@ -1,5 +1,6 @@
 import { db } from '../../../db/connection.js';
-import { setRoomProfileOverride, resolveRoomTextOverrides } from '../../../db/repositories/roomProfilesRepo.js';
+import { setRoomProfileOverride } from '../../../db/repositories/roomProfilesRepo.js';
+import { getSubRoom, resolveRoomSnapshot } from '../../../db/repositories/roomSubRoomsRepo.js';
 
 // { room_template_id, profile_id } -- forces a specific room_profiles row
 // active for this playthrough+room (0147), e.g. switching an event venue
@@ -20,10 +21,16 @@ export async function executeSetRoomProfile(params, execCtx) {
   if (execCtx.session?.room_template_id === room_template_id) {
     const template = db.prepare('SELECT * FROM room_templates WHERE id = ?').get(room_template_id);
     if (template) {
-      const textOverrides = resolveRoomTextOverrides(execCtx.playthroughId, room_template_id, template);
+      // サブ部屋(0150)の非空値はプロファイルより優先されるので、現在位置のサブ部屋も考慮して解決する。
+      const snapshot = resolveRoomSnapshot(
+        execCtx.playthroughId,
+        room_template_id,
+        template,
+        getSubRoom(execCtx.session.sub_room_id),
+      );
       db.prepare('UPDATE room_sessions SET current_location_text = ?, current_atmosphere_text = ? WHERE id = ?').run(
-        textOverrides.location_text,
-        textOverrides.atmosphere_text,
+        snapshot.location_text,
+        snapshot.atmosphere_text,
         execCtx.sessionId,
       );
     }

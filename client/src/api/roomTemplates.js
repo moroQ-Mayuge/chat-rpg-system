@@ -11,6 +11,12 @@ export const roomTemplatesApi = {
     formData.append('image', file);
     return api.post(`/room-templates/${id}/background-image`, formData);
   },
+  // サブ部屋の背景。パスだけ返り、DBへは部屋の保存時に反映される。
+  uploadSubRoomBackgroundImage: (id, file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post(`/room-templates/${id}/sub-room-background-image`, formData);
+  },
   generateBackgroundImage: (id, mode, extraHint, worldId) =>
     api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint, world_id: worldId }),
   listWorlds: (id) => api.get(`/room-templates/${id}/worlds`),

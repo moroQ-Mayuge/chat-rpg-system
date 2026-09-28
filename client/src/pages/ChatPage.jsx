@@ -978,7 +978,7 @@ export default function ChatPage() {
   // 区切り行が入っている場合、当日分だけ見る(前日分はセッション履歴から)。
   // 日替わりが起きないWorldではlog_day===entered_dayのままなので常時付けて実質no-op。
   const { data: session, isLoading } = useRoomSession(id, { day: 'current' });
-  const { sendMessage, craftItem, exit, move, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
+  const { sendMessage, craftItem, exit, move, moveSubRoom, setAccompanying, sellItem, buyItem, buyOutfit, pickupOutfit } = useRoomSessionMutations(id);
   const { data: playthrough } = useQuery({
     queryKey: ['playthroughs', session?.playthrough_id],
     queryFn: () => playthroughsApi.get(session.playthrough_id),
@@ -1173,6 +1173,21 @@ export default function ChatPage() {
     }
   }
 
+  // サブ部屋(0150)の切替。subRoomId=null は親部屋本体(メイン)へ戻る。同じ部屋の中の
+  // 軽い移動なのでnavigateは不要(セッションは同一、invalidateで再取得される)。
+  async function handleMoveSubRoom(subRoomId) {
+    try {
+      await moveSubRoom.mutateAsync(subRoomId);
+    } catch (err) {
+      if (err.message === 'session_already_ended') {
+        const active = await playthroughsApi.getActiveSession(session.playthrough_id);
+        if (active) navigate(`/room-sessions/${active.id}/chat`);
+        return;
+      }
+      throw err;
+    }
+  }
+
   async function toggleAccompanying(characterId, current, roomSessionCharacterId) {
     await setAccompanying.mutateAsync({ characterId, isAccompanying: !current, roomSessionCharacterId });
   }
@@ -1184,6 +1199,7 @@ export default function ChatPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexShrink: 0 }}>
         <p style={{ fontSize: 12, color: '#888', margin: 0 }}>
           {playthrough.name} ／ {playthrough.current_date_label} ／ {session.current_location_text}
+          {session.sub_room_name && `（${session.sub_room_name}）`}
           {playthrough.currency_enabled && (
             <>
               {' '}
@@ -1216,6 +1232,37 @@ export default function ChatPage() {
             {connections?.length === 0 && <span style={{ fontSize: 11, color: '#888' }}>移動先が設定されていません</span>}
           </div>
         </details>
+      )}
+
+      {(session.sub_rooms?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: '#888' }}>場所を変える：</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {/* 親部屋本体(メイン)。サブ部屋にいる間だけ戻れる。現在地はボタンを強調して示す。 */}
+            <button
+              onClick={() => handleMoveSubRoom(null)}
+              disabled={session.sub_room_id == null || moveSubRoom.isPending}
+              style={{ fontSize: 12, fontWeight: session.sub_room_id == null ? 700 : 400 }}
+            >
+              {session.sub_room_id == null ? '● ' : ''}元の場所
+            </button>
+            {session.sub_rooms.map((s) => {
+              const here = s.id === session.sub_room_id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => handleMoveSubRoom(s.id)}
+                  disabled={here || moveSubRoom.isPending}
+                  style={{ fontSize: 12, fontWeight: here ? 700 : 400 }}
+                >
+                  {here ? '● ' : ''}
+                  {s.name}
+                  {s.enter_movement_cost > 0 && ` [消費${s.enter_movement_cost}]`}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       <details style={{ marginBottom: 6, flexShrink: 0 }} open={session.participants.length <= 3}>

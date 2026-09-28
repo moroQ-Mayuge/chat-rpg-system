@@ -75,6 +75,14 @@ roomTemplatesRouter.post('/:id/background-image', upload.single('image'), (req, 
   res.json(setBackgroundImage(req.params.id, relativePath));
 });
 
+// サブ部屋(0150)の背景画像。ファイルを保存してパスを返すだけで、DBへの反映は
+// 部屋の保存(PUT /:id、sub_rooms[].background_image_path)に相乗りする——保存前の
+// フォーム編集内容が再取得で消えないよう、ここではroom_templateを更新しない。
+roomTemplatesRouter.post('/:id/sub-room-background-image', upload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'image_required' });
+  res.json({ background_image_path: `/images/rooms/${req.file.filename}` });
+});
+
 // Which Worlds this room master is attached to, and attaching/detaching it.
 roomTemplatesRouter.get('/:id/worlds', (req, res) => {
   res.json(listWorldsForRoomTemplate(req.params.id));
