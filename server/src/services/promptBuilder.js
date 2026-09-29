@@ -511,6 +511,13 @@ function buildSystemPrompt(session, participants, options = {}) {
     world.scene_change_enabled
       ? '[SCENE_CHANGE]: 場所や状況が変わった場合のみ、変化後の内容を1行で（任意）'
       : null,
+    // サブ部屋(0150/Stage 7): この部屋の中の移動可能な区画一覧をLLMに教え、
+    // そちらへ実際に移動した場合はSCENE_CHANGEの文中にその区画名をそのまま
+    // 含めるよう指示する(routes/roomSessions.jsのmatchSubRoomByDescriptionが
+    // 部分一致で拾う)。サブ部屋の無い部屋では従来どおり何も追加しない。
+    world.scene_change_enabled && (session.sub_rooms?.length ?? 0) > 0
+      ? `この部屋には次の区画（サブ部屋）があります：${session.sub_rooms.map((s) => s.name).join('、')}。現在地：${session.sub_room_name ?? '（区画の外）'}。プレイヤーやキャラクターが実際にこれらのいずれかへ移動した場合は、SCENE_CHANGEの内容にその区画名をそのまま含めてください（例：[SCENE_CHANGE]: ${session.sub_rooms[0]?.name}へ移動した）。`
+      : null,
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（具体的な物がその場で見つかった・キャラクターが差し出した場合のみ。世間話や比喩表現では使わない）。これは持ち物に直接入るのではなく「その場で拾える状態」になります。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
     // 衣装は厳選プリセットでLLMの即興対象ではないため、ITEM_GRANTと違い常時使える
     // タグにはしない——買い物モード（衣装リストが実在する時）限定の案内にする。

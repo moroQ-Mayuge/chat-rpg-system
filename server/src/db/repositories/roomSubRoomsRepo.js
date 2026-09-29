@@ -141,6 +141,24 @@ export function resolveRoomSnapshot(playthroughId, roomTemplateId, template, sub
   };
 }
 
+// LLMの自由記述[SCENE_CHANGE]説明文が、既存のどのサブ部屋を指しているかを
+// 推定する(0150/Stage 7)。完全一致(説明文=サブ部屋名そのもの)を最優先、
+// 無ければ説明文にサブ部屋名が部分文字列として含まれるものを探す——LLMは
+// 「窓際の席へ移動した」のような文中に名前を埋め込む書き方をするため、実運用
+// では部分一致が主な当たり方になる。複数のサブ部屋名が同時に部分一致する場合
+// (一方が他方の部分文字列である等)は、より具体的な一致とみなしてサブ部屋名が
+// 長い方を優先する。どれにも一致しなければnull(呼び出し元は従来どおりの
+// 自由記述の上書きにフォールバックする)。
+export function matchSubRoomByDescription(subRooms, description) {
+  const trimmed = (description ?? '').trim();
+  if (!trimmed) return null;
+  const exact = subRooms.find((s) => s.name && s.name === trimmed);
+  if (exact) return exact;
+  const partial = subRooms.filter((s) => s.name && trimmed.includes(s.name));
+  if (partial.length === 0) return null;
+  return [...partial].sort((a, b) => b.name.length - a.name.length)[0];
+}
+
 // 商取引まわり(is_shop・衣装入手モード・品揃え設定、Stage 3)の実効値。各項目
 // 独立にNULL(is_shop)/空文字(タグ)=継承——「この店だけ衣装は売らない」のように
 // 一部の項目だけ上書きできるようにするため、min/maxのようなペアも連動させない。

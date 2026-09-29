@@ -13,7 +13,7 @@ import {
   switchSubRoom,
   setMemoryImpressionCheckpoint,
 } from '../db/repositories/roomSessionsRepo.js';
-import { getSubRoom } from '../db/repositories/roomSubRoomsRepo.js';
+import { getSubRoom, matchSubRoomByDescription } from '../db/repositories/roomSubRoomsRepo.js';
 import { wearMasterAsCharacter, resolveMasterNameFuzzy } from '../db/repositories/outfitMastersRepo.js';
 import { getOutfit } from '../db/repositories/outfitsRepo.js';
 import { syncUndressStateToOutfit } from '../db/repositories/characterStatusStatesRepo.js';
@@ -1047,6 +1047,31 @@ async function generateReply(
       if (!world.scene_change_enabled) return;
       broadcast(sessionId, { type: 'scene_change_detected', description: parsed.description });
       enqueueImageJob(() => generateSceneImage(sessionId, parsed.description));
+
+      // サブ部屋(0150/Stage 7): 部屋にサブ部屋があり、説明文が既存のサブ部屋名を
+      // 指していれば、自由記述の上書き(上のgenerateSceneImage)に加えて、位置そのもの
+      // をそのサブ部屋へ切り替える——次ターン以降の同席判定・elsewhere表示・商取引の
+      // 上書き等、構造化された位置に依存する全ての仕組みに反映させるため。一致しなければ
+      // 位置は変えず、従来どおり自由記述の上書きだけが効く。
+      if ((session.sub_rooms?.length ?? 0) > 0) {
+        const matched = matchSubRoomByDescription(session.sub_rooms, parsed.description);
+        if (matched && matched.id !== (session.sub_room_id ?? null)) {
+          // このターンで@メンションされ、かつ現在プレイヤーと同所にいるキャラは一緒に
+          // 移る(判定なし)——LLM自身がこの応答の中で既に台詞・情景を確定させた後なので、
+          // Stage2cのような事前ロール/[FOLLOW]タグによる後付け判定はそぐわない。
+          // デート中のキャラはswitchSubRoom自体が自動的に連れて行く。地の文はLLM自身の
+          // 応答が既に場面を描写しているため、ここでは追加しない(set_room_profile等と
+          // 同じ「状態変更のみ」の流儀)。
+          const companionRowIds = (mentionedCharacterIds ?? [])
+            .map((id) => session.participants.find((p) => p.character_id === id)?.id)
+            .filter((id) => id != null);
+          try {
+            switchSubRoom(sessionId, matched.id, { companionRowIds });
+          } catch (err) {
+            console.error('SCENE_CHANGE sub-room switch failed:', err);
+          }
+        }
+      }
       return;
     }
 
