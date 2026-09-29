@@ -17,8 +17,8 @@ export function replaceSlotsForRoom(roomTemplateId, slots) {
   db.prepare('DELETE FROM room_template_participant_slots WHERE room_template_id = ?').run(roomTemplateId);
   (slots ?? []).forEach((slot, index) => {
     db.prepare(
-      'INSERT INTO room_template_participant_slots (room_template_id, attribute_tags, note, sort_order) VALUES (?, ?, ?, ?)',
-    ).run(roomTemplateId, slot.attribute_tags ?? '', slot.note ?? '', slot.sort_order ?? index);
+      'INSERT INTO room_template_participant_slots (room_template_id, attribute_tags, note, sort_order, sub_room_id) VALUES (?, ?, ?, ?, ?)',
+    ).run(roomTemplateId, slot.attribute_tags ?? '', slot.note ?? '', slot.sort_order ?? index, slot.sub_room_id ?? null);
   });
   return listSlotsForRoom(roomTemplateId);
 }

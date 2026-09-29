@@ -89,7 +89,7 @@ export default function RoomTemplateEditPage() {
       atmosphere_text: existing.atmosphere_text,
       atmosphere_tags: tagsToArray(existing.atmosphere_tags),
       worldview: existing.worldview || '',
-      slots: existing.slots.map((s) => ({ id: s.id, attribute_tags: tagsToArray(s.attribute_tags), note: s.note })),
+      slots: existing.slots.map((s) => ({ id: s.id, attribute_tags: tagsToArray(s.attribute_tags), note: s.note, sub_room_id: s.sub_room_id ?? null })),
       profiles: existing.profiles.map((p) => ({
         id: p.id,
         name: p.name,
@@ -145,7 +145,7 @@ export default function RoomTemplateEditPage() {
   }, [attachedWorlds, bgGenerateWorldId]);
 
   function addSlot() {
-    setForm((f) => ({ ...f, slots: [...f.slots, { attribute_tags: [...f.attribute_tags], note: '' }] }));
+    setForm((f) => ({ ...f, slots: [...f.slots, { attribute_tags: [...f.attribute_tags], note: '', sub_room_id: null }] }));
   }
 
   function updateSlot(index, patch) {
@@ -280,7 +280,7 @@ export default function RoomTemplateEditPage() {
       atmosphere_text: form.atmosphere_text,
       atmosphere_tags: tagsToText(form.atmosphere_tags),
       worldview: form.worldview_mode === 'custom' ? form.worldview : null,
-      slots: form.slots.map((s, i) => ({ attribute_tags: tagsToText(s.attribute_tags), note: s.note, sort_order: i })),
+      slots: form.slots.map((s, i) => ({ attribute_tags: tagsToText(s.attribute_tags), note: s.note, sort_order: i, sub_room_id: s.sub_room_id ?? null })),
       profiles: form.profiles.map((p, i) => ({
         name: p.name,
         attribute_tags: tagsToText(p.attribute_tags),
@@ -636,6 +636,22 @@ export default function RoomTemplateEditPage() {
                       value={slot.note}
                       onChange={(e) => updateSlot(i, { note: e.target.value })}
                     />
+                    {form.sub_rooms.length > 0 && (
+                      <select
+                        style={{ marginRight: 6 }}
+                        value={slot.sub_room_id ?? ''}
+                        onChange={(e) => updateSlot(i, { sub_room_id: e.target.value === '' ? null : Number(e.target.value) })}
+                        title="この枠のキャラが出現するサブ部屋（空欄なら入室時のプレイヤーの開始位置と同じ）"
+                      >
+                        <option value="">配置先: 開始位置と同じ</option>
+                        {form.sub_rooms.map((sub, subIndex) => (
+                          <option key={sub.id ?? `new-${subIndex}`} value={sub.id ?? `new-${subIndex}`} disabled={sub.id == null}>
+                            配置先: {sub.name || '（無題）'}
+                            {sub.id == null ? '（保存後に選択可）' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <button onClick={() => removeSlot(i)}>削除</button>
                   </div>
                   <TagChips

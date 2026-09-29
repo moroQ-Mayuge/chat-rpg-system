@@ -18,7 +18,7 @@ import { resolveActiveRoomProfile } from './roomProfilesRepo.js';
 export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
   const rows = db
     .prepare(
-      `SELECT s.id AS slot_id, s.attribute_tags, s.note, s.sort_order,
+      `SELECT s.id AS slot_id, s.attribute_tags, s.note, s.sort_order, s.sub_room_id,
               wrsa.id AS assignment_id, wrsa.character_id, wrsa.time_slot_indices,
               wrsa.random_fill_mode, wrsa.random_probability
        FROM room_template_participant_slots s
@@ -36,6 +36,7 @@ export function listAssignmentsForWorldRoom(worldId, roomTemplateId) {
         attribute_tags: row.attribute_tags,
         note: row.note,
         sort_order: row.sort_order,
+        sub_room_id: row.sub_room_id,
         assignments: [],
       });
     }
@@ -260,6 +261,8 @@ function tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId) {
 // per-character uniqueness, see 0043) -- non-mob characters are added to
 // `taken` once picked so they can't also be picked by a later row. Returns a
 // raw array (NOT deduplicated) since mob duplicates are intentional.
+// 戻り値は{character_id, sub_room_id}の配列(サブ部屋別の出現枠、Stage 5)——
+// 行(枠)ごとのsub_room_idをそのまま持ち越す。
 function resolveRandomRows(eligibleRandomRows, taken, playthroughId) {
   if (eligibleRandomRows.length === 0) return [];
   const allCharacters = db
@@ -276,7 +279,7 @@ function resolveRandomRows(eligibleRandomRows, taken, playthroughId) {
       .map((c) => c.id);
     if (pool.length === 0) continue;
     const chosenId = pickWeighted(pool);
-    picked.push(chosenId);
+    picked.push({ character_id: chosenId, sub_room_id: row.sub_room_id ?? null });
     const chosen = allCharacters.find((c) => c.id === chosenId);
     if (!chosen.is_mob) taken.add(chosenId);
   }
@@ -295,11 +298,19 @@ function resolveRandomRows(eligibleRandomRows, taken, playthroughId) {
 // playthroughId は、そのルートの子(0079)だけを候補に含めるためのもの。明示的な
 // スロット割当(fixedIds)には効かせない——作者が名指しで置いたものは名指しの
 // とおり出すのが筋で、絞るのは「全件から自動で拾う」経路だけでよい。
+//
+// 戻り値は{character_id, sub_room_id}の配列(サブ部屋別の出現枠、0150/Stage 5)。
+// sub_room_idはそのキャラを充てた枠(room_template_participant_slots)自身の
+// sub_room_id——NULLなら「入室時のプレイヤーの開始位置と同じ」(従来どおり、
+// 呼び出し元のseedParticipantsForRoomがstartSubRoomIdに解決する)。属性タグ
+// 自動出現(tagMatchedCharacterIds)はどの枠にも属さないため常にNULL(従来どおり
+// 開始位置)。固定枠とタグ自動出現が同じキャラを指した場合は、明示的に配置した
+// 固定枠のsub_room_idを優先する(重複除去時に先勝ちさせる)。
 export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemplateId, currentTimeSlotIndex, playthroughId) {
   const rows = db
     .prepare(
       `SELECT wrsa.character_id, wrsa.time_slot_indices, wrsa.random_fill_mode, wrsa.random_probability,
-              s.attribute_tags AS slot_attribute_tags
+              s.attribute_tags AS slot_attribute_tags, s.sub_room_id
        FROM room_template_participant_slots s
        JOIN world_room_slot_assignments wrsa ON wrsa.slot_id = s.id AND wrsa.world_id = ?
        WHERE s.room_template_id = ?`,
@@ -311,13 +322,26 @@ export function listDefaultParticipantCharacterIdsForWorldRoom(worldId, roomTemp
     return indices.length === 0 || indices.includes(currentTimeSlotIndex);
   });
 
-  const fixedIds = eligibleRows.filter((r) => r.character_id != null).map((r) => r.character_id);
+  const fixedRows = eligibleRows.filter((r) => r.character_id != null);
   const randomRows = eligibleRows.filter((r) => r.character_id == null);
 
   const tagMatchedIds = tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId);
-  const baseIds = [...new Set([...fixedIds, ...tagMatchedIds])];
 
-  const randomPickedIds = resolveRandomRows(randomRows, new Set(baseIds), playthroughId);
+  // 固定枠を先に積み、タグ自動出現は同じキャラがまだ無い時だけ追加する(Setの
+  // 重複除去と同じ「先勝ち」の順序を、character_idをキーにしたMapで再現)。
+  const baseByCharacterId = new Map();
+  for (const row of fixedRows) {
+    if (!baseByCharacterId.has(row.character_id)) {
+      baseByCharacterId.set(row.character_id, { character_id: row.character_id, sub_room_id: row.sub_room_id ?? null });
+    }
+  }
+  for (const characterId of tagMatchedIds) {
+    if (!baseByCharacterId.has(characterId)) {
+      baseByCharacterId.set(characterId, { character_id: characterId, sub_room_id: null });
+    }
+  }
 
-  return [...baseIds, ...randomPickedIds];
+  const randomPicked = resolveRandomRows(randomRows, new Set(baseByCharacterId.keys()), playthroughId);
+
+  return [...baseByCharacterId.values(), ...randomPicked];
 }

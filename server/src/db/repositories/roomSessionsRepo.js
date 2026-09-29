@@ -426,7 +426,11 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         playthrough.current_time_slot_index,
         playthroughId,
       );
-  for (const characterId of defaultParticipantIds) {
+  for (const entry of defaultParticipantIds) {
+    // entry: {character_id, sub_room_id}(サブ部屋別の出現枠、0150/Stage 5)。
+    // sub_room_id=NULLは「枠に紐付けなし」=入室時のプレイヤー開始位置と同じ。
+    const characterId = entry.character_id;
+    const placementSubRoomId = entry.sub_room_id ?? startSubRoomId;
     if (alreadyAccompanying.has(characterId)) {
       carryOverByCharacterId.delete(characterId);
       continue;
@@ -468,7 +472,7 @@ function seedParticipantsForRoom(sessionId, playthrough, template, defaultPoseId
         mobFlavorPresetId,
         mobFlavorNameId,
         mobFlavorSurnameId,
-        startSubRoomId,
+        placementSubRoomId,
       );
     ensureRelationshipStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);
     ensureImpressionStatesSeeded(playthroughId, characterId, sessionId, rscResult.lastInsertRowid);

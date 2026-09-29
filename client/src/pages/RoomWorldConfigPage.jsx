@@ -221,6 +221,12 @@ export default function RoomWorldConfigPage() {
                     <p style={{ fontSize: 12, margin: '0 0 4px' }}>
                       {slot.note || '（無題の枠）'}
                       {slot.attribute_tags && <span style={{ color: '#888' }}> [{slot.attribute_tags}]</span>}
+                      {slot.sub_room_id != null && (
+                        <span style={{ color: '#2563eb' }}>
+                          {' '}
+                          → {config.sub_rooms?.find((s) => s.id === slot.sub_room_id)?.name ?? `サブ部屋#${slot.sub_room_id}`}
+                        </span>
+                      )}
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {rows.map((row, index) => (
