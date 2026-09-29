@@ -4,6 +4,8 @@ import { listRoomTemplatesForWorld } from '../../db/repositories/worldRoomTempla
 import { listSlotsForRoom } from '../../db/repositories/roomParticipantSlotsRepo.js';
 import { listAssignmentsForWorldRoom, replaceAssignmentsForSlot } from '../../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom, replacePropsForWorldRoom } from '../../db/repositories/worldRoomPropsRepo.js';
+import { listPropsForWorldSubRoom, listFreePropsForWorldSubRoom, replacePropsForWorldSubRoom } from '../../db/repositories/worldSubRoomPropsRepo.js';
+import { listSubRoomsForRoom } from '../../db/repositories/roomSubRoomsRepo.js';
 import { listConnectionsFrom, createConnection } from '../../db/repositories/roomConnectionsRepo.js';
 import { saveWorldImage } from '../../storage/imageStorage.js';
 import { extensionOf } from './diskImages.js';
@@ -95,11 +97,19 @@ export function collectWorldRoomConfigEntries(worldId) {
         }),
       };
     });
+    // サブ部屋のWorld別小物・設備(Stage 4)。slot_assignmentsと同じく配列位置
+    // (sub_room_index)で対応付ける——サブ部屋idはインポート時に振り直されるため。
+    const subRoomProps = listSubRoomsForRoom(room.id).map((sub, index) => ({
+      sub_room_index: index,
+      prop_names: listPropsForWorldSubRoom(worldId, sub.id).map((p) => p.name),
+      free_props: listFreePropsForWorldSubRoom(worldId, sub.id).map((p) => p.description),
+    }));
     return {
       room_template_name: room.name,
       slot_assignments: slotAssignments,
       prop_names: listPropsForWorldRoom(worldId, room.id).map((p) => p.name),
       free_props: listFreePropsForWorldRoom(worldId, room.id).map((p) => p.description),
+      sub_room_props: subRoomProps,
       connections: listConnectionsFrom(room.id, worldId).map((c) => ({
         to_room_template_name: c.to_room_name,
         label: c.label,
@@ -150,6 +160,16 @@ export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemp
       .map((name) => db.prepare('SELECT id FROM props WHERE name = ?').get(name)?.id)
       .filter((id) => id != null);
     replacePropsForWorldRoom(worldId, roomId, { propIds, freeProps: entry.free_props ?? [] });
+
+    const subRooms = listSubRoomsForRoom(roomId);
+    for (const subEntry of entry.sub_room_props ?? []) {
+      const subRoom = subRooms[subEntry.sub_room_index];
+      if (!subRoom) continue;
+      const subPropIds = (subEntry.prop_names ?? [])
+        .map((name) => db.prepare('SELECT id FROM props WHERE name = ?').get(name)?.id)
+        .filter((id) => id != null);
+      replacePropsForWorldSubRoom(worldId, subRoom.id, { propIds: subPropIds, freeProps: subEntry.free_props ?? [] });
+    }
 
     for (const conn of entry.connections ?? []) {
       const toRoomId = roomByName.get(conn.to_room_template_name) ?? listRoomTemplatesForWorld(worldId).find((r) => r.name === conn.to_room_template_name)?.id;

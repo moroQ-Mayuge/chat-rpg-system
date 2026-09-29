@@ -3,6 +3,7 @@ import { getPlaythrough, createPlaythrough } from '../../db/repositories/playthr
 import { getWorld } from '../../db/repositories/worldsRepo.js';
 import { listCharacters } from '../../db/repositories/charactersRepo.js';
 import { collectCharacterEntry, importCharacterEntries } from './characterBundle.js';
+import { listSubRoomsForRoom } from '../../db/repositories/roomSubRoomsRepo.js';
 import { saveGeneratedImage } from '../../storage/imageStorage.js';
 import { extensionOf } from './diskImages.js';
 
@@ -53,6 +54,10 @@ export function collectPlaythroughEntry(playthroughId, imageCollector, { include
   const roomTemplateNames = nameMap(db.prepare('SELECT id, name FROM room_templates').all());
   const eventDefNames = nameMap(db.prepare('SELECT id, name FROM event_definitions').all());
   const masterNames = nameMap(db.prepare('SELECT id, name FROM outfit_masters').all());
+  // サブ部屋(0150、Stage 8): id自体は環境をまたげないので名前で持ち出す。
+  // 部屋テンプレート名と組みで一意とみなす(インポート側もroom_template_idで
+  // 絞り込んでから名前一致させる、同名部屋内で重複が無い前提の既存の緩い規約)。
+  const subRoomNames = nameMap(db.prepare('SELECT id, name FROM room_sub_rooms').all());
 
   function outfitRef(outfitId) {
     if (outfitId == null) return null;
@@ -67,17 +72,18 @@ export function collectPlaythroughEntry(playthroughId, imageCollector, { include
   const roomSessionOldIds = roomSessionRows.map((rs) => rs.id);
 
   const roomSessions = roomSessionRows.map((rs) => {
-    const { id: oldId, playthrough_id: _pid, room_template_id, current_scene_image_id, ...rest } = rs;
+    const { id: oldId, playthrough_id: _pid, room_template_id, current_scene_image_id, sub_room_id, ...rest } = rs;
 
     const participants = db
       .prepare('SELECT * FROM room_session_characters WHERE room_session_id = ?')
       .all(oldId)
       .map((rsc) => {
-        const { id: oldParticipantId, room_session_id: _rsid, character_id, current_outfit_id, ...prest } = rsc;
+        const { id: oldParticipantId, room_session_id: _rsid, character_id, current_outfit_id, sub_room_id, ...prest } = rsc;
         return {
           old_id: oldParticipantId,
           character_name: characterNames.get(character_id) ?? null,
           outfit_ref: outfitRef(current_outfit_id),
+          sub_room_name: sub_room_id != null ? (subRoomNames.get(sub_room_id) ?? null) : null,
           ...prest,
         };
       });
@@ -118,6 +124,7 @@ export function collectPlaythroughEntry(playthroughId, imageCollector, { include
     return {
       old_id: oldId,
       room_template_name: roomTemplateNames.get(room_template_id) ?? null,
+      sub_room_name: sub_room_id != null ? (subRoomNames.get(sub_room_id) ?? null) : null,
       old_current_scene_image_id: current_scene_image_id,
       participants,
       messages,
@@ -293,6 +300,13 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
   // 32件片付けた実績がある)ので、best-effort で最初に一致したものを使う。
   const eventDefIdByName = new Map(db.prepare('SELECT id, name FROM event_definitions').all().map((e) => [e.name, e.id]));
   const masterIdByName = new Map(db.prepare('SELECT id, name FROM outfit_masters').all().map((m) => [m.name, m.id]));
+  // サブ部屋名は部屋テンプレートIDでスコープして解決する(名前だけでは他の部屋の
+  // 同名サブ部屋と衝突しうるため)。見つからなくても警告は出さない
+  // (サブ部屋の無い部屋テンプレートへ持ち込んだ場合はNULL=親部屋本体で正しい)。
+  function resolveSubRoomId(roomTemplateId, subRoomName) {
+    if (subRoomName == null || roomTemplateId == null) return null;
+    return listSubRoomsForRoom(roomTemplateId).find((s) => s.name === subRoomName)?.id ?? null;
+  }
 
   // 1. ルート本体。createPlaythrough は既定値で作るので、直後に生の値で
   // 上書きする(世界観の初期値ではなく、持ち出した時点の状態を復元するため)。
@@ -365,8 +379,8 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
         `INSERT INTO room_sessions
           (room_template_id, playthrough_id, entered_day, entered_time_slot_index, started_at, updated_at,
            current_location_text, current_location_tags, current_atmosphere_text, current_atmosphere_tags,
-           status, current_scene_situation, relationship_update_last_turn)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           status, current_scene_situation, relationship_update_last_turn, sub_room_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         roomTemplateId,
@@ -382,6 +396,7 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
         rs.status,
         rs.current_scene_situation,
         rs.relationship_update_last_turn,
+        resolveSubRoomId(roomTemplateId, rs.sub_room_name),
       );
     const newSessionId = rsResult.lastInsertRowid;
     roomSessionIdMap.set(rs.old_id, newSessionId);
@@ -399,10 +414,20 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
       const pResult = db
         .prepare(
           `INSERT INTO room_session_characters
-            (room_session_id, character_id, joined_at, left_at, current_outfit_id, is_active, is_accompanying)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            (room_session_id, character_id, joined_at, left_at, current_outfit_id, is_active, is_accompanying, sub_room_id, is_dating)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(newSessionId, characterId, p.joined_at, p.left_at, outfitId, p.is_active, p.is_accompanying);
+        .run(
+          newSessionId,
+          characterId,
+          p.joined_at,
+          p.left_at,
+          outfitId,
+          p.is_active,
+          p.is_accompanying,
+          resolveSubRoomId(roomTemplateId, p.sub_room_name),
+          p.is_dating ?? 0,
+        );
       roomSessionCharacterIdMap.set(p.old_id, pResult.lastInsertRowid);
     }
 
