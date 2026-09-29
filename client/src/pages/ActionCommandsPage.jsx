@@ -18,6 +18,7 @@ const emptyForm = {
   sub_subcategory: '',
   visible_when_status_ids: [],
   visible_when_room_template_ids: [],
+  visible_when_sub_room_ids: [],
 };
 
 const COMMAND_TYPE_LABELS = {
@@ -50,6 +51,7 @@ function formToPayload(form) {
     sort_order: Number(form.sort_order),
     visible_when_status_ids: form.visible_when_status_ids.join(','),
     visible_when_room_template_ids: form.visible_when_room_template_ids.join(','),
+    visible_when_sub_room_ids: form.visible_when_sub_room_ids.join(','),
   };
 }
 
@@ -72,6 +74,11 @@ function commandToForm(cmd) {
       .filter(Boolean)
       .map(Number),
     visible_when_room_template_ids: (cmd.visible_when_room_template_ids ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number),
+    visible_when_sub_room_ids: (cmd.visible_when_sub_room_ids ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
@@ -138,6 +145,17 @@ export default function ActionCommandsPage() {
     }));
   }
 
+  // サブ部屋(0150/Stage 6)。部屋を跨いだ一意なidなので、部屋名をラベルの接頭辞に
+  // して(visible_when_room_template_idsと同じ)フラットな一覧から選ぶ。
+  function toggleVisibleSubRoom(subRoomId) {
+    setForm((f) => ({
+      ...f,
+      visible_when_sub_room_ids: f.visible_when_sub_room_ids.includes(subRoomId)
+        ? f.visible_when_sub_room_ids.filter((id) => id !== subRoomId)
+        : [...f.visible_when_sub_room_ids, subRoomId],
+    }));
+  }
+
   if (worldsLoading || commandsLoading || statusesLoading) return <p>読み込み中...</p>;
 
   return (
@@ -170,7 +188,7 @@ export default function ActionCommandsPage() {
                 {(cmd.command_type === 'keyword' || cmd.command_type === 'call_character') && ` (${cmd.keyword_text})`}
                 {cmd.command_type === 'item_use' &&
                   ` (${cmd.transfers_to_target ? '対象へ譲渡' : cmd.consumes_item ? '消費型' : '非消費'})`}
-                {(cmd.visible_when_status_ids || cmd.visible_when_room_template_ids) && `／表示条件あり`}
+                {(cmd.visible_when_status_ids || cmd.visible_when_room_template_ids || cmd.visible_when_sub_room_ids) && `／表示条件あり`}
               </span>
             </span>
             <button
@@ -325,6 +343,29 @@ export default function ActionCommandsPage() {
                 </label>
               ))}
               {(roomTemplates ?? []).length === 0 && <span style={{ fontSize: 11, color: '#999' }}>部屋がまだ登録されていません</span>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block', marginBottom: 4 }}>
+              表示条件（サブ部屋、任意・複数選択可）— 現在のサブ部屋（0150）がこのいずれかの時だけ表示（他の表示条件と併用時はAND）。サブ部屋の無い部屋・親部屋本体にいる時は常に非表示になります。
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 140, overflowY: 'auto', border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+              {(roomTemplates ?? [])
+                .flatMap((r) => (r.sub_rooms ?? []).map((sub) => ({ ...sub, roomName: r.name })))
+                .map((sub) => (
+                  <label key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, border: '1px solid #ddd', borderRadius: 4, padding: '2px 6px' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.visible_when_sub_room_ids.includes(sub.id)}
+                      onChange={() => toggleVisibleSubRoom(sub.id)}
+                    />
+                    {sub.roomName} &gt; {sub.name || '（無題）'}
+                  </label>
+                ))}
+              {(roomTemplates ?? []).every((r) => (r.sub_rooms ?? []).length === 0) && (
+                <span style={{ fontSize: 11, color: '#999' }}>サブ部屋がまだ登録されていません</span>
+              )}
             </div>
           </div>
 

@@ -77,6 +77,7 @@ const CONDITION_TYPES = [
   { value: 'has_pose', label: '現在のポーズ' },
   { value: 'has_money', label: '所持金' },
   { value: 'llm_judge', label: 'LLM判定' },
+  { value: 'in_sub_room', label: '現在のサブ部屋' },
 ];
 
 const ACTION_TYPES = [
@@ -111,6 +112,7 @@ const ACTION_TYPES = [
   { value: 'end_session', label: '場面を区切る（同じ部屋か指定部屋で再開）' },
   { value: 'set_room_profile', label: '部屋プロファイルを強制指定（例: 戦闘フィールド化）' },
   { value: 'clear_room_profile', label: '部屋プロファイルの強制指定を解除' },
+  { value: 'set_sub_room', label: 'サブ部屋へ強制移動' },
 ];
 
 function conditionDefaults(type) {
@@ -141,6 +143,8 @@ function conditionDefaults(type) {
       return { comparison: '>=', value: 1000 };
     case 'llm_judge':
       return { question: '' };
+    case 'in_sub_room':
+      return { sub_room_id: null };
     default:
       return {};
   }
@@ -217,6 +221,8 @@ function actionDefaults(type) {
       return { room_template_id: null, profile_id: null };
     case 'clear_room_profile':
       return { room_template_id: null };
+    case 'set_sub_room':
+      return { sub_room_id: null };
     default:
       return {};
   }
@@ -308,7 +314,7 @@ function PlaceholderReferenceDetails() {
   );
 }
 
-function ConditionEditor({ condition, characters, axes, items, statuses, poseMasters, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
+function ConditionEditor({ condition, characters, axes, items, statuses, poseMasters, roomTemplates, hasOutcomeBranch, fixedPhase, onChange, onRemove }) {
   const p = condition.params;
   const setParams = (patch) => onChange({ ...condition, params: { ...p, ...patch } });
   const [keywordDraft, setKeywordDraft] = useState('');
@@ -790,6 +796,30 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
             同席者の実名一覧も自動でLLMに伝わるので、${'{target1}'}等のプレースホルダーで名指しできます。
           </p>
           <PlaceholderReferenceDetails />
+        </div>
+      )}
+
+      {condition.condition_type === 'in_sub_room' && (
+        <div>
+          <label>
+            <span style={label11}>現在位置</span>
+            <select
+              value={p.sub_room_id ?? ''}
+              onChange={(e) => setParams({ sub_room_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">親部屋本体（サブ部屋の外）</option>
+              {(roomTemplates ?? [])
+                .flatMap((rt) => (rt.sub_rooms ?? []).map((sub) => ({ ...sub, roomName: rt.name })))
+                .map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.roomName} &gt; {sub.name || '（無題）'}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
+            プレイヤーの現在のサブ部屋位置が一致するかを判定します。scope=room_templateのイベントと組み合わせ、部屋の中の特定の区画（窓際の席・カウンター等）だけで発火する条件を表現できます。
+          </p>
         </div>
       )}
     </div>
@@ -1476,6 +1506,29 @@ function ActionEditor({ action, characters, axes, expressionTypes, items, outfit
           </label>
         </div>
       )}
+      {action.action_type === 'set_sub_room' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>移動先</span>
+            <select
+              value={p.sub_room_id ?? ''}
+              onChange={(e) => setParams({ sub_room_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">親部屋本体（メインへ戻す）</option>
+              {(roomTemplates ?? [])
+                .flatMap((rt) => (rt.sub_rooms ?? []).map((sub) => ({ ...sub, roomName: rt.name })))
+                .map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.roomName} &gt; {sub.name || '（無題）'}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: 0 }}>
+            今このイベントが動いているセッション自身のサブ部屋位置を強制的に切り替えます（対象は常に現在のセッション）。デート中のキャラは判定なしでついて来ますが、それ以外のキャラは元の場所に残ります。地の文は出ないので、必要なら別途insert_dialogueで描写してください。
+          </p>
+        </div>
+      )}
       {action.action_type === 'advance_time' && (
         <label>
           <span style={label11}>進める時間帯の数</span>
@@ -2055,6 +2108,7 @@ function ConditionGroupRow({
   items,
   statuses,
   poseMasters,
+  roomTemplates,
 }) {
   const treePrefix = depth === 0 ? '' : '　'.repeat(depth - 1) + '└ ';
   return (
@@ -2091,6 +2145,7 @@ function ConditionGroupRow({
           items={items}
           statuses={statuses}
           poseMasters={poseMasters}
+          roomTemplates={roomTemplates}
           hasOutcomeBranch
           fixedPhase="outcome"
           onChange={(next) => setConditions(conditions.map((c) => (c === condition ? next : c)))}
@@ -2535,6 +2590,7 @@ export default function EventsPage() {
                 items={items}
                 statuses={statuses}
                 poseMasters={poseMasters}
+                roomTemplates={roomTemplates}
               />
               {flattenOutcomeNodes(draft.outcome_nodes).map(({ node, depth }) => (
                 <ConditionGroupRow
@@ -2573,6 +2629,7 @@ export default function EventsPage() {
                   items={items}
                   statuses={statuses}
                   poseMasters={poseMasters}
+                  roomTemplates={roomTemplates}
                 />
               ))}
             </div>
@@ -2645,6 +2702,7 @@ export default function EventsPage() {
                   items={items}
                   statuses={statuses}
                   poseMasters={poseMasters}
+                  roomTemplates={roomTemplates}
                   hasOutcomeBranch={draft.has_outcome_branch}
                   fixedPhase="trigger"
                   onChange={(next) =>

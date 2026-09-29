@@ -29,6 +29,7 @@ import { executeSetAccompanying } from './setAccompanying.js';
 import { executePromoteMobToFavorite } from './promoteMobToFavorite.js';
 import { executeSetRoomProfile } from './setRoomProfile.js';
 import { executeClearRoomProfile } from './clearRoomProfile.js';
+import { executeSetSubRoom } from './setSubRoom.js';
 
 export const actionRegistry = {
   character_join: executeCharacterJoin,
@@ -62,6 +63,7 @@ export const actionRegistry = {
   promote_mob_to_favorite: executePromoteMobToFavorite,
   set_room_profile: executeSetRoomProfile,
   clear_room_profile: executeClearRoomProfile,
+  set_sub_room: executeSetSubRoom,
 };
 
 export async function executeAction(action, execCtx) {

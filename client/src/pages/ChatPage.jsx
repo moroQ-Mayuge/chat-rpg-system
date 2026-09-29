@@ -127,7 +127,10 @@ function activeStatusIdSet(participants) {
 // instead of participant statuses. The two condition types combine with
 // AND (a command hidden by either one stays hidden); within one condition
 // type it's OR (any listed value matching is enough).
-function commandVisible(cmd, activeIds, currentRoomTemplateId) {
+// visible_when_sub_room_ids (0150/Stage 6): 同形式の第3の条件。サブ部屋の無い
+// 部屋・親部屋本体にいる時はcurrentSubRoomIdがnullになるので、そのコマンドは
+// 自然に「常に非表示」になる——「窓際でしか出せない」ようなコマンド向け。
+function commandVisible(cmd, activeIds, currentRoomTemplateId, currentSubRoomId) {
   const requiredStatusIds = (cmd.visible_when_status_ids ?? '')
     .split(',')
     .map((s) => s.trim())
@@ -141,6 +144,13 @@ function commandVisible(cmd, activeIds, currentRoomTemplateId) {
     .filter(Boolean)
     .map(Number);
   if (requiredRoomIds.length > 0 && !requiredRoomIds.includes(currentRoomTemplateId)) return false;
+
+  const requiredSubRoomIds = (cmd.visible_when_sub_room_ids ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number);
+  if (requiredSubRoomIds.length > 0 && (currentSubRoomId == null || !requiredSubRoomIds.includes(currentSubRoomId))) return false;
 
   return true;
 }
@@ -229,7 +239,7 @@ function isDisturbanceCommandVisible(cmd, od) {
   return (od.garmentOperations?.[field] ?? []).includes(style);
 }
 
-function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTemplateId, onKeywordSend, onOpenPanel }) {
+function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTemplateId, subRoomId, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
   const [openCategory, setOpenCategory] = useState(null);
   const [openSubcategory, setOpenSubcategory] = useState(null);
@@ -239,7 +249,7 @@ function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTem
   const mentionedIds = activeStatusIdSet(mentionedParticipant ? [mentionedParticipant] : []);
   const visibleCommands = commands.filter(
     (cmd) =>
-      commandVisible(cmd, cmd.category === UNDRESS_COMMAND_CATEGORY ? mentionedIds : anyPresentIds, roomTemplateId) &&
+      commandVisible(cmd, cmd.category === UNDRESS_COMMAND_CATEGORY ? mentionedIds : anyPresentIds, roomTemplateId, subRoomId) &&
       isDisturbanceCommandVisible(cmd, mentionedParticipant?.outfit_disturbance),
   );
 
@@ -1671,6 +1681,7 @@ export default function ChatPage() {
         participants={session.participants}
         mentionedParticipant={firstMentionedParticipant(mentionedNames, session.participants)}
         roomTemplateId={session.room_template_id}
+        subRoomId={session.sub_room_id}
         onKeywordSend={sendKeywordCommand}
         onOpenPanel={setItemPanel}
       />

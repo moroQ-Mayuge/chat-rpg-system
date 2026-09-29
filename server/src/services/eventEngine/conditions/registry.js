@@ -11,6 +11,7 @@ import { evaluateHasOutfit, matchingCharactersForHasOutfit } from './hasOutfit.j
 import { evaluateHasMoney } from './hasMoney.js';
 import { evaluateHasPose, matchingCharactersForHasPose } from './hasPose.js';
 import { evaluateRelationshipProbability, matchingCharactersForRelationshipProbability } from './relationshipProbability.js';
+import { evaluateInSubRoom } from './inSubRoom.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -26,6 +27,7 @@ export const conditionRegistry = {
   has_money: evaluateHasMoney,
   has_pose: evaluateHasPose,
   relationship_probability: evaluateRelationshipProbability,
+  in_sub_room: evaluateInSubRoom,
 };
 
 // Only condition types that can name a specific character contribute to

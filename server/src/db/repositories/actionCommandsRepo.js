@@ -29,6 +29,7 @@ export function createActionCommand({
   sub_subcategory,
   visible_when_status_ids,
   visible_when_room_template_ids,
+  visible_when_sub_room_ids,
   disturbance_target_field,
   disturbance_target_style,
 }) {
@@ -37,8 +38,8 @@ export function createActionCommand({
       `INSERT INTO action_commands
         (world_id, label, icon, command_type, keyword_text, sort_order, consumes_item, transfers_to_target,
          category, subcategory, sub_subcategory, visible_when_status_ids, visible_when_room_template_ids,
-         disturbance_target_field, disturbance_target_style)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         visible_when_sub_room_ids, disturbance_target_field, disturbance_target_style)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       world_id ?? null,
@@ -54,6 +55,7 @@ export function createActionCommand({
       sub_subcategory ?? '',
       visible_when_status_ids ?? '',
       visible_when_room_template_ids ?? '',
+      visible_when_sub_room_ids ?? '',
       disturbance_target_field ?? '',
       disturbance_target_style ?? '',
     );
@@ -76,6 +78,7 @@ export function updateActionCommand(
     sub_subcategory,
     visible_when_status_ids,
     visible_when_room_template_ids,
+    visible_when_sub_room_ids,
     disturbance_target_field,
     disturbance_target_style,
   },
@@ -84,7 +87,7 @@ export function updateActionCommand(
     `UPDATE action_commands
      SET world_id = ?, label = ?, icon = ?, command_type = ?, keyword_text = ?, sort_order = ?, consumes_item = ?, transfers_to_target = ?,
          category = ?, subcategory = ?, sub_subcategory = ?, visible_when_status_ids = ?, visible_when_room_template_ids = ?,
-         disturbance_target_field = ?, disturbance_target_style = ?
+         visible_when_sub_room_ids = ?, disturbance_target_field = ?, disturbance_target_style = ?
      WHERE id = ?`,
   ).run(
     world_id ?? null,
@@ -100,6 +103,7 @@ export function updateActionCommand(
     sub_subcategory ?? '',
     visible_when_status_ids ?? '',
     visible_when_room_template_ids ?? '',
+    visible_when_sub_room_ids ?? '',
     disturbance_target_field ?? '',
     disturbance_target_style ?? '',
     id,
