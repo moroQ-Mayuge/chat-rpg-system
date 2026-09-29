@@ -20,6 +20,12 @@ export function listAllItems() {
 // session (0071). A room nobody has explored yet offers nothing, which is the
 // point: the player has to look around first. The stock itself is permanent,
 // so picking something up only hides it until the next visit.
+// サブ部屋(0150/Stage 3)がある部屋では、プレイヤーの現在位置(rs.sub_room_id、
+// NULL=親直下)に対応する在庫だけを見せる——av側は0を「親直下」の番兵として
+// 使う(itemDiscovery.jsのsentinel()と同じ規約)ので、COALESCEで合わせる。
+// pickedはroom_session_id単位(位置非依存)——同じitem_idが複数の場所に
+// 「在庫」として存在する場合、どこで拾っても以後は全ての場所から消える
+// (アイテムは個数を持たない種別なので、既存の設計をそのまま踏襲した既知の割り切り)。
 export function listPickupItemsForSession(roomSessionId) {
   return db
     .prepare(
@@ -28,6 +34,7 @@ export function listPickupItemsForSession(roomSessionId) {
        JOIN playthrough_room_available_items av
          ON av.playthrough_id = rs.playthrough_id
         AND av.room_template_id = rs.room_template_id
+        AND av.sub_room_id = COALESCE(rs.sub_room_id, 0)
         AND av.item_id = i.id
         AND av.revealed = 1
        WHERE NOT EXISTS (

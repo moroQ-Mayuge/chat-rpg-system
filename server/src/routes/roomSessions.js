@@ -273,7 +273,7 @@ roomSessionsRouter.post('/:id/messages', (req, res) => {
   // (0073). Runs before the reply so the "見つけた" line lands ahead of the
   // model's narration.
   if (isExplorationInput(content, session)) {
-    for (const item of exploreRoom(session.playthrough_id, session.room_template_id)) {
+    for (const item of exploreRoom(session.playthrough_id, session.room_template_id, session.sub_room_id)) {
       const found = createMessage(req.params.id, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
       broadcast(req.params.id, { type: 'message_complete', message: found });
     }
@@ -373,7 +373,7 @@ roomSessionsRouter.get('/:id/shop-products', (req, res) => {
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   const world = getWorld(worldId);
   if (!session.room_is_shop || !world.currency_enabled) return res.json({ items: [], outfits: [] });
-  res.json(listShopProducts(worldId, session.room_template_id, session.playthrough_id));
+  res.json(listShopProducts(worldId, session.room_template_id, session.playthrough_id, session.sub_room_id));
 });
 
 roomSessionsRouter.post('/:id/buy-item', (req, res) => {
@@ -392,7 +392,7 @@ roomSessionsRouter.post('/:id/buy-item', (req, res) => {
   // 一般的な販売可否(buy_price)だけでなく、部屋のランダム品揃え設定(0120)による
   // 「今の棚」に実際に載っているかどうかも見る——ランダム表示を単なる見た目に
   // 終わらせず、載っていない物は買えないようにする。
-  const item = listShopProducts(worldId, session.room_template_id, session.playthrough_id).items.find(
+  const item = listShopProducts(worldId, session.room_template_id, session.playthrough_id, session.sub_room_id).items.find(
     (i) => i.id === Number(itemId),
   );
   if (!item) {
@@ -430,7 +430,7 @@ roomSessionsRouter.post('/:id/buy-outfit', (req, res) => {
 
   // buy-itemと同じ理由で、一般的な販売可否だけでなく現在の抽選済みラインナップ
   // (0120)に載っているかも見る。
-  const master = listShopProducts(worldId, session.room_template_id, session.playthrough_id).outfits.find(
+  const master = listShopProducts(worldId, session.room_template_id, session.playthrough_id, session.sub_room_id).outfits.find(
     (m) => m.id === Number(outfitMasterId),
   );
   if (!master) {
@@ -460,7 +460,7 @@ roomSessionsRouter.get('/:id/pickupable-outfits', (req, res) => {
   if (!session) return res.status(404).json({ error: 'not_found' });
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   if (session.room_outfit_acquisition_mode !== 'pickup') return res.json([]);
-  res.json(listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id));
+  res.json(listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id, session.sub_room_id));
 });
 
 roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
@@ -475,7 +475,7 @@ roomSessionsRouter.post('/:id/pickup-outfit', (req, res) => {
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(session.playthrough_id).world_id;
   // buy-outfitと同じ理由で、現在の抽選済みラインナップ(0120)に載っているかを見る。
-  const master = listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id).find(
+  const master = listPickupableOutfits(worldId, session.room_template_id, session.playthrough_id, session.sub_room_id).find(
     (m) => m.id === Number(outfitMasterId),
   );
   if (!master) {
@@ -1130,7 +1130,7 @@ async function generateReply(
       // Outside a shop this no longer hands the item over — it puts it within
       // reach, and the player takes it with 拾う (0072). Shops above are
       // unchanged: paying for something IS the hand-over.
-      const found = makeItemAvailable(session.playthrough_id, session.room_template_id, item.id);
+      const found = makeItemAvailable(session.playthrough_id, session.room_template_id, item.id, true, session.sub_room_id);
       if (!found) return; // 既にこの部屋で見つけてある
       const message = createMessage(sessionId, { sender_type: 'narration', content: `『${item.name}』を見つけた。` });
       broadcast(sessionId, { type: 'message_complete', message });

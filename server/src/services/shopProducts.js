@@ -1,8 +1,9 @@
 import { db } from '../db/connection.js';
-import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
+import { resolveEffectiveCandidateItemCategories } from '../db/repositories/roomItemCategoriesRepo.js';
 import { listItemsForWorld } from '../db/repositories/itemsRepo.js';
 import { listMastersForWorld } from '../db/repositories/outfitMastersRepo.js';
 import { getRoomTemplate } from '../db/repositories/roomTemplatesRepo.js';
+import { getSubRoom, resolveEffectiveCommerce } from '../db/repositories/roomSubRoomsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { countUserTurnsForPlaythrough } from '../db/repositories/messagesRepo.js';
 import { parseAttributeTags, tagsOverlap } from './attributeTagMatching.js';
@@ -38,21 +39,23 @@ function elapsedSince(unit, saved, current) {
 // その場で再抽選(今までのステートレスな挙動と同じ延長)。interval>0の時だけ、
 // 設定した単位(ターン/時間帯/日)で経過を判定し、経過が足りなければ前回の
 // 選出結果(pool内でまだ存在するものだけ)を使い回す。
-// pool: idを持つオブジェクトの配列。room: getRoomTemplateの戻り値。
-function resolveLineup(playthroughId, worldId, roomTemplateId, kind, pool, room) {
-  const min = room?.shop_lineup_min;
-  const max = room?.shop_lineup_max;
+// pool: idを持つオブジェクトの配列。commerce: resolveEffectiveCommerceの戻り値。
+// subRoomId(サブ部屋、0150/Stage 3): 探索キャッシュと同じ番兵運用(0=親直下、
+// itemDiscovery.jsのstockRoomIfUndiscoveredと合わせる)。
+function resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, kind, pool, commerce) {
+  const min = commerce.shop_lineup_min;
+  const max = commerce.shop_lineup_max;
   if (min == null || max == null) return pool;
 
-  const interval = room?.shop_lineup_refresh_interval ?? 0;
+  const interval = commerce.shop_lineup_refresh_interval ?? 0;
   if (interval <= 0) return pickRandomSubset(pool, min, max);
 
   const current = currentCheckpointValues(playthroughId, worldId);
   const saved = db
-    .prepare('SELECT * FROM playthrough_shop_lineups WHERE playthrough_id = ? AND room_template_id = ? AND kind = ?')
-    .get(playthroughId, roomTemplateId, kind);
+    .prepare('SELECT * FROM playthrough_shop_lineups WHERE playthrough_id = ? AND room_template_id = ? AND sub_room_id = ? AND kind = ?')
+    .get(playthroughId, roomTemplateId, subRoomId ?? 0, kind);
 
-  if (saved && elapsedSince(room.shop_lineup_refresh_unit, saved, current) < interval) {
+  if (saved && elapsedSince(commerce.shop_lineup_refresh_unit, saved, current) < interval) {
     const selectedIds = new Set(JSON.parse(saved.selected_ids));
     const stillEligible = pool.filter((entry) => selectedIds.has(entry.id));
     // 選出済みが削除等で全部プールから消えていない限り、抽選し直さずそのまま使う。
@@ -62,9 +65,9 @@ function resolveLineup(playthroughId, worldId, roomTemplateId, kind, pool, room)
   const chosen = pickRandomSubset(pool, min, max);
   db.prepare(
     `INSERT INTO playthrough_shop_lineups
-       (playthrough_id, room_template_id, kind, selected_ids, generated_at_day, generated_at_absolute_slot, generated_at_turn_count)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (playthrough_id, room_template_id, kind) DO UPDATE SET
+       (playthrough_id, room_template_id, sub_room_id, kind, selected_ids, generated_at_day, generated_at_absolute_slot, generated_at_turn_count)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (playthrough_id, room_template_id, sub_room_id, kind) DO UPDATE SET
        selected_ids = excluded.selected_ids,
        generated_at_day = excluded.generated_at_day,
        generated_at_absolute_slot = excluded.generated_at_absolute_slot,
@@ -72,6 +75,7 @@ function resolveLineup(playthroughId, worldId, roomTemplateId, kind, pool, room)
   ).run(
     playthroughId,
     roomTemplateId,
+    subRoomId ?? 0,
     kind,
     JSON.stringify(chosen.map((entry) => entry.id)),
     current.day,
@@ -85,16 +89,21 @@ function resolveLineup(playthroughId, worldId, roomTemplateId, kind, pool, room)
 // 同じ商品リストを引くための共通ロジック。片方だけ更新すると「UIでは買えるのに
 // 会話では売っていないと言われる」ような食い違いが起きるため、必ずここを経由する。
 //
-// アイテム: そのWorldの、room_template_item_categoriesで絞った候補カテゴリに
-// 属し、buy_priceが設定されているもの(既存ロジックをそのまま移設)。
+// アイテム: そのWorldの、部屋(またはサブ部屋、0150/Stage 3)の候補カテゴリで
+// 絞った候補に属し、buy_priceが設定されているもの(既存ロジックをそのまま移設)。
 // 衣装: そのWorldで使える衣装マスタのうち、buy_priceが設定されていて
-// is_not_for_saleでなく、部屋のoutfit_attribute_tagsと一致するもの。
-// outfit_attribute_tagsが空なら絞り込み無し(全て対象)。
-// 両方とも、部屋のshop_lineup_min/max/refresh_*設定に基づきresolveLineupで
+// is_not_for_saleでなく、実効的なoutfit_attribute_tags(サブ部屋の上書きが
+// あればそちら)と一致するもの。空なら絞り込み無し(全て対象)。
+// 両方とも、実効的なshop_lineup_min/max/refresh_*設定に基づきresolveLineupで
 // ランダムな一部だけに絞られる(未設定なら従来どおり全件)。
-export function listShopProducts(worldId, roomTemplateId, playthroughId) {
+//
+// subRoomId(任意): 現在位置がサブ部屋の時に渡す。渡さなければ親部屋の設定のみ
+// (従来どおりの挙動)。
+export function listShopProducts(worldId, roomTemplateId, playthroughId, subRoomId = null) {
   const room = getRoomTemplate(roomTemplateId);
-  const roomCandidateItemCategories = listCandidateCategoriesForRoom(roomTemplateId);
+  const subRoom = getSubRoom(subRoomId);
+  const commerce = resolveEffectiveCommerce(room, subRoom);
+  const roomCandidateItemCategories = resolveEffectiveCandidateItemCategories(roomTemplateId, subRoomId);
 
   const eligibleItems = listItemsForWorld(worldId).filter(
     (i) =>
@@ -102,7 +111,7 @@ export function listShopProducts(worldId, roomTemplateId, playthroughId) {
       (roomCandidateItemCategories.length === 0 || roomCandidateItemCategories.some((c) => c.id === i.category_id)),
   );
 
-  const requiredOutfitTags = parseAttributeTags(room?.outfit_attribute_tags);
+  const requiredOutfitTags = parseAttributeTags(commerce.outfit_attribute_tags);
   const eligibleOutfits = listMastersForWorld(worldId).filter(
     (m) =>
       m.buy_price != null &&
@@ -111,8 +120,8 @@ export function listShopProducts(worldId, roomTemplateId, playthroughId) {
   );
 
   return {
-    items: resolveLineup(playthroughId, worldId, roomTemplateId, 'item', eligibleItems, room),
-    outfits: resolveLineup(playthroughId, worldId, roomTemplateId, 'outfit', eligibleOutfits, room),
+    items: resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'item', eligibleItems, commerce),
+    outfits: resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'outfit', eligibleOutfits, commerce),
   };
 }
 
@@ -121,13 +130,15 @@ export function listShopProducts(worldId, roomTemplateId, playthroughId) {
 // (10000/500の一括補完でほぼ全衣装にbuy_priceが付いているが、pickupの可否とは
 // 別の話——非売品フラグだけが両経路に共通の除外条件)。
 // 品揃えのランダム化はlistShopProductsのoutfits側と同じ設定・同じ永続化行
-// (kind='outfit')を共有する——1部屋のoutfit_acquisition_modeは"shop"か
-// "pickup"のどちらか一方でしか有効にならないため、同時に競合しない。
-export function listPickupableOutfits(worldId, roomTemplateId, playthroughId) {
+// (kind='outfit')を共有する——1部屋(またはサブ部屋)のoutfit_acquisition_modeは
+// "shop"か"pickup"のどちらか一方でしか有効にならないため、同時に競合しない。
+export function listPickupableOutfits(worldId, roomTemplateId, playthroughId, subRoomId = null) {
   const room = getRoomTemplate(roomTemplateId);
-  const requiredOutfitTags = parseAttributeTags(room?.outfit_attribute_tags);
+  const subRoom = getSubRoom(subRoomId);
+  const commerce = resolveEffectiveCommerce(room, subRoom);
+  const requiredOutfitTags = parseAttributeTags(commerce.outfit_attribute_tags);
   const eligible = listMastersForWorld(worldId).filter(
     (m) => !m.is_not_for_sale && (requiredOutfitTags.length === 0 || tagsOverlap(parseAttributeTags(m.attribute_tags), requiredOutfitTags)),
   );
-  return resolveLineup(playthroughId, worldId, roomTemplateId, 'outfit', eligible, room);
+  return resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'outfit', eligible, commerce);
 }

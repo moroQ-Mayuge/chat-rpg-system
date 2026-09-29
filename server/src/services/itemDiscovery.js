@@ -1,72 +1,83 @@
 import { db } from '../db/connection.js';
 import { getItem } from '../db/repositories/itemsRepo.js';
-import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
+import { resolveEffectiveCandidateItemCategories } from '../db/repositories/roomItemCategoriesRepo.js';
 
 // 拾えるアイテムの「発見」まわり(0072)。部屋に入っただけでは何も見えず、
 // @周辺や「しらべる」で探索して初めて中身が分かる。
+//
+// subRoomId(サブ部屋、0150/Stage 3): 全関数で任意引数。渡すとそのサブ部屋
+// 専用の探索状態を持つ(店ごとに発見済み/品揃えが独立する)。SQLite側のUNIQUE
+// 制約がNULL同士を別行として扱う(=ON CONFLICTが効かなくなる)ため、DB上は
+// null/undefinedを0(親直下を表す番兵、room_sub_rooms.idは1から始まるので
+// 衝突しない)に読み替える。
 
 // 発見時に常設化する件数。候補がこれ未満なら全件。
 const MIN_DISCOVERED = 3;
 const MAX_DISCOVERED = 5;
 
-export function isRoomDiscovered(playthroughId, roomTemplateId) {
+function sentinel(subRoomId) {
+  return subRoomId ?? 0;
+}
+
+export function isRoomDiscovered(playthroughId, roomTemplateId, subRoomId = null) {
   return Boolean(
     db
-      .prepare('SELECT 1 FROM playthrough_room_discoveries WHERE playthrough_id = ? AND room_template_id = ?')
-      .get(playthroughId, roomTemplateId),
+      .prepare('SELECT 1 FROM playthrough_room_discoveries WHERE playthrough_id = ? AND room_template_id = ? AND sub_room_id = ?')
+      .get(playthroughId, roomTemplateId, sentinel(subRoomId)),
   );
 }
 
-// その部屋で拾える状態にする。既にavailableなら何もしない(nullを返す)ので、
-// 呼び出し側は戻り値が非nullの時だけ「見つけた」を出せばよい。
+// その部屋(またはサブ部屋)で拾える状態にする。既にavailableなら何もしない
+// (nullを返す)ので、呼び出し側は戻り値が非nullの時だけ「見つけた」を出せばよい。
 // revealed=1 は即公開(ITEM_GRANT・イベント経由)、0 は探索で1つずつ出す抽選分。
-export function makeItemAvailable(playthroughId, roomTemplateId, itemId, revealed = true) {
+export function makeItemAvailable(playthroughId, roomTemplateId, itemId, revealed = true, subRoomId = null) {
   const existing = db
     .prepare(
-      'SELECT 1 FROM playthrough_room_available_items WHERE playthrough_id = ? AND room_template_id = ? AND item_id = ?',
+      'SELECT 1 FROM playthrough_room_available_items WHERE playthrough_id = ? AND room_template_id = ? AND sub_room_id = ? AND item_id = ?',
     )
-    .get(playthroughId, roomTemplateId, itemId);
+    .get(playthroughId, roomTemplateId, sentinel(subRoomId), itemId);
   if (existing) return null;
   db.prepare(
-    'INSERT INTO playthrough_room_available_items (playthrough_id, room_template_id, item_id, revealed) VALUES (?, ?, ?, ?)',
-  ).run(playthroughId, roomTemplateId, itemId, revealed ? 1 : 0);
+    'INSERT INTO playthrough_room_available_items (playthrough_id, room_template_id, sub_room_id, item_id, revealed) VALUES (?, ?, ?, ?, ?)',
+  ).run(playthroughId, roomTemplateId, sentinel(subRoomId), itemId, revealed ? 1 : 0);
   return getItem(itemId);
 }
 
-// 探索1回につき見つかるのは1つだけ。初回の探索でその部屋の顔ぶれ(3〜5件)を
-// 抽選して未公開で仕込み、以降は調べるたびに1件ずつ公開していく。抽選自体は
-// 1度きりなので、「あの部屋にはあれがある」は変わらない。
+// 探索1回につき見つかるのは1つだけ。初回の探索でその部屋(またはサブ部屋)の
+// 顔ぶれ(3〜5件)を抽選して未公開で仕込み、以降は調べるたびに1件ずつ公開していく。
+// 抽選自体は1度きりなので、「あの部屋にはあれがある」は変わらない。
 // 戻り値は今回見つかったアイテム(0件か1件) — 呼び出し側がそのぶん「見つけた」を出す。
-export function exploreRoom(playthroughId, roomTemplateId) {
-  stockRoomIfUndiscovered(playthroughId, roomTemplateId);
+export function exploreRoom(playthroughId, roomTemplateId, subRoomId = null) {
+  stockRoomIfUndiscovered(playthroughId, roomTemplateId, subRoomId);
 
   const next = db
     .prepare(
       `SELECT item_id FROM playthrough_room_available_items
-       WHERE playthrough_id = ? AND room_template_id = ? AND revealed = 0
+       WHERE playthrough_id = ? AND room_template_id = ? AND sub_room_id = ? AND revealed = 0
        ORDER BY id ASC LIMIT 1`,
     )
-    .get(playthroughId, roomTemplateId);
+    .get(playthroughId, roomTemplateId, sentinel(subRoomId));
   if (!next) return [];
 
   db.prepare(
-    'UPDATE playthrough_room_available_items SET revealed = 1 WHERE playthrough_id = ? AND room_template_id = ? AND item_id = ?',
-  ).run(playthroughId, roomTemplateId, next.item_id);
+    'UPDATE playthrough_room_available_items SET revealed = 1 WHERE playthrough_id = ? AND room_template_id = ? AND sub_room_id = ? AND item_id = ?',
+  ).run(playthroughId, roomTemplateId, sentinel(subRoomId), next.item_id);
   return [getItem(next.item_id)];
 }
 
-// 部屋の顔ぶれの抽選。未公開(revealed=0)で入れておき、exploreRoomが1つずつ
-// 公開する。既に探索済みの部屋では何もしない。
-function stockRoomIfUndiscovered(playthroughId, roomTemplateId) {
-  if (isRoomDiscovered(playthroughId, roomTemplateId)) return [];
+// 部屋(またはサブ部屋)の顔ぶれの抽選。未公開(revealed=0)で入れておき、
+// exploreRoomが1つずつ公開する。既に探索済みなら何もしない。
+function stockRoomIfUndiscovered(playthroughId, roomTemplateId, subRoomId = null) {
+  if (isRoomDiscovered(playthroughId, roomTemplateId, subRoomId)) return [];
 
-  db.prepare('INSERT INTO playthrough_room_discoveries (playthrough_id, room_template_id) VALUES (?, ?)').run(
+  db.prepare('INSERT INTO playthrough_room_discoveries (playthrough_id, room_template_id, sub_room_id) VALUES (?, ?, ?)').run(
     playthroughId,
     roomTemplateId,
+    sentinel(subRoomId),
   );
 
   const worldId = db.prepare('SELECT world_id FROM playthroughs WHERE id = ?').get(playthroughId)?.world_id;
-  const categoryIds = listCandidateCategoriesForRoom(roomTemplateId).map((c) => c.id);
+  const categoryIds = resolveEffectiveCandidateItemCategories(roomTemplateId, subRoomId).map((c) => c.id);
   if (categoryIds.length === 0) return [];
 
   // 抽選元はitemsの二層スコープ(共通＋自World)に従う — listItemsForWorldと同じ。
@@ -83,13 +94,15 @@ function stockRoomIfUndiscovered(playthroughId, roomTemplateId) {
   const target = MIN_DISCOVERED + Math.floor(Math.random() * (MAX_DISCOVERED - MIN_DISCOVERED + 1));
   const chosen = shuffled.slice(0, Math.min(target, shuffled.length));
 
-  return chosen.map((item) => makeItemAvailable(playthroughId, roomTemplateId, item.id, false)).filter(Boolean);
+  return chosen.map((item) => makeItemAvailable(playthroughId, roomTemplateId, item.id, false, subRoomId)).filter(Boolean);
 }
 
 // 部屋ごとに「セッション毎にアイテムをリセットする」を選べるようにする
 // (不具合報告2026-08-06項目3)。ONの部屋では新しい部屋セッションが作られる
 // たびに永続プール(available_items/discoveries)をまとめて消し、
 // isRoomDiscoveredを「未探索」に戻す——次の探索で改めて3〜5件が抽選される。
+// sub_room_idで絞らず部屋全体(全サブ部屋分)を一括で消す——部屋への新規入室は
+// その部屋のどこであれ「初めまして」の状態に戻すのが自然なため。
 // 売店(is_shop)はそもそもこれらのテーブルを使わないため対象外(何もしない)。
 export function resetRoomItemsIfEnabled(playthroughId, roomTemplateId) {
   const template = db.prepare('SELECT reset_items_per_session FROM room_templates WHERE id = ?').get(roomTemplateId);

@@ -109,6 +109,14 @@ export default function RoomTemplateEditPage() {
         atmosphere_tags: tagsToArray(s.atmosphere_tags),
         background_image_path: s.background_image_path ?? '',
         enter_movement_cost: s.enter_movement_cost ?? 0,
+        is_shop: s.is_shop == null ? null : Boolean(s.is_shop),
+        outfit_acquisition_mode: s.outfit_acquisition_mode ?? '',
+        outfit_attribute_tags: tagsToArray(s.outfit_attribute_tags),
+        shop_lineup_min: s.shop_lineup_min ?? '',
+        shop_lineup_max: s.shop_lineup_max ?? '',
+        shop_lineup_refresh_unit: s.shop_lineup_refresh_unit ?? '',
+        shop_lineup_refresh_interval: s.shop_lineup_refresh_interval ?? '',
+        item_category_ids: s.item_category_ids ?? [],
       })),
       prop_category_ids: existing.candidate_prop_categories.map((c) => c.id),
       item_category_ids: existing.candidate_item_categories.map((c) => c.id),
@@ -180,6 +188,15 @@ export default function RoomTemplateEditPage() {
           atmosphere_tags: [],
           background_image_path: '',
           enter_movement_cost: 0,
+          // 商取引の上書き(Stage 3)。null/空=部屋本体を継承。
+          is_shop: null,
+          outfit_acquisition_mode: '',
+          outfit_attribute_tags: [],
+          shop_lineup_min: '',
+          shop_lineup_max: '',
+          shop_lineup_refresh_unit: '',
+          shop_lineup_refresh_interval: '',
+          item_category_ids: [],
         },
       ],
     }));
@@ -217,6 +234,22 @@ export default function RoomTemplateEditPage() {
     const result = await roomTemplatesApi.uploadSubRoomBackgroundImage(id, file);
     updateSubRoom(index, { background_image_path: result.background_image_path });
     e.target.value = '';
+  }
+
+  function toggleSubRoomItemCategory(index, categoryId) {
+    setForm((f) => ({
+      ...f,
+      sub_rooms: f.sub_rooms.map((s, i) =>
+        i === index
+          ? {
+              ...s,
+              item_category_ids: s.item_category_ids.includes(categoryId)
+                ? s.item_category_ids.filter((id2) => id2 !== categoryId)
+                : [...s.item_category_ids, categoryId],
+            }
+          : s,
+      ),
+    }));
   }
 
   function toggleCategory(categoryId) {
@@ -268,6 +301,14 @@ export default function RoomTemplateEditPage() {
         atmosphere_tags: tagsToText(s.atmosphere_tags),
         background_image_path: s.background_image_path,
         enter_movement_cost: Number(s.enter_movement_cost) || 0,
+        is_shop: s.is_shop,
+        outfit_acquisition_mode: s.outfit_acquisition_mode || null,
+        outfit_attribute_tags: tagsToText(s.outfit_attribute_tags),
+        shop_lineup_min: s.shop_lineup_min === '' ? null : Number(s.shop_lineup_min),
+        shop_lineup_max: s.shop_lineup_max === '' ? null : Number(s.shop_lineup_max),
+        shop_lineup_refresh_unit: s.shop_lineup_refresh_unit || null,
+        shop_lineup_refresh_interval: s.shop_lineup_refresh_interval === '' ? null : Number(s.shop_lineup_refresh_interval),
+        item_category_ids: s.item_category_ids,
       })),
       prop_category_ids: form.prop_category_ids,
       item_category_ids: form.item_category_ids,
@@ -765,6 +806,106 @@ export default function RoomTemplateEditPage() {
                     {sub.background_image_path && (
                       <button onClick={() => updateSubRoom(i, { background_image_path: '' })}>画像を外す</button>
                     )}
+                  </div>
+
+                  <p style={{ fontSize: 11, color: '#888', margin: '8px 0 2px', borderTop: '1px solid #eee', paddingTop: 6 }}>
+                    商取引の上書き（未設定なら部屋本体のまま。「この店は食料しか置かない」のような店ごとの違いを表現できます）
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12 }}>
+                    <select
+                      value={sub.is_shop == null ? 'inherit' : sub.is_shop ? 'true' : 'false'}
+                      onChange={(e) =>
+                        updateSubRoom(i, { is_shop: e.target.value === 'inherit' ? null : e.target.value === 'true' })
+                      }
+                    >
+                      <option value="inherit">買い物: 部屋本体のまま</option>
+                      <option value="true">買い物: できる</option>
+                      <option value="false">買い物: できない</option>
+                    </select>
+                    <select
+                      value={sub.outfit_acquisition_mode}
+                      onChange={(e) => updateSubRoom(i, { outfit_acquisition_mode: e.target.value })}
+                    >
+                      <option value="">衣装入手: 部屋本体のまま</option>
+                      <option value="none">衣装入手: なし</option>
+                      <option value="shop">衣装入手: 購入</option>
+                      <option value="pickup">衣装入手: 拾う</option>
+                    </select>
+                  </div>
+                  {(sub.is_shop || sub.outfit_acquisition_mode) && (
+                    <>
+                      <p style={{ fontSize: 11, color: '#888', margin: '4px 0 2px' }}>
+                        衣装の属性キー絞り込み（空欄なら部屋本体のまま）
+                      </p>
+                      <TagChips
+                        tags={sub.outfit_attribute_tags}
+                        onChange={(tags) => updateSubRoom(i, { outfit_attribute_tags: tags })}
+                        placeholder="+ 属性キーを追加"
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12 }}>
+                        <span>品揃え数（空欄なら部屋本体のまま）</span>
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: 48 }}
+                          placeholder="最小"
+                          value={sub.shop_lineup_min}
+                          onChange={(e) => updateSubRoom(i, { shop_lineup_min: e.target.value })}
+                        />
+                        〜
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: 48 }}
+                          placeholder="最大"
+                          value={sub.shop_lineup_max}
+                          onChange={(e) => updateSubRoom(i, { shop_lineup_max: e.target.value })}
+                        />
+                        <select
+                          value={sub.shop_lineup_refresh_unit}
+                          onChange={(e) => updateSubRoom(i, { shop_lineup_refresh_unit: e.target.value })}
+                        >
+                          <option value="">更新周期: 部屋本体のまま</option>
+                          <option value="turn">ターン毎</option>
+                          <option value="time_slot">時間帯毎</option>
+                          <option value="day">日毎</option>
+                        </select>
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: 48 }}
+                          placeholder="間隔"
+                          value={sub.shop_lineup_refresh_interval}
+                          onChange={(e) => updateSubRoom(i, { shop_lineup_refresh_interval: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <p style={{ fontSize: 11, color: '#888', margin: '4px 0 2px' }}>
+                    入手可能アイテムカテゴリの上書き（未選択なら部屋本体のカテゴリをそのまま使う。1つでも選ぶと完全に上書き）
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {itemCategories?.map((cat) => (
+                      <label
+                        key={cat.id}
+                        style={{
+                          fontSize: 12,
+                          padding: '2px 7px',
+                          borderRadius: 999,
+                          border: '1px solid #ccc',
+                          background: sub.item_category_ids.includes(cat.id) ? '#dbeafe' : 'transparent',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          style={{ marginRight: 4 }}
+                          checked={sub.item_category_ids.includes(cat.id)}
+                          onChange={() => toggleSubRoomItemCategory(i, cat.id)}
+                        />
+                        {cat.name}
+                      </label>
+                    ))}
                   </div>
                 </div>
               ))}

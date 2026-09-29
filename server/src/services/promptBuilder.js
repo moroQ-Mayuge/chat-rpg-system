@@ -12,7 +12,7 @@ import { getUndressStateLines } from './undressState.js';
 import { withDisambiguatedNames, participantBaseName } from './participantNaming.js';
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { composeCharacterIdentity } from './characterIdentity.js';
-import { listCandidateCategoriesForRoom } from '../db/repositories/roomItemCategoriesRepo.js';
+import { resolveEffectiveCandidateItemCategories } from '../db/repositories/roomItemCategoriesRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listShopProducts } from './shopProducts.js';
@@ -187,8 +187,11 @@ function buildSystemPrompt(session, participants, options = {}) {
   // what "what does this shop stock" also needs) -- either mode restricts
   // ITEM_GRANT to the room's own categories instead of the World's full list.
   const isShopMode = Boolean(session.room_is_shop) && world.currency_enabled;
+  // サブ部屋(0150/Stage 3)があればその候補(上書き)、無ければ部屋本体のものを使う。
   const roomCandidateItemCategories =
-    options.isSurroundingsCheck || isShopMode ? listCandidateCategoriesForRoom(session.room_template_id) : [];
+    options.isSurroundingsCheck || isShopMode
+      ? resolveEffectiveCandidateItemCategories(session.room_template_id, session.sub_room_id)
+      : [];
   const itemCategoryNames = (
     roomCandidateItemCategories.length > 0 ? roomCandidateItemCategories : listCategoriesForWorld(worldId)
   ).map((c) => c.name);
@@ -361,7 +364,12 @@ function buildSystemPrompt(session, participants, options = {}) {
   // for something chat insists isn't for sale, or vice versa.
   let shopBlock = null;
   if (isShopMode) {
-    const { items: shopProducts, outfits: outfitProducts } = listShopProducts(worldId, session.room_template_id, session.playthrough_id);
+    const { items: shopProducts, outfits: outfitProducts } = listShopProducts(
+      worldId,
+      session.room_template_id,
+      session.playthrough_id,
+      session.sub_room_id,
+    );
     const money = getMoney(session.playthrough_id);
     const productLines =
       shopProducts.length > 0

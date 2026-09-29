@@ -318,7 +318,11 @@ export function getActiveSessionForPlaythrough(playthroughId) {
 export function getRoomSession(id) {
   const row = db
     .prepare(
-      `SELECT rs.*, COALESCE(NULLIF(sr.background_image_path, ''), rt.background_image_path) AS room_background_image_path, rt.is_place AS room_is_place, rt.is_shop AS room_is_shop, rt.outfit_acquisition_mode AS room_outfit_acquisition_mode, gi.file_path AS current_scene_image_path
+      // is_shop/outfit_acquisition_modeはサブ部屋(0150/Stage 3)側がNULLなら親を継承
+      // (roomSubRoomsRepo.jsのresolveEffectiveCommerceと同じ規約)。outfit_attribute_tags等
+      // 細かい商取引設定はここでは持たず、必要な箇所(shopProducts.js)がsub_room_idを
+      // 渡して都度resolveEffectiveCommerceを呼ぶ。
+      `SELECT rs.*, COALESCE(NULLIF(sr.background_image_path, ''), rt.background_image_path) AS room_background_image_path, rt.is_place AS room_is_place, COALESCE(sr.is_shop, rt.is_shop) AS room_is_shop, COALESCE(NULLIF(sr.outfit_acquisition_mode, ''), rt.outfit_acquisition_mode) AS room_outfit_acquisition_mode, gi.file_path AS current_scene_image_path
        FROM room_sessions rs
        JOIN room_templates rt ON rt.id = rs.room_template_id
        LEFT JOIN room_sub_rooms sr ON sr.id = rs.sub_room_id
