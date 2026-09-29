@@ -44,6 +44,9 @@ export default function RoomWorldConfigPage() {
   const [assignments, setAssignments] = useState(null);
   const [propIds, setPropIds] = useState(null);
   const [freeProps, setFreeProps] = useState(null);
+  // サブ部屋(0150/Stage 4)ごとの追加設備。{ [sub_room_id]: {propIds, freeProps} }、
+  // 触った分だけ保持(propIds/freePropsと同じ「未タッチはconfigを都度読む」方式)。
+  const [subRoomPropEdits, setSubRoomPropEdits] = useState({});
   const [tagMatchMaxCount, setTagMatchMaxCount] = useState(undefined); // undefined = follow config
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
   const [newConnectionLabel, setNewConnectionLabel] = useState('');
@@ -79,6 +82,25 @@ export default function RoomWorldConfigPage() {
 
   const candidateCategoryIds = new Set(config.candidate_prop_categories.map((c) => c.id));
   const candidateProps = allProps.filter((p) => candidateCategoryIds.has(p.category_id));
+
+  // サブ部屋は部屋マスタ側の候補カテゴリをそのまま使う(サブ部屋ごとの候補カテゴリ
+  // 上書きは無い——Stage3の商取引と違い、設備は「親の中の一角」という位置づけのため)。
+  function currentSubRoomProps(subRoomId) {
+    if (subRoomPropEdits[subRoomId]) return subRoomPropEdits[subRoomId];
+    const saved = config.sub_room_props?.find((s) => s.sub_room_id === subRoomId);
+    return { propIds: saved?.props.map((p) => p.id) ?? [], freeProps: saved?.free_props.map((p) => p.description) ?? [] };
+  }
+
+  function toggleSubRoomProp(subRoomId, propId) {
+    const current = currentSubRoomProps(subRoomId);
+    const propIds = current.propIds.includes(propId) ? current.propIds.filter((i) => i !== propId) : [...current.propIds, propId];
+    setSubRoomPropEdits({ ...subRoomPropEdits, [subRoomId]: { ...current, propIds } });
+  }
+
+  function setSubRoomFreeProps(subRoomId, tags) {
+    const current = currentSubRoomProps(subRoomId);
+    setSubRoomPropEdits({ ...subRoomPropEdits, [subRoomId]: { ...current, freeProps: tags } });
+  }
 
   function addAssignmentRow(slotId) {
     const firstCharacterId = characters[0]?.id;
@@ -122,11 +144,16 @@ export default function RoomWorldConfigPage() {
       })),
       prop_ids: currentPropIds,
       free_props: currentFreeProps,
+      sub_room_props: (config.sub_rooms ?? []).map((sub) => {
+        const current = currentSubRoomProps(sub.id);
+        return { sub_room_id: sub.id, prop_ids: current.propIds, free_props: current.freeProps };
+      }),
       tag_match_max_count: currentTagMatchMaxCount,
     });
     setAssignments(null);
     setPropIds(null);
     setFreeProps(null);
+    setSubRoomPropEdits({});
     setTagMatchMaxCount(undefined);
   }
 
@@ -325,6 +352,56 @@ export default function RoomWorldConfigPage() {
               placeholder="自由記述で追加（画像生成には未反映）"
             />
           </div>
+
+          {(config.sub_rooms ?? []).length > 0 && (
+            <div>
+              <p style={{ marginBottom: 4 }}>サブ部屋ごとの追加設備</p>
+              <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
+                上の「設備・機材」（部屋全体の備え付け）に加えて、そのサブ部屋にいる時だけ追加で見える設備・物です。
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {config.sub_rooms.map((sub) => {
+                  const current = currentSubRoomProps(sub.id);
+                  return (
+                    <div key={sub.id} style={{ border: '1px solid #eee', borderRadius: 6, padding: 6 }}>
+                      <p style={{ fontSize: 12, fontWeight: 500, margin: '0 0 4px' }}>{sub.name || '（無題のサブ部屋）'}</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                        {candidateProps.map((prop) => (
+                          <label
+                            key={prop.id}
+                            style={{
+                              fontSize: 12,
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              border: '1px solid #ccc',
+                              background: current.propIds.includes(prop.id) ? '#dbeafe' : 'transparent',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              style={{ marginRight: 4 }}
+                              checked={current.propIds.includes(prop.id)}
+                              onChange={() => toggleSubRoomProp(sub.id, prop.id)}
+                            />
+                            {prop.name}
+                          </label>
+                        ))}
+                        {candidateProps.length === 0 && (
+                          <p style={{ fontSize: 12, color: '#888' }}>候補カテゴリに属する設備・機材がありません</p>
+                        )}
+                      </div>
+                      <TagChips
+                        tags={current.freeProps}
+                        onChange={(tags) => setSubRoomFreeProps(sub.id, tags)}
+                        placeholder="自由記述で追加（画像生成には未反映）"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {config.is_place && (
             <div style={{ borderTop: '1px solid #ddd', paddingTop: 10 }}>

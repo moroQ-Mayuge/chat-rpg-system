@@ -91,6 +91,13 @@ export function detachRoomFromWorld(worldId, roomTemplateId) {
     ).run(worldId, roomTemplateId);
     db.prepare('DELETE FROM world_room_props WHERE world_id = ? AND room_template_id = ?').run(worldId, roomTemplateId);
     db.prepare('DELETE FROM world_room_free_props WHERE world_id = ? AND room_template_id = ?').run(worldId, roomTemplateId);
+    // サブ部屋(0150/Stage 4)固有の小物もこのWorldの設定として一緒に消す。
+    db.prepare(
+      'DELETE FROM world_sub_room_props WHERE world_id = ? AND sub_room_id IN (SELECT id FROM room_sub_rooms WHERE room_template_id = ?)',
+    ).run(worldId, roomTemplateId);
+    db.prepare(
+      'DELETE FROM world_sub_room_free_props WHERE world_id = ? AND sub_room_id IN (SELECT id FROM room_sub_rooms WHERE room_template_id = ?)',
+    ).run(worldId, roomTemplateId);
     db.prepare(
       'DELETE FROM room_connections WHERE world_id = ? AND (from_room_template_id = ? OR to_room_template_id = ?)',
     ).run(worldId, roomTemplateId, roomTemplateId);

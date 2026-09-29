@@ -21,6 +21,7 @@ import {
 } from '../db/repositories/worldRoomTemplatesRepo.js';
 import { replaceAssignmentsForSlot } from '../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { replacePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
+import { replacePropsForWorldSubRoom } from '../db/repositories/worldSubRoomPropsRepo.js';
 import { generateRoomBackgroundImage } from '../services/roomBackgroundImageGenerator.js';
 import { enqueueImageJob } from '../services/imageQueue.js';
 import { listConnectionsFrom, createConnection } from '../db/repositories/roomConnectionsRepo.js';
@@ -118,6 +119,13 @@ roomTemplatesRouter.put('/:id/worlds/:worldId/config', (req, res) => {
     propIds: req.body.prop_ids ?? [],
     freeProps: (req.body.free_props ?? []).map((p) => (typeof p === 'string' ? p : p.description)),
   });
+  // サブ部屋(0150/Stage 4)ごとの追加設備。[{sub_room_id, prop_ids, free_props}]。
+  for (const entry of req.body.sub_room_props ?? []) {
+    replacePropsForWorldSubRoom(worldId, entry.sub_room_id, {
+      propIds: entry.prop_ids ?? [],
+      freeProps: (entry.free_props ?? []).map((p) => (typeof p === 'string' ? p : p.description)),
+    });
+  }
   res.json(getRoomTemplateForWorld(roomTemplateId, worldId));
 });
 

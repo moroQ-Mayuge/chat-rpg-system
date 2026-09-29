@@ -9,6 +9,7 @@ import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureT
 import { getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
+import { resolveEffectivePropsForRoom } from '../db/repositories/worldSubRoomPropsRepo.js';
 
 export const MAIN_WIDTH = 1216;
 export const MAIN_HEIGHT = 832;
@@ -57,14 +58,10 @@ export function buildSceneTagParts(session, participants) {
   const playthrough = getPlaythrough(session.playthrough_id);
   const worldId = playthrough.world_id;
   const world = getWorld(worldId);
-  const propTags = db
-    .prepare(
-      `SELECT p.danbooru_tags FROM world_room_props wrp
-       JOIN props p ON p.id = wrp.prop_id
-       WHERE wrp.world_id = ? AND wrp.room_template_id = ?`,
-    )
-    .all(worldId, template.id)
-    .map((r) => r.danbooru_tags)
+  // サブ部屋(0150/Stage 4)にいる間は、親部屋の備え付け設備＋そのサブ部屋固有の
+  // 追加分を合算する(resolveEffectivePropsForRoom、promptBuilder.jsの@周辺モードと同じ解決)。
+  const propTags = resolveEffectivePropsForRoom(worldId, template.id, session.sub_room_id)
+    .props.map((p) => p.danbooru_tags)
     .filter(Boolean)
     .join(', ');
 

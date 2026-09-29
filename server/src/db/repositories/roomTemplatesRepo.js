@@ -10,6 +10,7 @@ import {
 import { listWorldsForRoomTemplate, getTagMatchMaxCount, attachRoomToWorld } from './worldRoomTemplatesRepo.js';
 import { listAssignmentsForWorldRoom } from './worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom } from './worldRoomPropsRepo.js';
+import { listPropsForWorldSubRoom, listFreePropsForWorldSubRoom } from './worldSubRoomPropsRepo.js';
 import { getUnassignedWorld } from './worldsRepo.js';
 
 // Rooms are shared master data (see 0030_room_world_decoupling.sql): a room
@@ -53,6 +54,13 @@ export function getRoomTemplateForWorld(roomTemplateId, worldId) {
     slot_assignments: listAssignmentsForWorldRoom(worldId, roomTemplateId),
     props: listPropsForWorldRoom(worldId, roomTemplateId),
     free_props: listFreePropsForWorldRoom(worldId, roomTemplateId),
+    // サブ部屋(0150/Stage 4)ごとのこのWorldでの追加設備。親の設備(上記props/free_props)
+    // に対する追加分であることをRoomWorldConfigPage.jsx側で明示する。
+    sub_room_props: master.sub_rooms.map((sub) => ({
+      sub_room_id: sub.id,
+      props: listPropsForWorldSubRoom(worldId, sub.id),
+      free_props: listFreePropsForWorldSubRoom(worldId, sub.id),
+    })),
     connections: db
       .prepare(
         `SELECT rc.*, rt.name AS to_room_name

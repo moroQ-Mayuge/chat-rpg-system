@@ -13,7 +13,7 @@ import { withDisambiguatedNames, participantBaseName } from './participantNaming
 import { getTransformation } from '../db/repositories/characterTransformationsRepo.js';
 import { composeCharacterIdentity } from './characterIdentity.js';
 import { resolveEffectiveCandidateItemCategories } from '../db/repositories/roomItemCategoriesRepo.js';
-import { listPropsForWorldRoom, listFreePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
+import { resolveEffectivePropsForRoom } from '../db/repositories/worldSubRoomPropsRepo.js';
 import { getWorld } from '../db/repositories/worldsRepo.js';
 import { listShopProducts } from './shopProducts.js';
 import { listInventoryForPlaythrough } from '../db/repositories/inventoryRepo.js';
@@ -344,8 +344,11 @@ function buildSystemPrompt(session, participants, options = {}) {
   // at all, so without this the model has no way to know they exist.
   let surroundingsBlock = null;
   if (options.isSurroundingsCheck) {
-    const props = listPropsForWorldRoom(worldId, session.room_template_id).map((p) => p.name);
-    const freeProps = listFreePropsForWorldRoom(worldId, session.room_template_id).map((p) => p.description);
+    // サブ部屋(0150/Stage 4)にいる間は、親部屋の備え付け設備＋そのサブ部屋固有の
+    // 追加分を合算して見せる(resolveEffectivePropsForRoom)。
+    const effectiveProps = resolveEffectivePropsForRoom(worldId, session.room_template_id, session.sub_room_id);
+    const props = effectiveProps.props.map((p) => p.name);
+    const freeProps = effectiveProps.free_props.map((p) => p.description);
     const discoverable = [...props, ...freeProps];
     surroundingsBlock =
       discoverable.length > 0
