@@ -1046,13 +1046,17 @@ async function generateReply(
       // hallucination) -- ignore it outright when the World has this off.
       if (!world.scene_change_enabled) return;
       broadcast(sessionId, { type: 'scene_change_detected', description: parsed.description });
-      enqueueImageJob(() => generateSceneImage(sessionId, parsed.description));
 
       // サブ部屋(0150/Stage 7): 部屋にサブ部屋があり、説明文が既存のサブ部屋名を
-      // 指していれば、自由記述の上書き(上のgenerateSceneImage)に加えて、位置そのもの
-      // をそのサブ部屋へ切り替える——次ターン以降の同席判定・elsewhere表示・商取引の
-      // 上書き等、構造化された位置に依存する全ての仕組みに反映させるため。一致しなければ
-      // 位置は変えず、従来どおり自由記述の上書きだけが効く。
+      // 指していれば、自由記述の上書きの代わりに位置そのものをそのサブ部屋へ切り替える
+      // ——次ターン以降の同席判定・elsewhere表示・商取引の上書き等、構造化された位置に
+      // 依存する全ての仕組みに反映させるため。切り替えた場合は下のgenerateSceneImage
+      // (自由記述をcurrent_location_text/tagsへ丸ごと書き込み、AI生成した場面画像で
+      // room_background_image_pathを覆ってしまう)を実行しない——switchSubRoomが既に
+      // サブ部屋の作り込み済みの場所文・雰囲気文・背景画像(あれば)を正しくスナップショット
+      // 済みで、そちらの方が信頼できる情報源のため(ボタンでの手動移動と同じ結果にする)。
+      // 一致しなければ位置は変えず、従来どおり自由記述の上書き(画像生成込み)だけが効く。
+      let matchedSubRoom = null;
       if ((session.sub_rooms?.length ?? 0) > 0) {
         const matched = matchSubRoomByDescription(session.sub_rooms, parsed.description);
         if (matched && matched.id !== (session.sub_room_id ?? null)) {
@@ -1067,10 +1071,14 @@ async function generateReply(
             .filter((id) => id != null);
           try {
             switchSubRoom(sessionId, matched.id, { companionRowIds });
+            matchedSubRoom = matched;
           } catch (err) {
             console.error('SCENE_CHANGE sub-room switch failed:', err);
           }
         }
+      }
+      if (!matchedSubRoom) {
+        enqueueImageJob(() => generateSceneImage(sessionId, parsed.description));
       }
       return;
     }
