@@ -1083,7 +1083,7 @@ export default function CharactersPage() {
                 <div style={{ marginBottom: 16 }}>
                   <p style={{ fontSize: 13, fontWeight: 500 }}>ネガティブプロンプト（このキャラ固有）</p>
                   <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
-                    kind別デフォルト・衣装側の値と連結されます（上書きではなく加算）。
+                    設定画面の画像の種類ごとのネガティブプロンプト・衣装側の値と連結されます（上書きではなく加算）。
                   </p>
                   <textarea
                     style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
@@ -1204,7 +1204,7 @@ export default function CharactersPage() {
                         </div>
 
                         <label>
-                          <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト（この衣装固有。kind別デフォルト・キャラ側の値と連結されます）</span>
+                          <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト（この衣装固有。設定画面の画像の種類ごとのネガティブプロンプト・キャラ側の値と連結されます）</span>
                           <textarea
                             style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
                             value={activeOutfit.negative_prompt ?? ''}
