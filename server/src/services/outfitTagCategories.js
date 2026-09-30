@@ -2,6 +2,7 @@ import { db } from '../db/connection.js';
 import { OUTFIT_TAG_FIELDS } from '../db/repositories/outfitsRepo.js';
 import { listActiveStatuses } from '../db/repositories/characterStatusStatesRepo.js';
 import { getStatus } from '../db/repositories/characterStatusesRepo.js';
+import { getCharacterBodyTags } from '../db/repositories/charactersRepo.js';
 import { composeWornOutfit } from './outfitComposition.js';
 
 export const CATEGORY_KEYS = OUTFIT_TAG_FIELDS;
@@ -297,4 +298,14 @@ export function resolveParticipantImageTags(participant, categoryKey, statusCtx,
   if (!poseEnabled) return outfitTags;
   const pose = db.prepare('SELECT danbooru_tag FROM pose_masters WHERE id = ?').get(participant.current_pose_id);
   return [outfitTags, pose?.danbooru_tag].filter(Boolean).join(', ');
+}
+
+// resolveParticipantImageTagsのネガティブプロンプト版。衣装未設定の参加者でも
+// キャラ単体のnegative_promptは効かせたいので、outfitが無い場合は
+// composeWornOutfit(常にoutfit=nullをそのまま返す)を経由せず直接キャラ側の
+// 列を引く。
+export function resolveParticipantNegativePrompt(participant, playthroughId) {
+  const outfit = participant.current_outfit_id ? db.prepare('SELECT * FROM outfits WHERE id = ?').get(participant.current_outfit_id) : null;
+  if (!outfit) return getCharacterBodyTags(participant.character_id)?.negative_prompt ?? '';
+  return composeWornOutfit(outfit.character_id, outfit, playthroughId)?.negative_prompt ?? '';
 }

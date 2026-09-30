@@ -6,7 +6,7 @@ import { resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsR
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../db/repositories/imageFormatSettingsRepo.js';
 import { resolveOutfitTags } from './outfitTagCategories.js';
-import { composeWornOutfit } from './outfitComposition.js';
+import { composeWornOutfit, joinNegativePrompts } from './outfitComposition.js';
 
 // Outfit assets aren't tied to any particular World (a Character can appear
 // in several), so there's no World to resolve a style preset from — always
@@ -20,10 +20,11 @@ function buildPrompt(settings, variables) {
 // itself becomes the reference used everywhere else (SPEC.md 3.7).
 export async function generateOutfitStandingImage(outfit, extraHint) {
   const settings = getImageGenerationSettings('standing');
-  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null), extra_hint: extraHint });
+  const worn = composeWornOutfit(outfit?.character_id, outfit, null);
+  const prompt = buildPrompt(settings, { character_tags: resolveOutfitTags(worn, null), extra_hint: extraHint });
   const buffer = await generateTxt2Image({
     prompt,
-    negativePrompt: settings.negative_prompt,
+    negativePrompt: joinNegativePrompts(settings.negative_prompt, worn.negative_prompt),
     width: settings.main_width,
     height: settings.main_height,
     steps: settings.steps,
@@ -42,8 +43,10 @@ export async function generateOutfitStandingImage(outfit, extraHint) {
 export async function generateOutfitExpressionImage(outfit, expressionType, extraHint, mode) {
   const settings = getImageGenerationSettings('expression');
   const resolvedMode = mode || settings.default_mode;
+  const worn = composeWornOutfit(outfit?.character_id, outfit, null);
+  const negativePrompt = joinNegativePrompts(settings.negative_prompt, worn.negative_prompt);
   const prompt = buildPrompt(settings, {
-    character_tags: resolveOutfitTags(composeWornOutfit(outfit?.character_id, outfit, null), null, outfit.icon_excluded_fields ?? []),
+    character_tags: resolveOutfitTags(worn, null, outfit.icon_excluded_fields ?? []),
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });
@@ -51,7 +54,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
   if (resolvedMode === 'prompt_only' || !outfit.standing_image_path) {
     const buffer = await generateTxt2Image({
       prompt,
-      negativePrompt: settings.negative_prompt,
+      negativePrompt,
       width: settings.main_width,
       height: settings.main_height,
       steps: settings.steps,
@@ -71,7 +74,7 @@ export async function generateOutfitExpressionImage(outfit, expressionType, extr
     initImageBase64: canvasBase64,
     maskBase64,
     prompt,
-    negativePrompt: settings.negative_prompt,
+    negativePrompt,
     width: settings.main_width + anchorOffset,
     height: settings.main_height,
     steps: settings.steps,

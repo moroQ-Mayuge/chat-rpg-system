@@ -6,7 +6,7 @@ import { resolveDefaultStylePrompt } from '../db/repositories/imageStylePresetsR
 import { getImageGenerationSettings } from '../db/repositories/imageGenerationSettingsRepo.js';
 import { getOutfitExposureTagSettings } from '../db/repositories/outfitExposureTagSettingsRepo.js';
 import { resolveOutfitTags, resolveStatusModifiers } from './outfitTagCategories.js';
-import { composeWornOutfit } from './outfitComposition.js';
+import { composeWornOutfit, joinNegativePrompts } from './outfitComposition.js';
 import { listExpressionTypes } from '../db/repositories/expressionTypesRepo.js';
 
 function buildPrompt(settings, variables) {
@@ -18,12 +18,13 @@ function buildPrompt(settings, variables) {
 // 立ち絵テスト画像があればi2iアンカー、それ以外はプレーンtxt2img
 // （outfitImageGenerator.jsのgenerateOutfitExpressionImageの4番目の引数modeと
 // 同じ「明示指定があれば設定より優先」という扱い）。
-async function generateTestImage(settings, prompt, standingImagePath, modeOverride) {
+async function generateTestImage(settings, prompt, standingImagePath, modeOverride, extraNegativePrompt) {
   const resolvedMode = modeOverride || settings.default_mode;
+  const negativePrompt = joinNegativePrompts(settings.negative_prompt, extraNegativePrompt);
   if (resolvedMode !== 'anchor_i2i' || !standingImagePath) {
     const buffer = await generateTxt2Image({
       prompt,
-      negativePrompt: settings.negative_prompt,
+      negativePrompt,
       width: settings.main_width,
       height: settings.main_height,
       steps: settings.steps,
@@ -38,7 +39,7 @@ async function generateTestImage(settings, prompt, standingImagePath, modeOverri
     initImageBase64: canvasBase64,
     maskBase64,
     prompt,
-    negativePrompt: settings.negative_prompt,
+    negativePrompt,
     width: settings.main_width + anchorOffset,
     height: settings.main_height,
     steps: settings.steps,
@@ -54,9 +55,10 @@ async function generateTestImage(settings, prompt, standingImagePath, modeOverri
 // 他の生成の基準参照になるので、まだ参照すべき先行画像が無い）。
 async function testGenerateStanding(outfit, extraHint, modifiers, exposureTagSettings) {
   const settings = getImageGenerationSettings('standing');
+  const worn = composeWornOutfit(outfit.character_id, outfit, null);
   const prompt = buildPrompt(settings, {
     character_tags: resolveOutfitTags(
-      composeWornOutfit(outfit.character_id, outfit, null),
+      worn,
       null,
       modifiers.suppressedFields,
       modifiers.disturbedFieldStyles,
@@ -67,7 +69,7 @@ async function testGenerateStanding(outfit, extraHint, modifiers, exposureTagSet
   });
   const buffer = await generateTxt2Image({
     prompt,
-    negativePrompt: settings.negative_prompt,
+    negativePrompt: joinNegativePrompts(settings.negative_prompt, worn.negative_prompt),
     width: settings.main_width,
     height: settings.main_height,
     steps: settings.steps,
@@ -82,9 +84,10 @@ async function testGenerateExpression(outfit, expressionType, extraHint, standin
   // icon_excluded_fields(アイコンに含めない設定)と状態によるsuppressedFields
   // (脱がされて無い設定)は別概念なので和集合にする。
   const suppressedFields = new Set([...modifiers.suppressedFields, ...(outfit.icon_excluded_fields ?? [])]);
+  const worn = composeWornOutfit(outfit.character_id, outfit, null);
   const prompt = buildPrompt(settings, {
     character_tags: resolveOutfitTags(
-      composeWornOutfit(outfit.character_id, outfit, null),
+      worn,
       null,
       suppressedFields,
       modifiers.disturbedFieldStyles,
@@ -94,7 +97,7 @@ async function testGenerateExpression(outfit, expressionType, extraHint, standin
     expression_tag: expressionType.danbooru_tag || expressionType.llm_tag_key,
     extra_hint: extraHint,
   });
-  return generateTestImage(settings, prompt, standingImagePath, mode);
+  return generateTestImage(settings, prompt, standingImagePath, mode, worn.negative_prompt);
 }
 
 // イベント画像(image_type='event'、eventEngine/actions/generateImage.js)のテスト
@@ -104,8 +107,9 @@ async function testGenerateExpression(outfit, expressionType, extraHint, standin
 // (buildSceneTagParts/eventEngine/actions/generateImage.jsと同じプレースホルダ名)。
 async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers, exposureTagSettings, mode) {
   const settings = getImageGenerationSettings('event');
+  const worn = composeWornOutfit(outfit.character_id, outfit, null);
   const characterTags = resolveOutfitTags(
-    composeWornOutfit(outfit.character_id, outfit, null),
+    worn,
     null,
     modifiers.suppressedFields,
     modifiers.disturbedFieldStyles,
@@ -121,7 +125,7 @@ async function testGenerateEvent(outfit, extraHint, standingImagePath, modifiers
     time_slot_tags: '',
     extra_hint: extraHint,
   });
-  return generateTestImage(settings, prompt, standingImagePath, mode);
+  return generateTestImage(settings, prompt, standingImagePath, mode, worn.negative_prompt);
 }
 
 // 衣装タグ編集中のプレビュー用: どのキャラ/衣装/マスタのレコードにも書き込まず、

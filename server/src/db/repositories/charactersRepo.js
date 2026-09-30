@@ -40,6 +40,7 @@ export const CHARACTER_TEXT_FIELDS = [
   'notes',
   'attribute_tags',
   'underwear_preference_tags',
+  'negative_prompt',
 ];
 
 function attachAssociations(character) {
@@ -100,9 +101,10 @@ export function getCharacter(id) {
 
 // composeWornOutfit()(outfitComposition.js)の合成用。ホットパス(画像生成の
 // 度に呼ばれる)なので attachAssociations 込みの getCharacter は使わず、
-// 必要な2列だけを引く。
+// 必要な列だけを引く。negative_promptは衣装側の値と連結するために使う
+// (main_features/hairstyleのような置換フォールバックではない)。
 export function getCharacterBodyTags(id) {
-  return db.prepare('SELECT main_features, hairstyle FROM characters WHERE id = ?').get(id);
+  return db.prepare('SELECT main_features, hairstyle, negative_prompt FROM characters WHERE id = ?').get(id);
 }
 
 // underwearAssignment.js の日次抽選用。好みタグ以外は不要なので同じく軽量に。

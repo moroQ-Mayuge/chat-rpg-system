@@ -97,8 +97,8 @@ export function createOutfit(characterId, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   const result = db
     .prepare(
-      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, overrides_underwear, icon_excluded_fields, ${tagColumns})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
+      `INSERT INTO outfits (character_id, name, clothing_description, equipment_description, is_default, garment_operations, outfit_master_id, link_mode, overrides_underwear, icon_excluded_fields, negative_prompt, ${tagColumns})
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${tagPlaceholders})`,
     )
     .run(
       characterId,
@@ -111,6 +111,7 @@ export function createOutfit(characterId, data) {
       data.link_mode ?? 'copy',
       data.overrides_underwear ? 1 : 0,
       JSON.stringify(data.icon_excluded_fields ?? []),
+      data.negative_prompt ?? '',
       ...tagValues,
     );
   if (data.is_default) unsetOtherDefaults(characterId, result.lastInsertRowid);
@@ -128,7 +129,7 @@ export function updateOutfit(id, data) {
   const tagValues = OUTFIT_TAG_FIELDS.map((f) => data[f] ?? '');
   db.prepare(
     `UPDATE outfits SET name = ?, clothing_description = ?, equipment_description = ?, is_default = ?, garment_operations = ?,
-       outfit_master_id = ?, link_mode = ?, overrides_underwear = ?, icon_excluded_fields = ?, ${tagSetClause}
+       outfit_master_id = ?, link_mode = ?, overrides_underwear = ?, icon_excluded_fields = ?, negative_prompt = ?, ${tagSetClause}
      WHERE id = ?`,
   ).run(
     data.name,
@@ -140,6 +141,7 @@ export function updateOutfit(id, data) {
     data.link_mode !== undefined ? data.link_mode : outfit.link_mode,
     data.overrides_underwear !== undefined ? (data.overrides_underwear ? 1 : 0) : outfit.overrides_underwear,
     JSON.stringify(data.icon_excluded_fields !== undefined ? data.icon_excluded_fields : JSON.parse(outfit.icon_excluded_fields || '[]')),
+    data.negative_prompt ?? '',
     ...tagValues,
     id,
   );

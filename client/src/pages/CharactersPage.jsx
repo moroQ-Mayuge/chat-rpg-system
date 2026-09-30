@@ -150,6 +150,7 @@ const emptyForm = {
   ...Object.fromEntries([...BASIC_FIELDS, ...APPEARANCE_FIELDS, ...BODY_TAG_FIELDS, ...PERSONALITY_FIELDS].map(([key]) => [key, ''])),
   attribute_tags: '',
   underwear_preference_tags: '',
+  negative_prompt: '',
   is_mob: false,
   gender: '女性',
   cycle_enabled: false,
@@ -265,6 +266,7 @@ export default function CharactersPage() {
     }
     fields.attribute_tags = existing.attribute_tags ?? '';
     fields.underwear_preference_tags = existing.underwear_preference_tags ?? '';
+    fields.negative_prompt = existing.negative_prompt ?? '';
     fields.is_mob = Boolean(existing.is_mob);
     fields.gender = existing.gender ?? '';
     fields.cycle_enabled = Boolean(existing.cycle_enabled);
@@ -309,6 +311,7 @@ export default function CharactersPage() {
     payload.impression_defaults = form.impression_defaults;
     payload.attribute_tags = form.attribute_tags;
     payload.underwear_preference_tags = form.underwear_preference_tags;
+    payload.negative_prompt = form.negative_prompt;
     payload.is_mob = form.is_mob;
     payload.gender = form.gender;
     payload.cycle_enabled = form.cycle_enabled;
@@ -573,6 +576,7 @@ export default function CharactersPage() {
         name: activeOutfit.name,
         clothing_description: activeOutfit.clothing_description,
         equipment_description: activeOutfit.equipment_description,
+        negative_prompt: activeOutfit.negative_prompt ?? '',
         is_default: Boolean(activeOutfit.is_default),
         overrides_underwear: Boolean(activeOutfit.overrides_underwear),
         garment_operations: activeOutfit.garment_operations ?? {},
@@ -1076,6 +1080,18 @@ export default function CharactersPage() {
                   ))}
                 </div>
 
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 13, fontWeight: 500 }}>ネガティブプロンプト（このキャラ固有）</p>
+                  <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px' }}>
+                    kind別デフォルト・衣装側の値と連結されます（上書きではなく加算）。
+                  </p>
+                  <textarea
+                    style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
+                    value={form.negative_prompt}
+                    onChange={(e) => setField('negative_prompt', e.target.value)}
+                  />
+                </div>
+
                 {isNew && <p>衣装・画像の設定は、まず基本情報タブで保存してから行えます。</p>}
 
                 {!isNew && form.outfits && (
@@ -1186,6 +1202,15 @@ export default function CharactersPage() {
                             />
                           </label>
                         </div>
+
+                        <label>
+                          <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト（この衣装固有。kind別デフォルト・キャラ側の値と連結されます）</span>
+                          <textarea
+                            style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
+                            value={activeOutfit.negative_prompt ?? ''}
+                            onChange={(e) => updateActiveOutfitField('negative_prompt', e.target.value)}
+                          />
+                        </label>
 
                         {activeOutfit.link_mode === 'reference' ? (
                           <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 8, fontSize: 12, color: '#555' }}>

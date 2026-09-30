@@ -11,7 +11,8 @@ import { resolveStylePromptForWorld } from '../../../db/repositories/imageStyleP
 import { getImageGenerationSettings } from '../../../db/repositories/imageGenerationSettingsRepo.js';
 import { getImageFormat } from '../../../db/repositories/imageFormatSettingsRepo.js';
 import { broadcast } from '../../../ws/rooms.js';
-import { resolveParticipantImageTags } from '../../outfitTagCategories.js';
+import { resolveParticipantImageTags, resolveParticipantNegativePrompt } from '../../outfitTagCategories.js';
+import { joinNegativePrompts } from '../../outfitComposition.js';
 import { getOutfitExposureTagSettings } from '../../../db/repositories/outfitExposureTagSettingsRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 import { resolveTargetToken } from '../placeholderResolution.js';
@@ -112,13 +113,21 @@ export async function executeGenerateImage(params, execCtx) {
 
         const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
 
+        // 登場中の各参加者のキャラ/衣装固有ネガティブプロンプトをkind別デフォルトに
+        // 連結する(置換ではなく加算——ユーザー確定方針、[[room_profile_system]]の
+        // 衣装投入と同じ2026-09-30の会話で決定)。重複除去はしない。
+        const negativePrompt = joinNegativePrompts(
+          settings.negative_prompt,
+          ...candidateParticipants.map((p) => resolveParticipantNegativePrompt(p, execCtx.playthroughId)),
+        );
+
         const format = getImageFormat(image_type);
         let finalBuffer;
 
         if (settings.default_mode === 'prompt_only') {
           finalBuffer = await generateTxt2Image({
             prompt,
-            negativePrompt: settings.negative_prompt,
+            negativePrompt,
             width: settings.main_width,
             height: settings.main_height,
             steps: settings.steps,
@@ -141,7 +150,7 @@ export async function executeGenerateImage(params, execCtx) {
             initImageBase64: canvasBase64,
             maskBase64,
             prompt,
-            negativePrompt: settings.negative_prompt,
+            negativePrompt,
             width: settings.main_width + anchorOffset,
             height: settings.main_height,
             steps: settings.steps,

@@ -66,5 +66,15 @@ export function composeWornOutfit(characterId, outfit, playthroughId) {
     }
   }
 
+  // main_features/hairstyleと違い、ネガティブプロンプトは空なら本体にフォール
+  // バックするのではなく、キャラ・衣装どちらの値も常に足し合わせる(ユーザー
+  // 確定方針: kind別デフォルト+キャラ+衣装は加算、置換ではない)。
+  if (effective === outfit) effective = { ...outfit };
+  effective.negative_prompt = joinNegativePrompts(outfit.negative_prompt, character?.negative_prompt);
+
   return effective;
+}
+
+export function joinNegativePrompts(...parts) {
+  return parts.filter((s) => s && s.trim()).join(', ');
 }
