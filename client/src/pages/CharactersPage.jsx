@@ -1203,15 +1203,6 @@ export default function CharactersPage() {
                           </label>
                         </div>
 
-                        <label>
-                          <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト（この衣装固有。設定画面の画像の種類ごとのネガティブプロンプト・キャラ側の値と連結されます）</span>
-                          <textarea
-                            style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
-                            value={activeOutfit.negative_prompt ?? ''}
-                            onChange={(e) => updateActiveOutfitField('negative_prompt', e.target.value)}
-                          />
-                        </label>
-
                         {activeOutfit.link_mode === 'reference' ? (
                           <div style={{ border: '1px solid #ddd', borderRadius: 6, padding: 8, fontSize: 12, color: '#555' }}>
                             <p style={{ fontWeight: 500, marginBottom: 4 }}>
@@ -1267,6 +1258,15 @@ export default function CharactersPage() {
                             />
                           </>
                         )}
+
+                        <label>
+                          <span style={{ fontSize: 11, color: '#888' }}>ネガティブプロンプト（この衣装固有。設定画面の画像の種類ごとのネガティブプロンプト・キャラ側の値と連結されます）</span>
+                          <textarea
+                            style={{ display: 'block', width: '100%', height: 32, fontFamily: 'monospace', fontSize: 12 }}
+                            value={activeOutfit.negative_prompt ?? ''}
+                            onChange={(e) => updateActiveOutfitField('negative_prompt', e.target.value)}
+                          />
+                        </label>
 
                         {(allStatuses ?? []).some((s) => s.suppresses_outfit_fields || s.disturbs_outfit_field) && (
                           <details open={testStatusIds.length > 0} style={{ marginBottom: 4 }}>
