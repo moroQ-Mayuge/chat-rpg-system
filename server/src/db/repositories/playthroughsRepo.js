@@ -398,3 +398,23 @@ export function resolveProtagonist(playthroughId) {
     notes: source.protagonist_notes ?? '',
   };
 }
+
+export function updateAuthorNote(id, { author_note, author_note_mode }) {
+  db.prepare('UPDATE playthroughs SET author_note = ?, author_note_mode = ? WHERE id = ?').run(
+    author_note ?? '',
+    author_note_mode === 'override' ? 'override' : 'append',
+    id,
+  );
+  return getPlaythrough(id);
+}
+
+// 作者のメモ(worlds.author_note)とルート別メモ(playthroughs.author_note)の
+// 実効値。主人公設定(resolveProtagonist)と違いフィールド単位の二択ではなく、
+// ルート側のauthor_note_modeで「Worldのメモに追記」か「ルートのメモだけ使う」を
+// 選ぶ。override時にルート側が空ならメモなし(Worldの値には落ちない)。
+export function resolveAuthorNote(playthrough, world) {
+  const routeNote = playthrough?.author_note?.trim() ?? '';
+  if (playthrough?.author_note_mode === 'override') return routeNote;
+  const worldNote = world?.author_note?.trim() ?? '';
+  return [worldNote, routeNote].filter(Boolean).join('\n\n');
+}

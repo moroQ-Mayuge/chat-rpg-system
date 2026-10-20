@@ -333,7 +333,8 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
        current_day = ?, current_time_slot_index = ?, current_weather = ?, current_season_index = ?,
        status = ?, money = ?, current_movement_subcount = ?, last_time_skip_day = ?,
        use_custom_protagonist = ?, protagonist_name = ?, protagonist_nickname = ?, protagonist_occupation = ?,
-       protagonist_appearance = ?, protagonist_notes = ?, protagonist_gender = ?, protagonist_mode = ?
+       protagonist_appearance = ?, protagonist_notes = ?, protagonist_gender = ?, protagonist_mode = ?,
+       author_note = ?, author_note_mode = ?
      WHERE id = ?`,
   ).run(
     d.current_day,
@@ -352,6 +353,8 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
     d.protagonist_notes ?? '',
     d.protagonist_gender ?? '',
     d.protagonist_mode ?? 'character',
+    d.author_note ?? '',
+    d.author_note_mode === 'override' ? 'override' : 'append',
     pid,
   );
 

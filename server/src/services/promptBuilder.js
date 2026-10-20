@@ -1,6 +1,6 @@
 import { db } from '../db/connection.js';
 import { serializeCharacter } from './characterSheetFormat.js';
-import { resolveProtagonist, getMoney, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
+import { resolveProtagonist, resolveAuthorNote, getMoney, getPlaythrough } from '../db/repositories/playthroughsRepo.js';
 import { listCategoriesForWorld } from '../db/repositories/itemCategoriesRepo.js';
 import { getCurrentAddress } from '../db/repositories/characterAddressStatesRepo.js';
 import { listImpressionValues } from '../db/repositories/characterImpressionStatesRepo.js';
@@ -793,8 +793,11 @@ export async function buildMultiCharacterMessages(session, options = {}) {
   // (先頭・履歴が伸びるほど相対的に遠くなる)とは別に、末尾に都度差し込む。
   const playthrough = getPlaythrough(session.playthrough_id);
   const world = getWorld(playthrough.world_id);
-  if (world.author_note?.trim()) {
-    messages.push({ role: 'system', content: `[作者のメモ・最優先指示]\n${world.author_note.trim()}` });
+  // Worldのメモとルート別メモは1つのsystemメッセージに連結する
+  // (trimToTokenBudgetが末尾systemを保護する前提を崩さないため)。
+  const authorNote = resolveAuthorNote(playthrough, world);
+  if (authorNote) {
+    messages.push({ role: 'system', content: `[作者のメモ・最優先指示]\n${authorNote}` });
   }
 
   await trimToTokenBudget(messages, tokenBudget);

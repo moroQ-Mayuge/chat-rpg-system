@@ -30,6 +30,7 @@ const WORLD_FIELDS = [
   'max_response_tokens',
   'notify_relationship_changes',
   'status_display_settings',
+  'author_note',
 ];
 
 export function collectWorldEntry(worldId, imageCollector) {

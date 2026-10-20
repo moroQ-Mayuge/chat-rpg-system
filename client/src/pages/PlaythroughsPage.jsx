@@ -29,6 +29,66 @@ const emptyProtagonistForm = {
   protagonist_mode: 'character',
 };
 
+function AuthorNotePanel({ playthrough, world }) {
+  const { updateAuthorNote } = usePlaythroughMutations(world.id);
+  const [expanded, setExpanded] = useState(false);
+  const [form, setForm] = useState({ author_note: '', author_note_mode: 'append' });
+
+  useEffect(() => {
+    setForm({
+      author_note: playthrough.author_note ?? '',
+      author_note_mode: playthrough.author_note_mode ?? 'append',
+    });
+  }, [playthrough]);
+
+  async function save() {
+    await updateAuthorNote.mutateAsync({ id: playthrough.id, data: form });
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button style={{ fontSize: 11 }} onClick={() => setExpanded((e) => !e)}>
+        {expanded ? '作者のメモを閉じる ▲' : '作者のメモ ▼'}
+      </button>
+
+      {expanded && (
+        <div style={{ marginTop: 8, border: '1px solid #ddd', borderRadius: 6, padding: 10, background: '#fafafa' }}>
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>「{world.name}」の作者のメモとの関係</span>
+            <select
+              style={{ width: '100%' }}
+              value={form.author_note_mode}
+              onChange={(e) => setForm((f) => ({ ...f, author_note_mode: e.target.value }))}
+            >
+              <option value="append">Worldの作者のメモに追記する</option>
+              <option value="override">このルートのメモだけを使う（Worldのメモは使わない）</option>
+            </select>
+          </label>
+
+          <label style={{ display: 'block' }}>
+            <span style={{ fontSize: 11, color: '#888', display: 'block' }}>このルートの作者のメモ（最優先指示）</span>
+            <textarea
+              style={{ display: 'block', width: '100%', height: 60 }}
+              placeholder="例：このルートでは主人公視点を三人称に変更。恋愛要素は控えめに。"
+              value={form.author_note}
+              onChange={(e) => setForm((f) => ({ ...f, author_note: e.target.value }))}
+            />
+            <span style={{ fontSize: 11, color: '#888' }}>
+              生成の直前に毎回差し込まれる最優先指示です。「このルートのメモだけを使う」を選んで本文を空にすると、メモなしで生成されます。
+            </span>
+          </label>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button onClick={save} disabled={updateAuthorNote.isPending}>
+              {updateAuthorNote.isPending ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProtagonistSettingsPanel({ playthrough, world }) {
   const { updateProtagonist } = usePlaythroughMutations(world.id);
   const [expanded, setExpanded] = useState(false);
@@ -425,6 +485,7 @@ export default function PlaythroughsPage() {
               </div>
             )}
             {world && <ProtagonistSettingsPanel playthrough={p} world={world} />}
+            {world && <AuthorNotePanel playthrough={p} world={world} />}
             {world?.memory_editing_visible && <MemoriesPanel playthrough={p} />}
             {world?.memory_editing_visible && <RelationshipsAndImpressionsPanel playthrough={p} />}
           </div>

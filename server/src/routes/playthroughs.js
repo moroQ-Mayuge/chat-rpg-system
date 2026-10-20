@@ -4,6 +4,7 @@ import {
   getPlaythrough,
   createPlaythrough,
   updateProtagonistSettings,
+  updateAuthorNote,
   deletePlaythrough,
 } from '../db/repositories/playthroughsRepo.js';
 import { getActiveSessionForPlaythrough, createRoomSession, listSessionsForPlaythrough } from '../db/repositories/roomSessionsRepo.js';
@@ -75,6 +76,10 @@ playthroughsRouter.delete('/:id', (req, res) => {
 
 playthroughsRouter.put('/:id/protagonist', (req, res) => {
   res.json(updateProtagonistSettings(req.params.id, req.body));
+});
+
+playthroughsRouter.put('/:id/author-note', (req, res) => {
+  res.json(updateAuthorNote(req.params.id, req.body));
 });
 
 playthroughsRouter.get('/:id/active-session', (req, res) => {
