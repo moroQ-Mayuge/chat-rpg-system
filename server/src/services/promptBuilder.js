@@ -366,6 +366,7 @@ function buildSystemPrompt(session, participants, options = {}) {
   // computed the list separately, they'd drift and a player could see "買う"
   // for something chat insists isn't for sale, or vice versa.
   let shopBlock = null;
+  let hasOutfitProducts = false;
   if (isShopMode) {
     const { items: shopProducts, outfits: outfitProducts } = listShopProducts(
       worldId,
@@ -378,6 +379,7 @@ function buildSystemPrompt(session, participants, options = {}) {
       shopProducts.length > 0
         ? shopProducts.map((i) => `${i.name}（${i.buy_price}${world.currency_unit}）`).join('、')
         : null;
+    hasOutfitProducts = outfitProducts.length > 0;
     const outfitProductLines =
       outfitProducts.length > 0
         ? outfitProducts.map((m) => `${m.name}（${m.buy_price}${world.currency_unit}）`).join('、')
@@ -521,7 +523,7 @@ function buildSystemPrompt(session, participants, options = {}) {
     `[ITEM_GRANT: アイテム名|カテゴリ名]: アイテムの簡単な説明（具体的な物がその場で見つかった・キャラクターが差し出した場合のみ。世間話や比喩表現では使わない）。これは持ち物に直接入るのではなく「その場で拾える状態」になります。カテゴリ名は次のいずれかから選んでください：${itemCategoryNames.join(', ')}`,
     // 衣装は厳選プリセットでLLMの即興対象ではないため、ITEM_GRANTと違い常時使える
     // タグにはしない——買い物モード（衣装リストが実在する時）限定の案内にする。
-    isShopMode
+    hasOutfitProducts
       ? '[OUTFIT_GRANT: 衣装名]: 衣装リストにある衣装をプレイヤーが実際に購入した場合のみ使ってください（それ以外の衣装名は使えません）。'
       : null,
     // クラフト機構(1-snoopy-raccoon.md): 材料は選択して実行した時点で既に

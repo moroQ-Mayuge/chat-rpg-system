@@ -427,6 +427,9 @@ roomSessionsRouter.post('/:id/buy-outfit', (req, res) => {
   if (!session.room_is_shop || !world.currency_enabled) {
     return res.status(400).json({ error: 'not_a_shop' });
   }
+  if (session.room_outfit_acquisition_mode !== 'shop') {
+    return res.status(400).json({ error: 'not_an_outfit_shop' });
+  }
 
   // buy-itemと同じ理由で、一般的な販売可否だけでなく現在の抽選済みラインナップ
   // (0120)に載っているかも見る。
@@ -1176,7 +1179,13 @@ async function generateReply(
       // 即興作成をしない厳選プリセットのため、名前が一致しなければ「売っていない」
       // 扱いにする——ITEM_GRANTのカテゴリ引数に相当するものが無いのはこのため。
       const master = resolveMasterNameFuzzy(worldId, parsed.outfitMasterName);
-      if (!master || !session.room_is_shop || !world.currency_enabled || master.buy_price == null) {
+      if (
+        !master ||
+        !session.room_is_shop ||
+        !world.currency_enabled ||
+        session.room_outfit_acquisition_mode !== 'shop' ||
+        master.buy_price == null
+      ) {
         const message = createMessage(sessionId, {
           sender_type: 'narration',
           content: `『${parsed.outfitMasterName}』は売り物ではないようだ。`,

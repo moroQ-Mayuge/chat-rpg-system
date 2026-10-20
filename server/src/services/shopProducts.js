@@ -111,17 +111,24 @@ export function listShopProducts(worldId, roomTemplateId, playthroughId, subRoom
       (roomCandidateItemCategories.length === 0 || roomCandidateItemCategories.some((c) => c.id === i.category_id)),
   );
 
-  const requiredOutfitTags = parseAttributeTags(commerce.outfit_attribute_tags);
-  const eligibleOutfits = listMastersForWorld(worldId).filter(
-    (m) =>
-      m.buy_price != null &&
-      !m.is_not_for_sale &&
-      (requiredOutfitTags.length === 0 || tagsOverlap(parseAttributeTags(m.attribute_tags), requiredOutfitTags)),
-  );
+  // 衣装は実効モードが'shop'の時だけ売る(is_shopだけでは売らない)。'none'の店
+  // (購買部等)で衣装を返すと、プロンプトに全衣装が載り、LLM/直接APIから買えてしまう。
+  // 空プールは品揃えの抽選・永続化もしない(無駄な保存行を作らない)。
+  let outfits = [];
+  if (commerce.outfit_acquisition_mode === 'shop') {
+    const requiredOutfitTags = parseAttributeTags(commerce.outfit_attribute_tags);
+    const eligibleOutfits = listMastersForWorld(worldId).filter(
+      (m) =>
+        m.buy_price != null &&
+        !m.is_not_for_sale &&
+        (requiredOutfitTags.length === 0 || tagsOverlap(parseAttributeTags(m.attribute_tags), requiredOutfitTags)),
+    );
+    outfits = resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'outfit', eligibleOutfits, commerce);
+  }
 
   return {
     items: resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'item', eligibleItems, commerce),
-    outfits: resolveLineup(playthroughId, worldId, roomTemplateId, subRoomId, 'outfit', eligibleOutfits, commerce),
+    outfits,
   };
 }
 
