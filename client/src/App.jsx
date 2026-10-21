@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import WorldsPage from './pages/WorldsPage.jsx';
 import PropsPage from './pages/PropsPage.jsx';
@@ -22,23 +23,41 @@ import CharacterStatusesPage from './pages/CharacterStatusesPage.jsx';
 import OutfitMastersPage from './pages/OutfitMastersPage.jsx';
 import MobFlavorPresetsPage from './pages/MobFlavorPresetsPage.jsx';
 
+// Link spacing lives in global.css (.app-nav a) so the phone-width menu can
+// override it; only the active-page weight stays inline.
 const navLinkStyle = ({ isActive }) => ({
   fontWeight: isActive ? 700 : 400,
-  marginRight: 16,
 });
 
 export default function App() {
   const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
   // Chat is the app's primary content surface — while on it, drop the
   // shared page container's padding/max-width and let it fill the rest of
   // the viewport height instead of flowing with the document.
   const isChatPage = /^\/room-sessions\/[^/]+\/chat$/.test(location.pathname);
 
+  // Phone-width menu: close it after navigating.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div style={{ fontFamily: 'sans-serif', height: isChatPage ? '100vh' : 'auto', display: isChatPage ? 'flex' : 'block', flexDirection: 'column' }}>
-      <header style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #ddd', flexShrink: 0 }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: 20 }}>ChatRPG</h1>
-        <nav>
+    <div className={isChatPage ? 'app-root-chat' : undefined} style={{ fontFamily: 'sans-serif' }}>
+      <header className="app-header">
+        <div className="app-header-bar">
+          <h1>ChatRPG</h1>
+          <button
+            type="button"
+            className="app-nav-toggle"
+            aria-expanded={navOpen}
+            aria-controls="app-nav"
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            {navOpen ? '✕ 閉じる' : '☰ メニュー'}
+          </button>
+        </div>
+        <nav id="app-nav" className={navOpen ? 'app-nav open' : 'app-nav'}>
           <NavLink to="/worlds" style={navLinkStyle}>
             世界観
           </NavLink>

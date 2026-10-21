@@ -118,3 +118,114 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* App shell header: desktop keeps the inline link row; at phone width the
+   links collapse behind a menu button (App.jsx) and open as an overlay panel
+   so the chat area underneath isn't pushed down. */
+.app-root-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-header {
+  position: relative;
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.app-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-header h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.app-nav-toggle {
+  display: none;
+}
+
+.app-nav a {
+  margin-right: 16px;
+}
+
+@media (max-width: 700px) {
+  .app-header {
+    padding: 0.4rem 0.75rem;
+  }
+
+  .app-header h1 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  .app-nav-toggle {
+    display: inline-block;
+  }
+
+  .app-nav {
+    display: none;
+  }
+
+  .app-nav.open {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    padding: 10px 12px;
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+  }
+
+  .app-nav a {
+    margin-right: 0;
+    padding: 4px 0;
+  }
+}
+
+/* Single-line horizontal carousel (HScrollRow.jsx): the @mention chips and
+   the action-command pill rows. Children never wrap or shrink. Desktop gets
+   a thin scrollbar as an affordance; touch devices hide it. */
+.h-scroll-row {
+  display: flex;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.h-scroll-row > * {
+  flex-shrink: 0;
+}
+
+@media (hover: none) {
+  .h-scroll-row {
+    scrollbar-width: none;
+  }
+
+  .h-scroll-row::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Chat header body (ChatPage.jsx): when expanded at phone width, cap its
+   height so the message log always keeps room. */
+@media (max-width: 700px) {
+  .chat-header-body {
+    max-height: 45vh;
+    max-height: 45dvh;
+    overflow-y: auto;
+  }
+}

@@ -20,6 +20,7 @@ import { useCharacter } from '../hooks/useCharacters.js';
 import { useChatInputSettings, useImagePromptDisplaySettings } from '../hooks/useSettings.js';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useLocalStorageState } from '../hooks/useLocalStorageState.js';
+import HScrollRow from '../components/ui/HScrollRow.jsx';
 
 // mentionedNames（選択順の配列）から実際に送信する本文へ@トークンを合成する。
 // サーバー側resolveMentions()(roomSessions.js)は本文中の@表示名の出現順で
@@ -239,6 +240,11 @@ function isDisturbanceCommandVisible(cmd, od) {
   return (od.garmentOperations?.[field] ?? []).includes(style);
 }
 
+// 横スクロール行のピルをタップした時、見切れたまま残らないよう画面内へ寄せる。
+function keepInView(el) {
+  el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+}
+
 function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTemplateId, subRoomId, onKeywordSend, onOpenPanel }) {
   const { data: commands } = useActionCommandsForWorld(worldId);
   const [openCategory, setOpenCategory] = useState(null);
@@ -278,7 +284,7 @@ function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTem
   return (
     <div style={{ marginBottom: 6, flexShrink: 0 }}>
       {(uncategorized.length > 0 || categories.length > 0) && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: openCategory ? 4 : 0 }}>
+        <HScrollRow gap={6} style={{ marginBottom: openCategory ? 4 : 0 }}>
           {uncategorized.map((cmd) => (
             <button key={cmd.id} type="button" style={COMMAND_ICON_STYLE} onClick={() => runCommand(cmd)}>
               {cmd.icon} {cmd.label}
@@ -289,21 +295,27 @@ function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTem
               key={category}
               type="button"
               style={openCategory === category ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
-              onClick={() => selectCategory(category)}
+              onClick={(e) => {
+                selectCategory(category);
+                keepInView(e.currentTarget);
+              }}
             >
               {category}
             </button>
           ))}
-        </div>
+        </HScrollRow>
       )}
 
       {openCategory && subcategories.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+        <HScrollRow gap={6} style={{ marginBottom: 4 }}>
           {hasUncategorizedInCurrentCategory && (
             <button
               type="button"
               style={!openSubcategory ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
-              onClick={() => setOpenSubcategory(null)}
+              onClick={(e) => {
+                setOpenSubcategory(null);
+                keepInView(e.currentTarget);
+              }}
             >
               全般
             </button>
@@ -313,22 +325,25 @@ function ActionCommandBar({ worldId, participants, mentionedParticipant, roomTem
               key={sub}
               type="button"
               style={openSubcategory === sub ? CATEGORY_PILL_STYLE_ACTIVE : CATEGORY_PILL_STYLE}
-              onClick={() => setOpenSubcategory(sub)}
+              onClick={(e) => {
+                setOpenSubcategory(sub);
+                keepInView(e.currentTarget);
+              }}
             >
               {sub}
             </button>
           ))}
-        </div>
+        </HScrollRow>
       )}
 
       {openCategory && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <HScrollRow gap={6}>
           {commandsToShow.map((cmd) => (
             <button key={cmd.id} type="button" style={COMMAND_ICON_STYLE} onClick={() => runCommand(cmd)}>
               {cmd.icon} {cmd.label}
             </button>
           ))}
-        </div>
+        </HScrollRow>
       )}
     </div>
   );
@@ -1062,6 +1077,14 @@ export default function ChatPage() {
   }
 
   const [scenePanelOpen, setScenePanelOpen] = useState(true);
+  const [subRoomHelpOpen, setSubRoomHelpOpen] = useState(false);
+  // ヘッダ(現在地行の下〜メッセージ欄の手前)全体の折りたたみ。既定はスマホ幅=
+  // 折りたたみ・それ以外=展開で、幅別のキーに保存して互いの既定を上書きしない。
+  const [isPhoneWidth] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches);
+  const [headerCollapsed, setHeaderCollapsed] = useLocalStorageState(
+    isPhoneWidth ? 'chatHeaderCollapsed:mobile' : 'chatHeaderCollapsed:desktop',
+    isPhoneWidth,
+  );
   const [itemPanel, setItemPanel] = useState(null);
   const { data: chatInputSettings } = useChatInputSettings();
   const { data: imagePromptDisplaySettings } = useImagePromptDisplaySettings();
@@ -1209,9 +1232,28 @@ export default function ChatPage() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '0.75rem 1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexShrink: 0 }}>
-        <p style={{ fontSize: 12, color: '#888', margin: 0 }}>
-          {playthrough.name} ／ {playthrough.current_date_label} ／ {session.current_location_text}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexShrink: 0 }}>
+        <button
+          type="button"
+          onClick={() => setHeaderCollapsed((v) => !v)}
+          aria-expanded={!headerCollapsed}
+          title={headerCollapsed ? 'ヘッダを開く' : 'ヘッダを閉じる'}
+          style={{ fontSize: 11, flexShrink: 0 }}
+        >
+          {headerCollapsed ? '▾' : '▴'} ヘッダ
+        </button>
+        <p
+          style={{
+            fontSize: 12,
+            color: '#888',
+            margin: 0,
+            flex: 1,
+            minWidth: 0,
+            ...(headerCollapsed ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null),
+          }}
+        >
+          {headerCollapsed ? null : <>{playthrough.name} ／ </>}
+          {playthrough.current_date_label} ／ {session.current_location_text}
           {session.sub_room_name && `（${session.sub_room_name}）`}
           {playthrough.currency_enabled && (
             <>
@@ -1221,9 +1263,14 @@ export default function ChatPage() {
             </>
           )}
         </p>
-        {!session.room_is_place && <button onClick={handleExit}>部屋を退出する</button>}
+        {!session.room_is_place && (
+          <button onClick={handleExit} style={{ flexShrink: 0 }}>
+            部屋を退出する
+          </button>
+        )}
       </div>
 
+      <div className="chat-header-body" style={{ display: headerCollapsed ? 'none' : 'block', flexShrink: 0 }}>
       {(session.log_days?.length ?? 0) > 1 && (
         <p style={{ fontSize: 11, color: '#888', margin: '0 0 6px', flexShrink: 0 }}>
           <Link to={`/room-sessions/${id}/log?day=${[...session.log_days].reverse().find((d) => d < session.log_day)}`}>
@@ -1249,9 +1296,23 @@ export default function ChatPage() {
 
       {(session.sub_rooms?.length ?? 0) > 0 && (
         <div style={{ marginBottom: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: '#888' }}>
-            場所を変える：（デート中のキャラは必ず一緒に移動します。@メンション中のキャラは一緒に来るよう誘い、ついて来るかは関係値と本人の反応次第です。同行中でメンションしていないキャラは元の場所で待機し、元の場所に戻ると合流します）
-          </span>
+          <details open={session.sub_rooms.length + 1 <= 3}>
+            <summary style={{ fontSize: 11, color: '#888', cursor: 'pointer' }}>
+              場所を変える：● {session.sub_room_id == null ? '元の場所' : session.sub_room_name}
+              <button
+                type="button"
+                title="移動のルールを表示"
+                aria-expanded={subRoomHelpOpen}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSubRoomHelpOpen((v) => !v);
+                }}
+                style={{ fontSize: 10, marginLeft: 6, padding: '0 6px', borderRadius: 8 }}
+              >
+                ?
+              </button>
+            </summary>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             {/* 親部屋本体(メイン)。サブ部屋にいる間だけ戻れる。現在地はボタンを強調して示す。 */}
             <button
@@ -1277,6 +1338,12 @@ export default function ChatPage() {
               );
             })}
           </div>
+          </details>
+          {subRoomHelpOpen && (
+            <p style={{ fontSize: 11, color: '#666', margin: '4px 0 0', padding: '4px 8px', background: '#f8f8f8', borderRadius: 6 }}>
+              デート中のキャラは必ず一緒に移動します。@メンション中のキャラは一緒に来るよう誘い、ついて来るかは関係値と本人の反応次第です。同行中でメンションしていないキャラは元の場所で待機し、元の場所に戻ると合流します。
+            </p>
+          )}
         </div>
       )}
 
@@ -1481,6 +1548,7 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+      </div>
 
       <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8, flex: 1, minHeight: 0, overflowY: 'auto', marginBottom: 8 }}>
         {session.messages.map((m) => {
@@ -1641,7 +1709,7 @@ export default function ChatPage() {
         />
       )}
 
-      <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, marginBottom: 4, flexShrink: 0, overflowX: 'auto' }}>
+      <HScrollRow gap={4} style={{ marginBottom: 4 }}>
         <button
           type="button"
           style={mentionButtonStyle({ ...COMMAND_ICON_STYLE, fontSize: 11, padding: '2px 6px', flexShrink: 0 }, '周辺', mentionedNames, '#15803d')}
@@ -1674,7 +1742,7 @@ export default function ChatPage() {
             {mentionOrderPrefix(p.display_name, mentionedNames)}@{p.display_name}
           </button>
         ))}
-      </div>
+      </HScrollRow>
 
       <ActionCommandBar
         worldId={playthrough.world_id}
