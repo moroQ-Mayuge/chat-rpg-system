@@ -708,17 +708,40 @@ export default function CharactersPage() {
     }
   }
 
+  // 複数ファイルを一度に選べる。サーバーは1リクエスト=1ファイルのまま、ファイルごとに
+  // 順番にインポートする(途中のファイルが失敗しても残りは続行し、最後にまとめて報告)。
   async function handleImportBundle(e) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!file) return;
-    try {
-      const result = await contentBundleApi.import(file);
-      window.alert(formatBundleImportSummary(result));
-      queryClient.invalidateQueries({ queryKey: ['characters'] });
-    } catch (err) {
-      window.alert(`インポートに失敗しました: ${err.message}`);
+    if (files.length === 0) return;
+
+    const successes = [];
+    const failures = [];
+    for (const file of files) {
+      try {
+        successes.push({ file, result: await contentBundleApi.import(file) });
+      } catch (err) {
+        failures.push({ file, message: err.message });
+      }
     }
+    if (successes.length > 0) queryClient.invalidateQueries({ queryKey: ['characters'] });
+
+    if (files.length === 1) {
+      window.alert(
+        successes.length === 1
+          ? formatBundleImportSummary(successes[0].result)
+          : `インポートに失敗しました: ${failures[0].message}`,
+      );
+      return;
+    }
+    const lines = [`${files.length}件中${successes.length}件をインポートしました。`];
+    for (const { file, result } of successes) {
+      lines.push('', `■ ${file.name}`, formatBundleImportSummary(result));
+    }
+    for (const { file, message } of failures) {
+      lines.push('', `■ ${file.name}（失敗）`, message);
+    }
+    window.alert(lines.join('\n'));
   }
 
   if (loadingList || !expressionTypes || !worlds) return <p>読み込み中...</p>;
@@ -850,7 +873,7 @@ export default function CharactersPage() {
         <button onClick={startNew}>+ 新規キャラ</button>
         <label style={{ fontSize: 12, cursor: 'pointer' }}>
           インポート（zip）
-          <input type="file" accept=".zip" onChange={handleImportBundle} style={{ display: 'none' }} />
+          <input type="file" accept=".zip" multiple onChange={handleImportBundle} style={{ display: 'none' }} />
         </label>
       </div>
 
