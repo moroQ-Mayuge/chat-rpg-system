@@ -6,6 +6,6 @@
 - [SPEC.md](SPEC.md) — 元々の仕様書（最新の実装を必ずしも反映していない点に注意）
 - `plans/` — 個別機能の検討メモ・設計方針（実装順の記録込み）
 - `investigations/` — 不具合報告・要望のバッチ調査ログ
-- `guides/` — 特定機能の使い方ガイド
+- `guides/` — 特定機能の使い方ガイド（[妊娠イベントの作り方](guides/GUIDE_pregnancy_events.md)、[サブ部屋と同行の使い方](guides/GUIDE_sub_rooms.md)）
 - `backlog/` — 積み残し課題の一覧
 - `feedback/` — プレイテストセッションのフィードバック記録
