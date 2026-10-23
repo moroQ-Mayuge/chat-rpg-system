@@ -737,16 +737,17 @@ roomSessionsRouter.post('/:id/sub-room', async (req, res) => {
     const cost = target?.enter_movement_cost ?? 0;
     const playthrough = cost > 0 ? applyMovementCost(fresh.playthrough_id, cost) : getPlaythrough(fresh.playthrough_id);
 
-    // 同伴指定(@メンション中のキャラ)は、この時点で会話対象(同所)にいる在籍行のidだけ通す。
-    // デート中(0152)は判定も指定も要らず必ず移るので、判定にかける「同伴候補」は
-    // デート中でないキャラだけ(同行中でメンションされた者も含む)。
-    const requestedRowIds = (req.body.companion_ids ?? []).filter((rowId) =>
-      fresh.participants.some((p) => p.id === rowId && !p.is_dating),
-    );
-    // 候補はここでは動かさない(元の位置に残す)。生成中はプロンプト上だけ同席扱いにし
+    // 同伴指定(@メンション中のキャラ)は、この時点で会話対象(同所)にいる在籍行のidだけ通す
+    // (人数の上限は無い)。デート中(0152)は判定も指定も要らず必ず移る。同行中(is_accompanying)の
+    // キャラも、メンションされていれば判定なしで必ず移る(autoFollowRowIds)。判定にかける
+    // 「同伴候補」は、同行もデートもしていないがメンションされたキャラだけ。
+    const mentionedRows = fresh.participants.filter((p) => (req.body.companion_ids ?? []).includes(p.id) && !p.is_dating);
+    const autoFollowRowIds = mentionedRows.filter((p) => p.is_accompanying).map((p) => p.id);
+    const requestedRowIds = mentionedRows.filter((p) => !p.is_accompanying).map((p) => p.id);
+    // 判定にかける候補はここでは動かさない(元の位置に残す)。生成中はプロンプト上だけ同席扱いにし
     // (withCompanionCandidates)、同伴すると確定した候補の位置更新は生成後の
     // finalizeCompanionMove(subRoomCompanions.js)で行う。
-    const moved = switchSubRoom(fresh.id, target?.id ?? null, { companionRowIds: [] });
+    const moved = switchSubRoom(fresh.id, target?.id ?? null, { companionRowIds: autoFollowRowIds });
     // 行き先が「メイン」で同行中のキャラが自動で合流した場合などは、判定にかけない。
     const candidateRowIds = requestedRowIds.filter(
       (rowId) => !moved.movedRowIds.includes(rowId) && !moved.joinedRowIds.includes(rowId),
