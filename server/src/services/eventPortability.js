@@ -120,6 +120,13 @@ export function exportEventDefinitionJson(id) {
     prerequisiteEventName = prereq?.name ?? null;
   }
 
+  // in_room条件(複数の部屋idを持つ)の部屋は、idのままだと別環境で無関係な部屋を指すので、名前を併せて出す。
+  const inRoomIds = new Set(def.conditions.filter((c) => c.condition_type === 'in_room').flatMap((c) => c.params.room_template_ids ?? []));
+  const roomNames = {};
+  if (inRoomIds.size > 0) {
+    for (const t of listRoomTemplates()) if (inRoomIds.has(t.id)) roomNames[t.id] = t.name;
+  }
+
   const { id: _id, room_template_id, prerequisite_event_definition_id, ...rest } = def;
 
   return {
@@ -128,6 +135,7 @@ export function exportEventDefinitionJson(id) {
     exported_at: new Date().toISOString(),
     data: rest,
     room_template_name: roomTemplateName,
+    room_names: roomNames,
     prerequisite_event_name: prerequisiteEventName,
     character_names: characterNames,
     status_names: statusNames,
@@ -215,6 +223,17 @@ export function importEventDefinitionJson(json, options = {}) {
     }
     if (c.condition_type === 'has_outfit') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
+    }
+    if (c.condition_type === 'in_room') {
+      // 解決できなかった部屋は外す。全て外れて空になった場合、条件は(negateに関わらず)不成立になる。
+      c.params.room_template_ids = (c.params.room_template_ids ?? [])
+        .map((oldId) => {
+          const name = json.room_names?.[oldId];
+          if (!name) return null;
+          const preferred = (options.preferredRoomTemplates ?? []).find((t) => t.name === name);
+          return (preferred ?? listRoomTemplates().find((t) => t.name === name))?.id ?? null;
+        })
+        .filter((id) => id != null);
     }
     if (c.condition_type === 'character_age' || c.condition_type === 'companion_state' || c.condition_type === 'character_attribute' || c.condition_type === 'character_present') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);

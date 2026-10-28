@@ -83,6 +83,7 @@ const CONDITION_TYPES = [
   { value: 'character_attribute', label: 'キャラの属性（タグ・モブ・性別・職業）' },
   { value: 'character_present', label: '特定のキャラ・属性のキャラの同席' },
   { value: 'owns_outfit', label: '衣装マスタの所持' },
+  { value: 'in_room', label: '今いる部屋（特定の部屋のみ／それ以外）' },
 ];
 
 const ACTION_TYPES = [
@@ -160,6 +161,8 @@ function conditionDefaults(type) {
       return { character_id: null, tag: '', negate: false };
     case 'owns_outfit':
       return { name_contains: '', holder: null, negate: false };
+    case 'in_room':
+      return { room_template_ids: [], negate: false };
     default:
       return {};
   }
@@ -818,6 +821,37 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
           </label>
           <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
             プレイヤーと同じ場所（会話に参加している）にいるキャラで判定します。キャラとタグを両方指定したら、両方を満たす1人がいる時だけ成立します。
+          </p>
+        </div>
+      )}
+
+      {condition.condition_type === 'in_room' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>判定</span>
+            <select value={p.negate ? 'except' : 'only'} onChange={(e) => setParams({ negate: e.target.value === 'except' })}>
+              <option value="only">選んだ部屋のいずれかにいる時だけ</option>
+              <option value="except">選んだ部屋以外にいる時だけ</option>
+            </select>
+          </label>
+          <label style={{ gridColumn: 'span 2' }}>
+            <span style={label11}>部屋（複数選択。Ctrl/Shiftで複数）</span>
+            <select
+              multiple
+              size={8}
+              style={{ width: '100%' }}
+              value={(p.room_template_ids ?? []).map(String)}
+              onChange={(e) => setParams({ room_template_ids: Array.from(e.target.selectedOptions, (o) => Number(o.value)) })}
+            >
+              {(roomTemplates ?? []).map((rt) => (
+                <option key={rt.id} value={rt.id}>
+                  {rt.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            今いる部屋（サブ部屋ではなく部屋そのもの）で判定します。「適用範囲」で1つの部屋に限定するイベントと違い、複数の部屋や「この部屋以外すべて」を書けます。部屋を1つも選ばない場合は、どちらの判定でも不成立です。
           </p>
         </div>
       )}

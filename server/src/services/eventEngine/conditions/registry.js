@@ -17,6 +17,7 @@ import { evaluateCompanionState, matchingCharactersForCompanionState } from './c
 import { evaluateCharacterAttribute, matchingCharactersForCharacterAttribute } from './characterAttribute.js';
 import { evaluateCharacterPresent } from './characterPresent.js';
 import { evaluateOwnsOutfit } from './ownsOutfit.js';
+import { evaluateInRoom } from './inRoom.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -38,6 +39,7 @@ export const conditionRegistry = {
   character_attribute: evaluateCharacterAttribute,
   character_present: evaluateCharacterPresent,
   owns_outfit: evaluateOwnsOutfit,
+  in_room: evaluateInRoom,
 };
 
 // Only condition types that can name a specific character contribute to
