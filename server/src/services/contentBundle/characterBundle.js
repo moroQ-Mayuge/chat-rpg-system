@@ -1,6 +1,15 @@
 import { db } from '../../db/connection.js';
-import { getCharacter, createCharacter, CHARACTER_TEXT_FIELDS } from '../../db/repositories/charactersRepo.js';
-import { createOutfit, setStandingImage, setExpressionImage, deleteOutfit, OUTFIT_TAG_FIELDS } from '../../db/repositories/outfitsRepo.js';
+import { getCharacter, createCharacter, updateCharacter, CHARACTER_TEXT_FIELDS } from '../../db/repositories/charactersRepo.js';
+import {
+  createOutfit,
+  updateOutfit,
+  listOutfitsForCharacter,
+  setStandingImage,
+  setExpressionImage,
+  deleteOutfit,
+  OUTFIT_TAG_FIELDS,
+} from '../../db/repositories/outfitsRepo.js';
+import { createImportPlan, findExistingCharacter, renamedForImport } from './importPlan.js';
 import { saveCharacterImage } from '../../storage/imageStorage.js';
 import { extensionOf } from './diskImages.js';
 
@@ -74,7 +83,11 @@ function resolveExpressionTypeId(llmTagKey, warnings) {
   return et.id;
 }
 
-function resolveOutfitMasterId(name, warnings) {
+// 同じバンドルで衣装マスタを「別名で新規」にした場合、衣装の参照先は元の名前の既存マスタでなく
+// そちらの新しいマスタにしたいので、plan が持つ「元の名前→実id」を先に引く。
+function resolveOutfitMasterId(name, warnings, plan) {
+  const fromBatch = plan?.outfitMasterIdByName.get(name);
+  if (fromBatch != null) return fromBatch;
   const master = db.prepare('SELECT id FROM outfit_masters WHERE name = ?').get(name);
   if (!master) {
     warnings.push(`衣装マスタ「${name}」が見つかりませんでした`);
@@ -83,26 +96,66 @@ function resolveOutfitMasterId(name, warnings) {
   return master.id;
 }
 
-export async function importCharacterEntries(entries, readImage, warnings) {
+// 同名のキャラが既にある場合は plan(importPlan.js)の判断に従う。
+//  - 上書き: 既存のidを保ったまま項目・関係値/印象の初期値を更新する。衣装は名前で既存の
+//    衣装に対応付けて更新し、無ければ追加する(ファイルに無い既存の衣装は残す — 衣装idは
+//    プレイ中の着用状態から参照されているので、作り直さない)。
+//  - 別名で新規: 「名前（インポート）」で作る。 スキップ: 触らない。
+// 戻り値の refs は同じバンドル内の他の取り込み(World別設定・イベント)が元の名前でキャラを
+// 引き直すための {name, id}。
+// plan を渡さない呼び出し(ルート固有キャラの取り込み)は常に新規作成。
+export async function importCharacterEntries(entries, readImage, warnings, plan = createImportPlan(), contextWorldId = null) {
   const created = [];
+  const refs = [];
   for (const entry of entries) {
+    const { action, existing } = plan.resolve('character', entry.name, findExistingCharacter(entry.name, contextWorldId));
+    if (action === 'skip') {
+      refs.push({ name: entry.name, id: existing.id });
+      continue;
+    }
+
     const relationshipDefaults = (entry.relationship_defaults ?? [])
       .map((d) => ({ relationship_axis_id: resolveAxisId(d.axis_name, warnings), initial_value: d.initial_value }))
       .filter((d) => d.relationship_axis_id != null);
-    const character = createCharacter({ ...entry, relationship_defaults: relationshipDefaults });
 
-    // createCharacter always auto-creates a default "通常" outfit — replace it
-    // with the bundle's own outfits rather than merging alongside it.
-    for (const autoOutfit of character.outfits) deleteOutfit(autoOutfit.id);
+    let character;
+    if (action === 'overwrite') {
+      const current = getCharacter(existing.id);
+      // 更新指示(update_instruction)はバンドルに載らない項目なので、同じ項目名の既存の値を引き継ぐ。
+      const instructionByKey = new Map(current.impression_defaults.map((d) => [d.field_key, d.update_instruction ?? '']));
+      character = updateCharacter(existing.id, {
+        ...current,
+        ...entry,
+        relationship_defaults: relationshipDefaults,
+        impression_defaults: (entry.impression_defaults ?? []).map((d) => ({
+          ...d,
+          update_instruction: d.update_instruction ?? instructionByKey.get(d.field_key) ?? '',
+        })),
+      });
+    } else {
+      character = createCharacter({
+        ...entry,
+        name: action === 'rename' ? renamedForImport(entry.name) : entry.name,
+        relationship_defaults: relationshipDefaults,
+      });
+      // createCharacter always auto-creates a default "通常" outfit — replace it
+      // with the bundle's own outfits rather than merging alongside it.
+      for (const autoOutfit of character.outfits) deleteOutfit(autoOutfit.id);
+    }
 
     for (const outfitData of entry.outfits ?? []) {
-      const outfitMasterId = outfitData.outfit_master_name ? resolveOutfitMasterId(outfitData.outfit_master_name, warnings) : null;
+      const outfitMasterId = outfitData.outfit_master_name ? resolveOutfitMasterId(outfitData.outfit_master_name, warnings, plan) : null;
       let linkMode = outfitData.link_mode ?? 'copy';
       if (linkMode === 'reference' && outfitMasterId == null) {
         linkMode = 'copy';
         warnings.push(`衣装「${outfitData.name}」の参照先マスタが見つからないため、コピー扱いに切り替えました（タグが空の可能性があります）`);
       }
-      const outfit = createOutfit(character.id, { ...outfitData, outfit_master_id: outfitMasterId, link_mode: linkMode });
+      const outfitInput = { ...outfitData, outfit_master_id: outfitMasterId, link_mode: linkMode };
+      const sameNameOutfit = action === 'overwrite' ? listOutfitsForCharacter(character.id).find((o) => o.name === outfitData.name) : null;
+      // 既存の衣装はバンドルに載らない項目(ネガティブプロンプト等)を保つため、既存の値を土台にする。
+      const outfit = sameNameOutfit
+        ? updateOutfit(sameNameOutfit.id, { ...sameNameOutfit, ...outfitInput })
+        : createOutfit(character.id, outfitInput);
       if (outfitData.standing_image) {
         const imgBuffer = readImage(outfitData.standing_image);
         if (imgBuffer) {
@@ -119,7 +172,8 @@ export async function importCharacterEntries(entries, readImage, warnings) {
         setExpressionImage(outfit.id, expressionTypeId, savedPath);
       }
     }
-    created.push(getCharacter(character.id));
+    if (action !== 'overwrite') created.push(getCharacter(character.id));
+    refs.push({ name: entry.name, id: character.id });
   }
-  return created;
+  return { created, refs };
 }

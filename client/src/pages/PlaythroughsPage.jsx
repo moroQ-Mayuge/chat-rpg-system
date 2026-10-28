@@ -426,7 +426,8 @@ export default function PlaythroughsPage() {
     e.target.value = '';
     if (!file || !world) return;
     try {
-      const result = await contentBundleApi.import(file, world.id);
+      const result = await contentBundleApi.importWithConfirm(file, world.id);
+      if (!result) return;
       window.alert(formatBundleImportSummary(result));
       queryClient.invalidateQueries({ queryKey: ['playthroughs', worldId] });
     } catch (err) {

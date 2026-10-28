@@ -21,6 +21,8 @@ import {
 import { exportEventDefinitionJson } from '../eventPortability.js';
 import { collectPlaythroughEntry, importPlaythroughEntry } from './playthroughBundle.js';
 import { collectOutfitMasterEntries, importOutfitMasterEntries } from './outfitMasterBundle.js';
+import { createImportPlan, detectBundleConflicts } from './importPlan.js';
+import { listRoomTemplatesForWorld } from '../../db/repositories/worldRoomTemplatesRepo.js';
 
 function emptyManifest() {
   return {
@@ -121,43 +123,60 @@ export async function exportOutfitMastersBundle(masterIds) {
 // characters -> world_room_configs (slot assignments/props/connections),
 // since that last step references names that only exist once every entity
 // in this batch has actually been created.
+//
+// options.decisions: 同名の既存データがあった時の1件ごとの判断
+// ({ "<種別>:<名前>": 'overwrite' | 'new' | 'skip' }、キーは importPlan.js の conflictKey)。
+// 事前に previewBundle で同名の一覧を取り、利用者に選んでもらった結果を渡す。判断が無い
+// 同名は従来どおり新規作成する。
 export async function importBundle(zipBuffer, options = {}) {
   const { manifest, readImage } = readZip(zipBuffer);
   const warnings = [];
+  const plan = createImportPlan(options.decisions ?? {});
 
-  const { created: worlds } = await importWorldEntries(manifest.worlds ?? [], readImage, warnings);
+  const { created: worlds, targets: worldTargets } = await importWorldEntries(manifest.worlds ?? [], readImage, warnings, plan);
 
   // outfit_masters are name-resolved by characterBundle.js's resolveOutfitMasterId
   // when characters are imported below, so they need to exist first (matters
   // once a bundle ever combines both; a standalone outfit-masters bundle
   // doesn't care about ordering).
-  const outfitMasters = importOutfitMasterEntries(manifest.outfit_masters ?? []);
+  const outfitMasters = importOutfitMasterEntries(manifest.outfit_masters ?? [], plan);
 
-  let worldIdForRooms = worlds[0]?.id ?? options.targetWorldId ?? null;
+  // 新規作成・上書き・スキップのどれでも、バンドルのWorldに対応する実在のWorldが取り込み先。
+  const worldIdForRooms = worldTargets[0]?.id ?? options.targetWorldId ?? null;
   if ((manifest.room_templates ?? []).length > 0 && worldIdForRooms == null) {
     throw new Error('target_world_id_required');
   }
 
-  const { created: roomTemplates } = await importRoomTemplateEntries(
+  const { created: roomTemplates, refs: roomRefs, skippedNames: skippedRoomNames } = await importRoomTemplateEntries(
     manifest.room_templates ?? [],
     readImage,
     worldIdForRooms,
     warnings,
+    plan,
   );
+  if (worldIdForRooms != null) {
+    for (const name of skippedRoomNames) {
+      const room = roomRefs.find((r) => r.name === name);
+      const attached = room ? listRoomTemplatesForWorld(worldIdForRooms).some((r) => r.id === room.id) : true;
+      if (!attached) warnings.push(`部屋「${name}」はスキップしたため、取り込み先のWorldには紐付けていません`);
+    }
+  }
 
-  const characters = await importCharacterEntries(manifest.characters ?? [], readImage, warnings);
+  const { created: characters, refs: characterRefs } = await importCharacterEntries(manifest.characters ?? [], readImage, warnings, plan, worldIdForRooms);
 
   if ((manifest.world_room_configs ?? []).length > 0 && worldIdForRooms != null) {
-    importWorldRoomConfigEntries(manifest.world_room_configs, worldIdForRooms, roomTemplates, characters, warnings);
+    importWorldRoomConfigEntries(manifest.world_room_configs, worldIdForRooms, roomRefs, characterRefs, warnings, skippedRoomNames);
   }
 
   // character_statuses are World-scoped by id, so importing them needs an
   // actual target World to attach to (falls back to options.targetWorldId
   // the same way room templates do, for a standalone/no-world bundle).
   let characterStatuses = [];
+  let statusRefs = [];
   if ((manifest.character_statuses ?? []).length > 0 && worldIdForRooms != null) {
-    const { created: statuses, nameToId } = importCharacterStatusEntries(manifest.character_statuses, worldIdForRooms);
+    const { created: statuses, refs, nameToId } = importCharacterStatusEntries(manifest.character_statuses, worldIdForRooms, plan);
     characterStatuses = statuses;
+    statusRefs = refs;
     importAxisStatusTriggerEntries(manifest.axis_status_triggers ?? [], nameToId, warnings);
   }
 
@@ -166,7 +185,8 @@ export async function importBundle(zipBuffer, options = {}) {
   // character/status/room template above has actually been created.
   let eventDefinitionsCreated = 0;
   if ((manifest.event_definitions ?? []).length > 0) {
-    eventDefinitionsCreated = importEventDefinitionEntries(manifest.event_definitions, warnings, roomTemplates, characters, characterStatuses);
+    const eventResult = importEventDefinitionEntries(manifest.event_definitions, warnings, roomRefs, characterRefs, statusRefs, plan);
+    eventDefinitionsCreated = eventResult.created;
   }
 
   // ルートは最後 — room_template_id/character_id/status_id/item_id/
@@ -192,6 +212,17 @@ export async function importBundle(zipBuffer, options = {}) {
       playthroughs,
       outfit_masters: outfitMasters,
     },
+    // 同名で「上書き」「スキップ」を選んだものの名前(種別ごと)。画面の結果表示用。
+    updated: plan.updated,
+    skipped: plan.skipped,
     warnings,
   };
+}
+
+// 取り込み前の確認用: このバンドルのうち、既に同名が存在するものの一覧を返す(何も変更しない)。
+// 利用者が1件ごとに「上書き/別名で新規/スキップ」を選び、その結果を importBundle の
+// options.decisions に渡す。
+export function previewBundle(zipBuffer, options = {}) {
+  const { manifest } = readZip(zipBuffer);
+  return { conflicts: detectBundleConflicts(manifest, { targetWorldId: options.targetWorldId ?? null }) };
 }

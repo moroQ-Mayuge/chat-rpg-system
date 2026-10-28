@@ -159,9 +159,10 @@ export function updateRoomTemplate(id, data) {
     shop_lineup_refresh_interval: data.shop_lineup_refresh_interval ?? 0,
     ends_session_on_enter: data.ends_session_on_enter ? 1 : 0,
   });
-  replaceSlotsForRoom(id, data.slots);
-  replaceProfilesForRoom(id, data.profiles);
-  // sub_roomsを送らない呼び出し元(バンドル取り込み等)で既存のサブ部屋を消さない。
+  // slots/profiles/sub_roomsを送らない呼び出し元(バンドルの上書き取り込み等)で
+  // 既存の子を消さない(slotsを全置換するとWorld別の割り当てがidごと失われるため)。
+  if (Array.isArray(data.slots)) replaceSlotsForRoom(id, data.slots);
+  if (Array.isArray(data.profiles)) replaceProfilesForRoom(id, data.profiles);
   if (Array.isArray(data.sub_rooms)) syncSubRoomsForRoom(id, data.sub_rooms);
   replaceCandidateCategoriesForRoom(id, data.prop_category_ids);
   replaceCandidateItemCategoriesForRoom(id, data.item_category_ids);

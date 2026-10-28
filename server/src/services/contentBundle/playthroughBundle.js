@@ -276,7 +276,7 @@ export async function importPlaythroughEntry(entry, readImage, targetWorldId, wa
   // 「同一バッチ内を優先」できるよう、whole-install のマップの後に上書きする
   // (eventPortability.js の preferredCharacters と同じ考え方 — 宛先に同名の
   // 無関係キャラが居ても、今回同梱したキャラの方を優先して紐付ける)。
-  const autoCreated = await importCharacterEntries(entry.auto_created_characters ?? [], readImage, warnings);
+  const { created: autoCreated } = await importCharacterEntries(entry.auto_created_characters ?? [], readImage, warnings);
   const charIdByName = new Map(listCharacters().map((c) => [c.name, c.id]));
   for (const c of autoCreated) charIdByName.set(c.name, c.id);
 

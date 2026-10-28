@@ -2550,7 +2550,8 @@ export default function EventsPage() {
     if (!file) return;
     try {
       if (file.name.toLowerCase().endsWith('.zip')) {
-        const result = await contentBundleApi.import(file);
+        const result = await contentBundleApi.importWithConfirm(file);
+        if (!result) return;
         window.alert(formatBundleImportSummary(result));
         queryClient.invalidateQueries({ queryKey: ['eventDefinitions'] });
         return;

@@ -34,7 +34,8 @@ export default function RoomTemplatesPage() {
     e.target.value = '';
     if (!file) return;
     try {
-      const result = await contentBundleApi.import(file, importTargetWorldId || undefined);
+      const result = await contentBundleApi.importWithConfirm(file, importTargetWorldId || undefined);
+      if (!result) return;
       window.alert(formatBundleImportSummary(result));
       queryClient.invalidateQueries({ queryKey: ['roomTemplates'] });
       queryClient.invalidateQueries({ queryKey: ['worlds'] });

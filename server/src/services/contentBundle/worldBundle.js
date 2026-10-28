@@ -1,12 +1,13 @@
 import { db } from '../../db/connection.js';
-import { getWorld, createWorld, setThumbnailImage } from '../../db/repositories/worldsRepo.js';
+import { getWorld, createWorld, updateWorld, setThumbnailImage } from '../../db/repositories/worldsRepo.js';
+import { createImportPlan, findExistingWorld, renamedForImport } from './importPlan.js';
 import { listRoomTemplatesForWorld } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { listSlotsForRoom } from '../../db/repositories/roomParticipantSlotsRepo.js';
 import { listAssignmentsForWorldRoom, replaceAssignmentsForSlot } from '../../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { listPropsForWorldRoom, listFreePropsForWorldRoom, replacePropsForWorldRoom } from '../../db/repositories/worldRoomPropsRepo.js';
 import { listPropsForWorldSubRoom, listFreePropsForWorldSubRoom, replacePropsForWorldSubRoom } from '../../db/repositories/worldSubRoomPropsRepo.js';
 import { listSubRoomsForRoom } from '../../db/repositories/roomSubRoomsRepo.js';
-import { listConnectionsFrom, createConnection } from '../../db/repositories/roomConnectionsRepo.js';
+import { listConnectionsFrom, createConnection, updateConnection } from '../../db/repositories/roomConnectionsRepo.js';
 import { saveWorldImage } from '../../storage/imageStorage.js';
 import { extensionOf } from './diskImages.js';
 
@@ -126,11 +127,15 @@ export function collectWorldRoomConfigEntries(worldId) {
 // rationale as eventPortability.js's preferredRoomTemplates/preferredCharacters
 // (a name collision with a pre-existing entity elsewhere in the install would
 // otherwise silently resolve to the wrong one).
-export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemplates, preferredCharacters, warnings) {
+//
+// skippedRoomNames: 取り込みで「スキップ」を選んだ部屋。その部屋のWorld別設定も
+// 既存のまま触らない(スキップ=何も変更しない)。
+export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemplates, preferredCharacters, warnings, skippedRoomNames = new Set()) {
   const roomByName = new Map(preferredRoomTemplates.map((r) => [r.name, r.id]));
   const characterByName = new Map(preferredCharacters.map((c) => [c.name, c.id]));
 
   for (const entry of entries) {
+    if (skippedRoomNames.has(entry.room_template_name)) continue;
     const roomId = roomByName.get(entry.room_template_name) ?? listRoomTemplatesForWorld(worldId).find((r) => r.name === entry.room_template_name)?.id;
     if (roomId == null) {
       warnings.push(`部屋「${entry.room_template_name}」のWorld別設定の割り当て先が見つからず、スキップしました`);
@@ -178,6 +183,17 @@ export function importWorldRoomConfigEntries(entries, worldId, preferredRoomTemp
         warnings.push(`部屋「${entry.room_template_name}」の接続先「${conn.to_room_template_name}」が見つからず、接続をスキップしました`);
         continue;
       }
+      // 上書き取り込みで同じ経路が既にある場合は、重複させず内容だけ更新する。
+      const sameRoute = listConnectionsFrom(roomId, worldId).find((c) => c.to_room_template_id === toRoomId);
+      if (sameRoute) {
+        updateConnection(sameRoute.id, {
+          to_room_template_id: toRoomId,
+          label: conn.label,
+          movement_cost: conn.movement_cost,
+          ends_session: conn.ends_session,
+        });
+        continue;
+      }
       createConnection({
         world_id: worldId,
         from_room_template_id: roomId,
@@ -208,12 +224,39 @@ function resolveImageStylePresetId(name, warnings) {
 // resolve world_name references purely within this same import batch (a
 // combined World+Rooms bundle is self-contained; a standalone room bundle
 // falls back to options.targetWorldId instead — see contentBundle/index.js).
-export async function importWorldEntries(entries, readImage, warnings) {
+//
+// 同名のWorldが既にある場合は plan(importPlan.js)の判断に従う。戻り値の targets は
+// 「このバンドルの部屋・状態の取り込み先」になるWorld(新規作成・上書き・スキップの
+// いずれでも、バンドルのWorldに対応する実在のWorld)で、created は新規に作ったものだけ。
+export async function importWorldEntries(entries, readImage, warnings, plan = createImportPlan()) {
   const created = [];
+  const targets = [];
   const nameToId = new Map();
   for (const entry of entries) {
+    const { action, existing } = plan.resolve('world', entry.name, findExistingWorld(entry.name));
+    if (action === 'skip') {
+      targets.push(getWorld(existing.id));
+      nameToId.set(entry.name, existing.id);
+      continue;
+    }
+
     const imageStylePresetId = resolveImageStylePresetId(entry.image_style_preset_name, warnings);
-    const world = createWorld({ ...entry, image_style_preset_id: imageStylePresetId });
+    let world;
+    if (action === 'overwrite') {
+      // WORLD_FIELDS以外(通貨・妊娠・セッション区切り等の多数の設定)はバンドルに
+      // 含まれないので、既存の値を土台にして上書きする(土台無しだと既定値へ戻ってしまう)。
+      world = updateWorld(existing.id, {
+        ...getWorld(existing.id),
+        ...entry,
+        image_style_preset_id: imageStylePresetId ?? getWorld(existing.id).image_style_preset_id,
+      });
+    } else {
+      world = createWorld({
+        ...entry,
+        name: action === 'rename' ? renamedForImport(entry.name) : entry.name,
+        image_style_preset_id: imageStylePresetId,
+      });
+    }
     if (entry.thumbnail_image) {
       const imgBuffer = readImage(entry.thumbnail_image);
       if (imgBuffer) {
@@ -221,8 +264,10 @@ export async function importWorldEntries(entries, readImage, warnings) {
         setThumbnailImage(world.id, savedPath);
       }
     }
-    created.push(getWorld(world.id));
+    const row = getWorld(world.id);
+    if (action !== 'overwrite') created.push(row);
+    targets.push(row);
     nameToId.set(entry.name, world.id);
   }
-  return { created, nameToId };
+  return { created, targets, nameToId };
 }

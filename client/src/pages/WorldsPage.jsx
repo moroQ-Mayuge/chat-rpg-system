@@ -313,7 +313,8 @@ export default function WorldsPage() {
     e.target.value = '';
     if (!file) return;
     try {
-      const result = await contentBundleApi.import(file);
+      const result = await contentBundleApi.importWithConfirm(file);
+      if (!result) return;
       window.alert(formatBundleImportSummary(result));
       queryClient.invalidateQueries({ queryKey: ['worlds'] });
     } catch (err) {

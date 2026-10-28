@@ -1,8 +1,9 @@
 import { db } from '../../db/connection.js';
-import { listAllStatuses, createStatus, attachStatusToWorld } from '../../db/repositories/characterStatusesRepo.js';
+import { createStatus, updateStatus, attachStatusToWorld } from '../../db/repositories/characterStatusesRepo.js';
 import { listRelationshipAxes } from '../../db/repositories/relationshipAxesRepo.js';
-import { createTrigger } from '../../db/repositories/axisStatusTriggersRepo.js';
+import { createTrigger, listAllTriggers } from '../../db/repositories/axisStatusTriggersRepo.js';
 import { listEventDefinitions, setEventPrerequisite } from '../../db/repositories/eventDefinitionsRepo.js';
+import { createImportPlan, findExistingStatus, findExistingEventDefinition, renamedForImport } from './importPlan.js';
 import { listRoomTemplatesForWorld, listWorldsForRoomTemplate } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { exportEventDefinitionJson, importEventDefinitionJson, collectCharacterIds, collectStatusIds } from '../eventPortability.js';
 
@@ -119,20 +120,40 @@ export function collectEventDefinitionEntriesForWorld(worldId) {
   return result.map((d) => exportEventDefinitionJson(d.id));
 }
 
-export function importCharacterStatusEntries(entries, worldId) {
+// 同名の状態(取り込み先Worldから見えるもの)が既にある場合は plan(importPlan.js)の判断に従う。
+// 上書きは既存のidを保つ(キャラが持っている状態として参照されているため)。「全World共通」の
+// 状態を上書きする時に取り込み先Worldへ紐付けると、他Worldから見えなくなってしまうので紐付けない。
+// バンドルに載らない項目(衣装の乱れ設定など)は既存の値を土台にして消さない。
+// created は新規に作った分だけ、refs は同じバンドルのイベントが元の名前で状態を引き直すための
+// {name, id}(上書き・スキップ・別名で新規のすべて)。
+export function importCharacterStatusEntries(entries, worldId, plan = createImportPlan()) {
   const created = [];
+  const refs = [];
   const nameToId = new Map();
   for (const entry of entries) {
-    const status = createStatus(entry);
-    attachStatusToWorld(worldId, status.id);
-    created.push(status);
-    nameToId.set(entry.name, status.id);
+    const { action, existing } = plan.resolve('character_status', entry.name, findExistingStatus(entry.name, worldId));
+    let statusId;
+    if (action === 'skip') {
+      statusId = existing.id;
+    } else if (action === 'overwrite') {
+      statusId = updateStatus(existing.id, { ...existing, ...entry }).id;
+    } else {
+      const status = createStatus({ ...entry, name: action === 'rename' ? renamedForImport(entry.name) : entry.name });
+      attachStatusToWorld(worldId, status.id);
+      created.push(status);
+      statusId = status.id;
+    }
+    refs.push({ name: entry.name, id: statusId });
+    nameToId.set(entry.name, statusId);
   }
-  return { created, nameToId };
+  return { created, refs, nameToId };
 }
 
+// 同じ内容(軸・比較・しきい値・状態)の軸トリガーが既にある場合は重複して作らない
+// (上書き/スキップで既存の状態に対して取り込むと、毎回同じトリガーが増えてしまうため)。
 export function importAxisStatusTriggerEntries(entries, statusNameToId, warnings) {
   const axisIdByName = new Map(listRelationshipAxes().map((a) => [a.name, a.id]));
+  const existingTriggers = listAllTriggers();
   let created = 0;
   for (const entry of entries) {
     const axisId = axisIdByName.get(entry.axis_name);
@@ -141,6 +162,14 @@ export function importAxisStatusTriggerEntries(entries, statusNameToId, warnings
       warnings.push(`軸トリガー（${entry.axis_name} / ${entry.status_name}）の参照が解決できず、インポートをスキップしました`);
       continue;
     }
+    const duplicated = existingTriggers.some(
+      (t) =>
+        t.relationship_axis_id === axisId &&
+        t.status_id === statusId &&
+        t.comparison === entry.comparison &&
+        t.threshold_value === entry.threshold_value,
+    );
+    if (duplicated) continue;
     createTrigger({ relationship_axis_id: axisId, comparison: entry.comparison, threshold_value: entry.threshold_value, status_id: statusId });
     created += 1;
   }
@@ -157,17 +186,31 @@ export function importAxisStatusTriggerEntries(entries, statusNameToId, warnings
 // elsewhere in the install (event names collide freely across Worlds), the same
 // rationale as the preferredRoomTemplates/preferredCharacters/preferredStatuses
 // options below.
-export function importEventDefinitionEntries(entries, warnings, importedRoomTemplates = [], importedCharacters = [], importedStatuses = []) {
+//
+// 同名のイベント(適用範囲と部屋も同じもの)が既にある場合は plan(importPlan.js)の判断に従う。
+// 戻り値は新規に作った件数(created)と上書きした件数(updated)。スキップした分は
+// 前提イベントの名前解決には使うが、前提の付け替えなど中身には触らない。
+export function importEventDefinitionEntries(entries, warnings, importedRoomTemplates = [], importedCharacters = [], importedStatuses = [], plan = createImportPlan()) {
   const imported = [];
+  let createdCount = 0;
+  let updatedCount = 0;
   for (const json of entries) {
+    const label = json.data?.name ?? '(不明なイベント)';
+    const { action, existing } = plan.resolve('event_definition', json.data?.name, findExistingEventDefinition(json));
+    if (action === 'skip') {
+      imported.push({ json, def: existing, skipped: true });
+      continue;
+    }
     const result = importEventDefinitionJson(json, {
-      suffixName: false,
+      suffixName: action === 'rename',
+      overwriteEventDefinitionId: action === 'overwrite' ? existing.id : null,
       deferPrerequisite: true,
       preferredRoomTemplates: importedRoomTemplates,
       preferredCharacters: importedCharacters,
       preferredStatuses: importedStatuses,
     });
-    const label = json.data?.name ?? '(不明なイベント)';
+    if (action === 'overwrite') updatedCount += 1;
+    else createdCount += 1;
     if (result.unresolvedCharacters.length) warnings.push(`イベント「${label}」: キャラ参照が未解決です（${result.unresolvedCharacters.join(', ')}）`);
     if (result.unresolvedStatuses.length) warnings.push(`イベント「${label}」: ステータス参照が未解決です（${result.unresolvedStatuses.join(', ')}）`);
     if (result.unresolvedOutfits.length) warnings.push(`イベント「${label}」: 衣装参照が未解決です（${result.unresolvedOutfits.join(', ')}）`);
@@ -177,13 +220,16 @@ export function importEventDefinitionEntries(entries, warnings, importedRoomTemp
 
   // First occurrence wins when the batch itself contains duplicate names —
   // arbitrary but deterministic, and matches the export side's "keep the
-  // lowest id" dedupe.
+  // lowest id" dedupe. 前提イベントはバンドルに載った元の名前で引くので、「別名で新規」に
+  // したイベントも元の名前(json.data.name)をキーにする。
   const batchIdByName = new Map();
-  for (const { def } of imported) {
-    if (!batchIdByName.has(def.name)) batchIdByName.set(def.name, def.id);
+  for (const { json, def } of imported) {
+    const originalName = json.data?.name ?? def.name;
+    if (!batchIdByName.has(originalName)) batchIdByName.set(originalName, def.id);
   }
 
-  for (const { json, def } of imported) {
+  for (const { json, def, skipped } of imported) {
+    if (skipped) continue;
     const prereqName = json.prerequisite_event_name;
     if (!prereqName) continue;
     // Fall back to the whole install so a partial import can still attach to a
@@ -198,5 +244,5 @@ export function importEventDefinitionEntries(entries, warnings, importedRoomTemp
     setEventPrerequisite(def.id, resolvedId);
   }
 
-  return imported.length;
+  return { created: createdCount, updated: updatedCount };
 }

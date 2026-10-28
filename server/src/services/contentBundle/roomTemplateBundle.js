@@ -1,5 +1,7 @@
 import { db } from '../../db/connection.js';
-import { getRoomTemplate, createRoomTemplate } from '../../db/repositories/roomTemplatesRepo.js';
+import { getRoomTemplate, createRoomTemplate, updateRoomTemplate } from '../../db/repositories/roomTemplatesRepo.js';
+import { listSlotsForRoom } from '../../db/repositories/roomParticipantSlotsRepo.js';
+import { createImportPlan, findExistingRoomTemplate, renamedForImport } from './importPlan.js';
 import { attachRoomToWorld } from '../../db/repositories/worldRoomTemplatesRepo.js';
 import { findCategoryByName } from '../../db/repositories/itemCategoriesRepo.js';
 import { saveRoomImage } from '../../storage/imageStorage.js';
@@ -141,12 +143,33 @@ function resolveSubRoomItemCategoryIds(names, worldId, warnings, roomName, subRo
 // sort_order ASC, id ASCで並ぶため、entry.sub_rooms/entry.slotsの配列インデックス
 // と作成後の配列インデックスが一致する(名前で対応付けない——同名サブ部屋を
 // 許容する既存仕様のため)。
-export async function importRoomTemplateEntries(entries, readImage, worldId, warnings) {
+//
+// 同名の部屋が既にある場合は plan(importPlan.js)の判断に従う。
+//  - 上書き: 既存のid・World紐付け・プロファイルは保ち、部屋本体の項目を更新する。
+//    枠(slots)は並び順で、サブ部屋は名前で既存行と対応付けて「その行を更新」する
+//    (作り直すと、World別の枠の割り当てや進行中セッションの位置が消えるため)。
+//    ファイルに無い既存のサブ部屋・枠は残す。
+//  - 別名で新規: 「名前（インポート）」で作る。
+//  - スキップ: 触らない。
+// 戻り値の refs は、同じバンドル内の他の取り込み(World別設定・イベント)が元の名前で
+// 部屋を引き直すための {name, id}(別名で新規にした部屋も元の名前で引けるようにする)。
+// skippedNames は World別設定も触らない部屋の元の名前。
+export async function importRoomTemplateEntries(entries, readImage, worldId, warnings, plan = createImportPlan()) {
   const created = [];
+  const refs = [];
+  const skippedNames = new Set();
   for (const entry of entries) {
+    const { action, existing } = plan.resolve('room_template', entry.name, findExistingRoomTemplate(entry.name, worldId));
+    if (action === 'skip') {
+      refs.push({ name: entry.name, id: existing.id });
+      skippedNames.add(entry.name);
+      continue;
+    }
+
     const categoryIds = (entry.candidate_prop_category_names ?? [])
       .map((name) => resolvePropCategoryId(name, worldId, warnings, entry.name))
       .filter((id) => id != null);
+    const existingRoom = action === 'overwrite' ? getRoomTemplate(existing.id) : null;
     const subRoomsInput = (entry.sub_rooms ?? []).map((sub) => {
       const { background_image, item_category_names, ...rest } = sub;
       return {
@@ -155,12 +178,63 @@ export async function importRoomTemplateEntries(entries, readImage, worldId, war
       };
     });
     const slotsInput = (entry.slots ?? []).map(({ sub_room_index, ...rest }) => rest);
-    const roomTemplate = createRoomTemplate({
-      ...entry,
-      prop_category_ids: categoryIds,
-      slots: slotsInput,
-      sub_rooms: subRoomsInput,
-    });
+
+    let roomTemplate;
+    // 上書き時に「ファイルのN番目の枠」が実際にどの既存/追加行になったか(後段でサブ部屋の配置先を設定するため)。
+    const boundSlotIds = [];
+    if (action === 'overwrite') {
+      // サブ部屋は名前で既存行に対応付け(同名が複数あれば先頭から順に)、id付きで渡して
+      // その行を更新させる。ファイルに無い既存のサブ部屋は末尾に残す。
+      const unmatched = [...existingRoom.sub_rooms];
+      const matchedInput = subRoomsInput.map((sub) => {
+        const matchIndex = unmatched.findIndex((s) => s.name === sub.name);
+        if (matchIndex < 0) return sub;
+        const [match] = unmatched.splice(matchIndex, 1);
+        return { ...match, ...sub, id: match.id, background_image_path: match.background_image_path };
+      });
+      // 並び替え(sort_order)は渡した順で決まるので、ファイル側の順の後ろに既存の残りを足す。
+      const mergedSubRooms = [...matchedInput, ...unmatched];
+
+      // 枠は並び順で既存行を更新(idを保つ)。足りない分だけ追加し、余った既存枠は残す。
+      const existingSlots = listSlotsForRoom(existing.id);
+      slotsInput.forEach((slot, index) => {
+        const row = existingSlots[index];
+        if (row) {
+          db.prepare('UPDATE room_template_participant_slots SET attribute_tags = ?, note = ?, sort_order = ? WHERE id = ?').run(
+            slot.attribute_tags ?? '',
+            slot.note ?? '',
+            slot.sort_order ?? index,
+            row.id,
+          );
+          boundSlotIds[index] = row.id;
+        } else {
+          const result = db
+            .prepare('INSERT INTO room_template_participant_slots (room_template_id, attribute_tags, note, sort_order) VALUES (?, ?, ?, ?)')
+            .run(existing.id, slot.attribute_tags ?? '', slot.note ?? '', slot.sort_order ?? index);
+          boundSlotIds[index] = Number(result.lastInsertRowid);
+        }
+      });
+
+      // バンドルに含まれない項目(買い物・衣装入手・既定ポーズ等)は既存の値を土台にする。
+      // slots/profiles/sub_rooms は上で個別に処理済み。ここで配列のまま渡すと全置換されてしまう。
+      const { slots: _slots, profiles: _profiles, sub_rooms: _subRooms, ...baseColumns } = existingRoom;
+      const { slots: _entrySlots, sub_rooms: _entrySubRooms, ...entryColumns } = entry;
+      roomTemplate = updateRoomTemplate(existing.id, {
+        ...baseColumns,
+        ...entryColumns,
+        prop_category_ids: categoryIds.length > 0 ? categoryIds : existingRoom.candidate_prop_categories.map((c) => c.id),
+        item_category_ids: existingRoom.candidate_item_categories.map((c) => c.id),
+        sub_rooms: mergedSubRooms,
+      });
+    } else {
+      roomTemplate = createRoomTemplate({
+        ...entry,
+        name: action === 'rename' ? renamedForImport(entry.name) : entry.name,
+        prop_category_ids: categoryIds,
+        slots: slotsInput,
+        sub_rooms: subRoomsInput,
+      });
+    }
     if (entry.background_image) {
       const imgBuffer = readImage(entry.background_image);
       if (imgBuffer) {
@@ -179,15 +253,18 @@ export async function importRoomTemplateEntries(entries, readImage, worldId, war
       }
     }
     (entry.slots ?? []).forEach((slot, index) => {
-      if (slot.sub_room_index == null) return;
-      const subRoomId = createdRoom.sub_rooms[slot.sub_room_index]?.id;
-      const slotId = createdRoom.slots[index]?.id;
-      if (subRoomId != null && slotId != null) {
+      const slotId = boundSlotIds[index] ?? createdRoom.slots[index]?.id;
+      if (slotId == null) return;
+      const subRoomId = slot.sub_room_index == null ? null : (createdRoom.sub_rooms[slot.sub_room_index]?.id ?? null);
+      // 新規作成の枠は元からNULLなので、上書きで配置先が外れる場合だけ意味を持つ。
+      if (subRoomId != null || action === 'overwrite') {
         db.prepare('UPDATE room_template_participant_slots SET sub_room_id = ? WHERE id = ?').run(subRoomId, slotId);
       }
     });
     if (worldId != null) attachRoomToWorld(worldId, roomTemplate.id);
-    created.push(getRoomTemplate(roomTemplate.id));
+    const row = getRoomTemplate(roomTemplate.id);
+    if (action !== 'overwrite') created.push(row);
+    refs.push({ name: entry.name, id: row.id });
   }
-  return { created };
+  return { created, refs, skippedNames };
 }

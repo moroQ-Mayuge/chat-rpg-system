@@ -1,4 +1,4 @@
-import { getEventDefinition, createEventDefinition, listEventDefinitions } from '../db/repositories/eventDefinitionsRepo.js';
+import { getEventDefinition, createEventDefinition, updateEventDefinition, listEventDefinitions } from '../db/repositories/eventDefinitionsRepo.js';
 import { listCharacters } from '../db/repositories/charactersRepo.js';
 import { listRoomTemplates } from '../db/repositories/roomTemplatesRepo.js';
 import { listAllStatuses, getStatus } from '../db/repositories/characterStatusesRepo.js';
@@ -316,7 +316,11 @@ export function importEventDefinitionJson(json, options = {}) {
 
   if (options.suffixName !== false) data.name = `${data.name}（インポート）`;
 
-  const created = createEventDefinition(data);
+  // options.overwriteEventDefinitionId: 同名の既存イベントを、idを保ったまま中身(条件・
+  // アクション・分岐)ごと入れ替える(発火履歴は事象のidで紐付いているため作り直さない)。
+  const created = options.overwriteEventDefinitionId != null
+    ? updateEventDefinition(options.overwriteEventDefinitionId, data)
+    : createEventDefinition(data);
   return {
     eventDefinition: created,
     unresolvedCharacters: [...unresolvedCharacters],

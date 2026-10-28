@@ -717,9 +717,13 @@ export default function CharactersPage() {
 
     const successes = [];
     const failures = [];
+    const cancelled = [];
     for (const file of files) {
       try {
-        successes.push({ file, result: await contentBundleApi.import(file) });
+        // 同名のデータがあればファイルごとに確認ダイアログが出る(キャンセルしたファイルは取り込まない)。
+        const result = await contentBundleApi.importWithConfirm(file);
+        if (result) successes.push({ file, result });
+        else cancelled.push(file);
       } catch (err) {
         failures.push({ file, message: err.message });
       }
@@ -727,6 +731,7 @@ export default function CharactersPage() {
     if (successes.length > 0) queryClient.invalidateQueries({ queryKey: ['characters'] });
 
     if (files.length === 1) {
+      if (cancelled.length === 1) return;
       window.alert(
         successes.length === 1
           ? formatBundleImportSummary(successes[0].result)
@@ -740,6 +745,9 @@ export default function CharactersPage() {
     }
     for (const { file, message } of failures) {
       lines.push('', `■ ${file.name}（失敗）`, message);
+    }
+    for (const file of cancelled) {
+      lines.push('', `■ ${file.name}（キャンセル）`);
     }
     window.alert(lines.join('\n'));
   }
