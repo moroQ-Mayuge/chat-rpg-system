@@ -21,6 +21,7 @@ export function collectCharacterIds(def) {
     if (c.condition_type === 'relationship_threshold') add(c.params.character_id);
     if (c.condition_type === 'has_status') add(c.params.character_id);
     if (c.condition_type === 'has_outfit') add(c.params.character_id);
+    if (c.condition_type === 'character_age') add(c.params.character_id);
   }
   for (const a of def.actions) {
     if (a.action_type === 'insert_dialogue') add(a.params.character_id);
@@ -208,6 +209,9 @@ export function importEventDefinitionJson(json, options = {}) {
       c.params.status_id = resolveStatusRef(c.params.status_id);
     }
     if (c.condition_type === 'has_outfit') {
+      c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
+    }
+    if (c.condition_type === 'character_age') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
     }
   }

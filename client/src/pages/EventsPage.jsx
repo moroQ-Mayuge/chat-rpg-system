@@ -78,6 +78,7 @@ const CONDITION_TYPES = [
   { value: 'has_money', label: '所持金' },
   { value: 'llm_judge', label: 'LLM判定' },
   { value: 'in_sub_room', label: '現在のサブ部屋' },
+  { value: 'character_age', label: '対象キャラの年齢（成人限定など）' },
 ];
 
 const ACTION_TYPES = [
@@ -145,6 +146,8 @@ function conditionDefaults(type) {
       return { question: '' };
     case 'in_sub_room':
       return { sub_room_id: null };
+    case 'character_age':
+      return { character_id: 'mentioned', min_age: 18 };
     default:
       return {};
   }
@@ -796,6 +799,37 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
             同席者の実名一覧も自動でLLMに伝わるので、${'{target1}'}等のプレースホルダーで名指しできます。
           </p>
           <PlaceholderReferenceDetails />
+        </div>
+      )}
+
+      {condition.condition_type === 'character_age' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>対象キャラ</span>
+            <select
+              value={p.character_id ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setParams({ character_id: v === 'any_present' || v === 'mentioned' ? v : Number(v) || null });
+              }}
+            >
+              <option value="">選択してください</option>
+              <option value="any_present">同席者全員</option>
+              <option value="mentioned">@メンション中のキャラ全員</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>最低年齢</span>
+            <input type="number" min={0} value={p.min_age ?? 18} onChange={(e) => setParams({ min_age: Number(e.target.value) })} />
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            対象キャラの年齢（キャラの「年齢」欄）が最低年齢以上かを判定します。他の条件と違い、対象全員が満たした時だけ成立します（1人でも下回る・年齢が空や数値でないキャラがいれば不成立）。婚約・結婚など、キャラを指定しない汎用イベントを成人限定にするための年齢ガードです。
+          </p>
         </div>
       )}
 
