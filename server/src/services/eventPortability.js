@@ -22,6 +22,11 @@ export function collectCharacterIds(def) {
     if (c.condition_type === 'has_status') add(c.params.character_id);
     if (c.condition_type === 'has_outfit') add(c.params.character_id);
     if (c.condition_type === 'character_age') add(c.params.character_id);
+    if (c.condition_type === 'companion_state') add(c.params.character_id);
+    if (c.condition_type === 'character_attribute') add(c.params.character_id);
+    if (c.condition_type === 'character_present') add(c.params.character_id);
+    if (c.condition_type === 'has_item') add(c.params.holder);
+    if (c.condition_type === 'owns_outfit') add(c.params.holder);
   }
   for (const a of def.actions) {
     if (a.action_type === 'insert_dialogue') add(a.params.character_id);
@@ -211,8 +216,11 @@ export function importEventDefinitionJson(json, options = {}) {
     if (c.condition_type === 'has_outfit') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
     }
-    if (c.condition_type === 'character_age') {
+    if (c.condition_type === 'character_age' || c.condition_type === 'companion_state' || c.condition_type === 'character_attribute' || c.condition_type === 'character_present') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
+    }
+    if ((c.condition_type === 'has_item' || c.condition_type === 'owns_outfit') && typeof c.params.holder === 'number') {
+      c.params.holder = resolveCharacterRef(c.params.holder, nameByOldId, idByName, unresolvedCharacters);
     }
   }
   for (const a of data.actions ?? []) {

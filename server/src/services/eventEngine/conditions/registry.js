@@ -13,6 +13,10 @@ import { evaluateHasPose, matchingCharactersForHasPose } from './hasPose.js';
 import { evaluateRelationshipProbability, matchingCharactersForRelationshipProbability } from './relationshipProbability.js';
 import { evaluateInSubRoom } from './inSubRoom.js';
 import { evaluateCharacterAge } from './characterAge.js';
+import { evaluateCompanionState, matchingCharactersForCompanionState } from './companionState.js';
+import { evaluateCharacterAttribute, matchingCharactersForCharacterAttribute } from './characterAttribute.js';
+import { evaluateCharacterPresent } from './characterPresent.js';
+import { evaluateOwnsOutfit } from './ownsOutfit.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -30,6 +34,10 @@ export const conditionRegistry = {
   relationship_probability: evaluateRelationshipProbability,
   in_sub_room: evaluateInSubRoom,
   character_age: evaluateCharacterAge,
+  companion_state: evaluateCompanionState,
+  character_attribute: evaluateCharacterAttribute,
+  character_present: evaluateCharacterPresent,
+  owns_outfit: evaluateOwnsOutfit,
 };
 
 // Only condition types that can name a specific character contribute to
@@ -48,6 +56,8 @@ const characterMatcherRegistry = {
   has_pose: matchingCharactersForHasPose,
   relationship_threshold: matchingCharactersForRelationshipThreshold,
   relationship_probability: matchingCharactersForRelationshipProbability,
+  companion_state: matchingCharactersForCompanionState,
+  character_attribute: matchingCharactersForCharacterAttribute,
 };
 
 // Returns the array of character ids this one condition is about, or null if

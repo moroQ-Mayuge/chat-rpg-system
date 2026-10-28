@@ -7,7 +7,7 @@
 //   - llm_judge: 生成テキストへの依存が本質的(条件自体が別途LLM往復で判定する)。
 //   - target!=='user_message'なkeyword: 既定値'any'を含め、ai_response側の
 //     テキストも見に行く可能性があるため(keyword.js参照)。
-//   - has_pose/has_item/has_money: LLM応答のストリーミング中に処理される
+//   - has_pose/has_item/has_money/owns_outfit: LLM応答のストリーミング中に処理される
 //     [POSE:xxx]・ショップ部屋の[ITEM_GRANT]/[OUTFIT_GRANT]・[CRAFT_RESULT]
 //     タグ(roomSessions.jsのhandleParsedLine)がこれらの状態を書き換えるため、
 //     生成前に確定させた結果が生成後の実際の状態とずれる可能性がある。
@@ -15,7 +15,7 @@
 // 上記以外(probability/turn_count/relationship_threshold/flag_state/
 // participant_count/has_status/has_outfit/relationship_probability)は
 // 生成前の状態だけで安全に確定できる。
-const AIRESPONSE_DEPENDENT_TYPES = new Set(['llm_judge', 'has_pose', 'has_item', 'has_money']);
+const AIRESPONSE_DEPENDENT_TYPES = new Set(['llm_judge', 'has_pose', 'has_item', 'has_money', 'owns_outfit']);
 
 function isConditionPreResolvable(condition) {
   if (AIRESPONSE_DEPENDENT_TYPES.has(condition.condition_type)) return false;

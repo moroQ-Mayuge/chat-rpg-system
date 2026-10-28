@@ -79,6 +79,10 @@ const CONDITION_TYPES = [
   { value: 'llm_judge', label: 'LLM判定' },
   { value: 'in_sub_room', label: '現在のサブ部屋' },
   { value: 'character_age', label: '対象キャラの年齢（成人限定など）' },
+  { value: 'companion_state', label: '同行・デート中の状態' },
+  { value: 'character_attribute', label: 'キャラの属性（タグ・モブ・性別・職業）' },
+  { value: 'character_present', label: '特定のキャラ・属性のキャラの同席' },
+  { value: 'owns_outfit', label: '衣装マスタの所持' },
 ];
 
 const ACTION_TYPES = [
@@ -148,6 +152,14 @@ function conditionDefaults(type) {
       return { sub_room_id: null };
     case 'character_age':
       return { character_id: 'mentioned', min_age: 18 };
+    case 'companion_state':
+      return { character_id: 'mentioned', state: 'accompanying', negate: false };
+    case 'character_attribute':
+      return { character_id: 'mentioned', tag: '', is_mob: '', gender: '', occupation_contains: '', quantifier: 'any', negate: false };
+    case 'character_present':
+      return { character_id: null, tag: '', negate: false };
+    case 'owns_outfit':
+      return { name_contains: '', holder: null, negate: false };
     default:
       return {};
   }
@@ -314,6 +326,56 @@ function PlaceholderReferenceDetails() {
         </p>
       </div>
     </details>
+  );
+}
+
+// 条件の「対象キャラ」セレクト(同席者/@メンション/個別キャラ)。値は数値か'any_present'/'mentioned'。
+function TargetCharacterSelect({ value, onChange, characters, anyLabel = '同席者の誰か', mentionedLabel = '@メンション中のキャラ' }) {
+  return (
+    <label>
+      <span style={label11}>対象キャラ</span>
+      <select
+        value={value ?? ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === 'any_present' || v === 'mentioned' ? v : Number(v) || null);
+        }}
+      >
+        <option value="">選択してください</option>
+        <option value="any_present">{anyLabel}</option>
+        <option value="mentioned">{mentionedLabel}</option>
+        {characters.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+// 持ち主セレクト(未指定=プレイヤー)。has_item/owns_outfit共通。
+function HolderSelect({ value, onChange, characters }) {
+  return (
+    <label>
+      <span style={label11}>持ち主</span>
+      <select
+        value={value ?? ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === '' ? null : v === 'any_present' || v === 'mentioned' ? v : Number(v));
+        }}
+      >
+        <option value="">プレイヤー</option>
+        <option value="mentioned">@メンション中のキャラ（渡した相手）</option>
+        <option value="any_present">同席者の誰か</option>
+        {characters.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -645,11 +707,11 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
       )}
 
       {condition.condition_type === 'has_item' && (
-        <div style={{ display: 'flex', gap: 6 }}>
-          <label style={{ flex: 1 }}>
-            <span style={label11}>アイテム</span>
+        <div style={grid3}>
+          <label>
+            <span style={label11}>アイテム（名前で指定する場合は空欄）</span>
             <select value={p.item_id ?? ''} onChange={(e) => setParams({ item_id: Number(e.target.value) || null })}>
-              <option value="">選択してください</option>
+              <option value="">指定しない</option>
               {(items ?? []).map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -657,10 +719,123 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               ))}
             </select>
           </label>
+          <label>
+            <span style={label11}>名前に含む文字（例: 婚約指輪）</span>
+            <input value={p.item_name_contains ?? ''} onChange={(e) => setParams({ item_name_contains: e.target.value })} />
+          </label>
+          <HolderSelect value={p.holder} onChange={(v) => setParams({ holder: v })} characters={characters} />
           <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
             <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
             <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
           </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            アイテムか名前のどちらか（両方指定したら両方に合うもの）で判定します。「渡す」で渡した物はプレイヤーの持ち物から相手の持ち物へ移るので、渡した結果を見たい時は持ち主に渡した相手を選びます。
+          </p>
+        </div>
+      )}
+
+      {condition.condition_type === 'companion_state' && (
+        <div style={grid3}>
+          <TargetCharacterSelect value={p.character_id} onChange={(v) => setParams({ character_id: v })} characters={characters} />
+          <label>
+            <span style={label11}>状態</span>
+            <select value={p.state ?? 'accompanying'} onChange={(e) => setParams({ state: e.target.value })}>
+              <option value="accompanying">同行中（デート中を含む）</option>
+              <option value="dating">デート中</option>
+              <option value="not_accompanying">同行していない</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>該当しない場合に成立</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            対象のうち誰か1人でも該当すれば成立します。対象はこの部屋に在籍しているキャラ（サブ部屋で待機中の同行者を含む）です。
+          </p>
+        </div>
+      )}
+
+      {condition.condition_type === 'character_attribute' && (
+        <div style={grid3}>
+          <TargetCharacterSelect value={p.character_id} onChange={(v) => setParams({ character_id: v })} characters={characters} />
+          <label>
+            <span style={label11}>属性タグ（完全一致）</span>
+            <input value={p.tag ?? ''} onChange={(e) => setParams({ tag: e.target.value })} placeholder="例: 教会関係者" />
+          </label>
+          <label>
+            <span style={label11}>モブか</span>
+            <select value={p.is_mob ?? ''} onChange={(e) => setParams({ is_mob: e.target.value })}>
+              <option value="">指定しない</option>
+              <option value="yes">モブ</option>
+              <option value="no">モブ以外</option>
+            </select>
+          </label>
+          <label>
+            <span style={label11}>性別（完全一致）</span>
+            <input value={p.gender ?? ''} onChange={(e) => setParams({ gender: e.target.value })} placeholder="例: 女性" />
+          </label>
+          <label>
+            <span style={label11}>職業に含む文字</span>
+            <input value={p.occupation_contains ?? ''} onChange={(e) => setParams({ occupation_contains: e.target.value })} placeholder="例: 教師" />
+          </label>
+          <label>
+            <span style={label11}>対象が複数の時</span>
+            <select value={p.quantifier ?? 'any'} onChange={(e) => setParams({ quantifier: e.target.value })}>
+              <option value="any">誰か1人が満たせば成立</option>
+              <option value="all">全員が満たした時だけ成立</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4, gridColumn: 'span 3' }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>該当しない場合に成立</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            指定した項目は、1人のキャラの中で全て満たす必要があります。何も指定しなければ不成立です。キャラを指定しない汎用イベントを、キャラの種類で絞るために使います。
+          </p>
+        </div>
+      )}
+
+      {condition.condition_type === 'character_present' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>キャラ（任意）</span>
+            <select value={p.character_id ?? ''} onChange={(e) => setParams({ character_id: Number(e.target.value) || null })}>
+              <option value="">指定しない</option>
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span style={label11}>属性タグ（完全一致、任意）</span>
+            <input value={p.tag ?? ''} onChange={(e) => setParams({ tag: e.target.value })} placeholder="例: 教会関係者" />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>いない場合に成立</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            プレイヤーと同じ場所（会話に参加している）にいるキャラで判定します。キャラとタグを両方指定したら、両方を満たす1人がいる時だけ成立します。
+          </p>
+        </div>
+      )}
+
+      {condition.condition_type === 'owns_outfit' && (
+        <div style={grid3}>
+          <label>
+            <span style={label11}>衣装マスタ名に含む文字</span>
+            <input value={p.name_contains ?? ''} onChange={(e) => setParams({ name_contains: e.target.value })} placeholder="例: ウェディング" />
+          </label>
+          <HolderSelect value={p.holder} onChange={(v) => setParams({ holder: v })} characters={characters} />
+          <label style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>持っていない場合に成立</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            衣装マスタを所持しているかを判定します（今着ている衣装を見る「着用中の衣装」とは別の条件）。
+          </p>
         </div>
       )}
 
@@ -2581,7 +2756,7 @@ export default function EventsPage() {
               <div style={{ marginBottom: 12 }}>
                 <p style={{ fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>ルート結果のヒント文言（任意）</p>
                 <p style={{ fontSize: 11, color: '#888', margin: '0 0 8px' }}>
-                  このイベントのルート条件がLLM生成前に確定できる場合（keywordはtarget:user_message限定、has_pose/has_item/has_money/llm_judgeを一切含まない場合）、生成前に成否を判定し、下の文言を該当キャラのプロンプトへ「現在の状態：〜」として注入します。モデルが実際の判定結果と矛盾する台詞を書かないようにするためのものです。空欄のままなら何も注入されません。
+                  このイベントのルート条件がLLM生成前に確定できる場合（keywordはtarget:user_message限定、has_pose/has_item/has_money/owns_outfit/llm_judgeを一切含まない場合）、生成前に成否を判定し、下の文言を該当キャラのプロンプトへ「現在の状態：〜」として注入します。モデルが実際の判定結果と矛盾する台詞を書かないようにするためのものです。空欄のままなら何も注入されません。
                 </p>
                 <label style={{ display: 'block', marginBottom: 6 }}>
                   <span style={{ fontSize: 11, color: '#888' }}>成功時</span>
