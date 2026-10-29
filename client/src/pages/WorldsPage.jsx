@@ -78,6 +78,7 @@ const emptyForm = {
   mob_flavor_mode: 'off',
   undress_image_generation_enabled: false,
   undress_image_use_previous_prompt: false,
+  undress_image_reset_on_sub_room_move: false,
   outfit_change_image_generation_enabled: false,
   auto_outfit_image_cooldown_turns: 2,
   cycle_enabled: false,
@@ -214,6 +215,7 @@ export default function WorldsPage() {
         mob_flavor_mode: world.mob_flavor_mode ?? 'off',
         undress_image_generation_enabled: Boolean(world.undress_image_generation_enabled),
         undress_image_use_previous_prompt: Boolean(world.undress_image_use_previous_prompt),
+        undress_image_reset_on_sub_room_move: Boolean(world.undress_image_reset_on_sub_room_move),
         outfit_change_image_generation_enabled: Boolean(world.outfit_change_image_generation_enabled),
         auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
         cycle_enabled: Boolean(world.cycle_enabled),
@@ -1004,7 +1006,20 @@ export default function WorldsPage() {
               対象キャラの直前に生成された画像プロンプトの内容を元にする
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4, marginLeft: 20 }}>
-              同じ場面（セッション）でそのキャラが写った直前の画像のプロンプトを土台にし、そのキャラのキャラタグ（衣装・脱衣状態・ポーズ）だけを今の状態に差し替えます。場所・雰囲気・設備・他のキャラ、直前の画像に足されていた動作の指定などは直前のまま引き継がれるので、構図が変わりにくくなります。部屋を移動するたびにリセットされ、部屋に入った直後や直前の画像が無い場合は、通常どおり現在の場面から組み立てます（同じ部屋のサブ部屋の移動ではリセットしません）。着替え時の自動生成には影響しません。
+              同じ場面（セッション）でそのキャラが写った直前の画像のプロンプトを土台にし、そのキャラのキャラタグ（衣装・脱衣状態・ポーズ）だけを今の状態に差し替えます。場所・雰囲気・設備・他のキャラ、直前の画像に足されていた動作の指定などは直前のまま引き継がれるので、構図が変わりにくくなります。部屋を移動するたびにリセットされ、部屋に入った直後や直前の画像が無い場合は、通常どおり現在の場面から組み立てます（サブ部屋の移動でリセットするかは下の設定で選べます）。着替え時の自動生成には影響しません。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 40 }}>
+              <input
+                type="checkbox"
+                checked={form.undress_image_reset_on_sub_room_move}
+                disabled={!form.undress_image_generation_enabled || !form.undress_image_use_previous_prompt}
+                onChange={(e) => setForm({ ...form, undress_image_reset_on_sub_room_move: e.target.checked })}
+              />
+              サブ部屋を移動した時も、元にする画像プロンプトをリセットする
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4, marginLeft: 40 }}>
+              OFF（既定）では、同じ部屋の中でサブ部屋（カウンター席→個室など）へ移動しても直前の画像プロンプトを引き継ぎます。ONにすると、サブ部屋へ移動した直後の脱衣画像は通常どおり現在の場面から組み立てます。部屋そのものを移動した時は、この設定に関わらず常にリセットされます。
             </p>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

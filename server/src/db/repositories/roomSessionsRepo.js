@@ -638,6 +638,13 @@ export function switchSubRoom(sessionId, subRoomId, { companionRowIds = [] } = {
     subRoom?.id ?? null,
     sessionId,
   );
+  // 「直前の画像のプロンプトを元にする」の参照を、サブ部屋の移動でも切るか(World設定、0164)。
+  // 実際に位置が変わった時だけ。部屋間移動(switchRoomWithinSession)は設定に関わらず常に切る。
+  if (oldPosition !== newPosition && getWorld(getPlaythrough(session.playthrough_id).world_id)?.undress_image_reset_on_sub_room_move) {
+    db.prepare('UPDATE room_sessions SET image_prompt_reuse_floor_id = (SELECT COALESCE(MAX(id), 0) FROM generated_images) WHERE id = ?').run(
+      sessionId,
+    );
+  }
   return { session: getRoomSession(sessionId), movedRowIds, joinedRowIds, leftBehindRowIds };
 }
 
