@@ -77,6 +77,7 @@ const emptyForm = {
   debug_accompany_toggle_enabled: true,
   mob_flavor_mode: 'off',
   undress_image_generation_enabled: false,
+  undress_image_use_previous_prompt: false,
   outfit_change_image_generation_enabled: false,
   auto_outfit_image_cooldown_turns: 2,
   cycle_enabled: false,
@@ -212,6 +213,7 @@ export default function WorldsPage() {
         debug_accompany_toggle_enabled: Boolean(world.debug_accompany_toggle_enabled),
         mob_flavor_mode: world.mob_flavor_mode ?? 'off',
         undress_image_generation_enabled: Boolean(world.undress_image_generation_enabled),
+        undress_image_use_previous_prompt: Boolean(world.undress_image_use_previous_prompt),
         outfit_change_image_generation_enabled: Boolean(world.outfit_change_image_generation_enabled),
         auto_outfit_image_cooldown_turns: world.auto_outfit_image_cooldown_turns ?? 2,
         cycle_enabled: Boolean(world.cycle_enabled),
@@ -990,6 +992,19 @@ export default function WorldsPage() {
             </label>
             <p style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
               「乱れ対象フィールド」「乱れスタイル」（脱衣ラダー）が設定されたキャラ状態が付与・解除された時に生成します。それ以外の状態変化（好感度の変化など）では生成しません。
+            </p>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 20 }}>
+              <input
+                type="checkbox"
+                checked={form.undress_image_use_previous_prompt}
+                disabled={!form.undress_image_generation_enabled}
+                onChange={(e) => setForm({ ...form, undress_image_use_previous_prompt: e.target.checked })}
+              />
+              対象キャラの直前に生成された画像プロンプトの内容を元にする
+            </label>
+            <p style={{ fontSize: 11, color: '#888', marginTop: 4, marginLeft: 20 }}>
+              同じ場面（セッション）でそのキャラが写った直前の画像のプロンプトを土台にし、そのキャラのキャラタグ（衣装・脱衣状態・ポーズ）だけを今の状態に差し替えます。場所・雰囲気・設備・他のキャラ、直前の画像に足されていた動作の指定などは直前のまま引き継がれるので、構図が変わりにくくなります。直前の画像が無い場合（このセッションでまだ画像が生成されていない等）は、通常どおり現在の場面から組み立てます。着替え時の自動生成には影響しません。
             </p>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

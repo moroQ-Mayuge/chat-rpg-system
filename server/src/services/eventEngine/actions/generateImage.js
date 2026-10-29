@@ -4,7 +4,8 @@ import { renderPromptTemplate } from '../../promptTemplate.js';
 import { generateImage as generateImageFromKobold, generateTxt2Image } from '../../koboldClient.js';
 import { enqueueImageJob } from '../../imageQueue.js';
 import { saveGeneratedImage } from '../../../storage/imageStorage.js';
-import { createGeneratedImage } from '../../../db/repositories/generatedImagesRepo.js';
+import { createGeneratedImage, findLatestImageWithCharacter } from '../../../db/repositories/generatedImagesRepo.js';
+import { swapCharacterTags } from '../../previousPromptReuse.js';
 import { createMessage } from '../../../db/repositories/messagesRepo.js';
 import { setCurrentSceneImage, getRoomSession } from '../../../db/repositories/roomSessionsRepo.js';
 import { resolveStylePromptForWorld } from '../../../db/repositories/imageStylePresetsRepo.js';
@@ -47,7 +48,11 @@ function substitutePlaceholders(promptOverride, participantsByName, candidatePar
   return { text, referencedIds };
 }
 
-// { image_type: "scene"|"event", prompt_override?, target_character_ids?, mentioned_limit?, auto_append_unreferenced? }
+// { image_type: "scene"|"event", prompt_override?, target_character_ids?, mentioned_limit?, auto_append_unreferenced?,
+//   base_on_previous_image? }
+// base_on_previous_image: 対象が1人で、このセッションにそのキャラが写った直前の画像があれば、その
+// プロンプトを土台にし、そのキャラのキャラタグだけを今の状態のもの(脱衣・ポーズ反映済み)へ
+// 差し替える。直前の画像が無ければ(または対象が複数・指定なしなら)通常どおり組み立てる。
 export async function executeGenerateImage(params, execCtx) {
   const {
     image_type = 'event',
@@ -55,6 +60,7 @@ export async function executeGenerateImage(params, execCtx) {
     target_character_ids = null,
     mentioned_limit = null,
     auto_append_unreferenced = true,
+    base_on_previous_image = false,
   } = params;
   // Falls back to the player's explicit @mention (chat enhancement backlog
   // item 3c) when the event itself doesn't pin down a target — lets "whoever
@@ -111,7 +117,14 @@ export async function executeGenerateImage(params, execCtx) {
               .filter(Boolean)
           : [];
 
-        const prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
+        let prompt = [basePrompt, overrideText, ...leftoverTags].filter(Boolean).join(', ');
+
+        if (base_on_previous_image && candidateParticipants.length === 1) {
+          const target = candidateParticipants[0];
+          const previous = findLatestImageWithCharacter(execCtx.sessionId, target.character_id);
+          const currentTags = tagParts.character_tag_entries.find((e) => e.character_id === target.character_id)?.tags;
+          if (previous && currentTags) prompt = swapCharacterTags(previous.prompt, previous.character_tags, currentTags);
+        }
 
         // 登場中の各参加者のキャラ/衣装固有ネガティブプロンプトをkind別デフォルトに
         // 連結する(置換ではなく加算——ユーザー確定方針、[[room_profile_system]]の
@@ -162,7 +175,13 @@ export async function executeGenerateImage(params, execCtx) {
         }
 
         const filePath = await saveGeneratedImage(execCtx.sessionId, finalBuffer, format);
-        const generatedImage = createGeneratedImage({ roomSessionId: execCtx.sessionId, type: image_type, prompt, filePath });
+        const generatedImage = createGeneratedImage({
+          roomSessionId: execCtx.sessionId,
+          type: image_type,
+          prompt,
+          filePath,
+          characterTags: tagParts.character_tag_entries,
+        });
         if (image_type === 'scene') setCurrentSceneImage(execCtx.sessionId, generatedImage.id);
 
         const message = createMessage(execCtx.sessionId, {

@@ -11,7 +11,9 @@ import { executeGenerateImage } from './eventEngine/actions/generateImage.js';
 //
 // クールダウン判定＋チェックポイント更新＋画像生成。session/worldは呼び出し元で
 // 取得済みのものをそのまま渡す(この関数自身はDB読み直しをしない)。
-async function maybeGenerateForCharacter(session, world, characterId) {
+// basedOnPreviousImage: 直前の画像のプロンプトを土台にする(脱衣の自動生成の設定のみ。
+// 着替えは新しい衣装の見た目を出したいので常に現在の状態から組み立てる)。
+async function maybeGenerateForCharacter(session, world, characterId, { basedOnPreviousImage = false } = {}) {
   const participant = session.participants.find((p) => p.character_id === characterId);
   if (!participant) return; // 退室済み等
 
@@ -28,7 +30,12 @@ async function maybeGenerateForCharacter(session, world, characterId) {
     // ので、既定のleftover救済は常に「未参照」と誤認する)。ここでは常にfalseに
     // して二重掲載を防ぐ——${character_tags}側だけで足りる。
     await executeGenerateImage(
-      { image_type: 'event', target_character_ids: [characterId], auto_append_unreferenced: false },
+      {
+        image_type: 'event',
+        target_character_ids: [characterId],
+        auto_append_unreferenced: false,
+        base_on_previous_image: basedOnPreviousImage,
+      },
       { sessionId: session.id, playthroughId: session.playthrough_id, session },
     );
   } catch (err) {
@@ -54,7 +61,9 @@ export async function maybeGenerateImageOnUndress(session, world, fired) {
       }
     }
   }
-  for (const characterId of characterIds) await maybeGenerateForCharacter(session, world, characterId);
+  for (const characterId of characterIds) {
+    await maybeGenerateForCharacter(session, world, characterId, { basedOnPreviousImage: world.undress_image_use_previous_prompt });
+  }
 }
 
 // change_outfitイベントアクション経由の着替え。

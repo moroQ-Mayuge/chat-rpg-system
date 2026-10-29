@@ -72,17 +72,23 @@ export function buildSceneTagParts(session, participants) {
   // scene prompts even though the event-triggered generate_image path
   // already respected them.
   const exposureTagSettings = getOutfitExposureTagSettings();
-  const characterTags = participants
+  // キャラごとの内訳も返す(character_tag_entries): 生成した画像と一緒に記録し、後で
+  // 「直前の画像のプロンプトを元にする」時に、そのキャラの分だけを差し替えられるようにする。
+  const characterTagEntries = participants
     .filter((p) => p.current_outfit_id)
-    .map((p) => resolveParticipantImageTags(p, null, { playthroughId: session.playthrough_id, roomSessionId: session.id }, exposureTagSettings))
-    .filter(Boolean)
-    .join(', ');
+    .map((p) => ({
+      character_id: p.character_id,
+      tags: resolveParticipantImageTags(p, null, { playthroughId: session.playthrough_id, roomSessionId: session.id }, exposureTagSettings),
+    }))
+    .filter((entry) => entry.tags);
+  const characterTags = characterTagEntries.map((entry) => entry.tags).join(', ');
 
   return {
     location_tags: session.current_location_tags || '',
     atmosphere_tags: session.current_atmosphere_tags || '',
     prop_tags: propTags,
     character_tags: characterTags,
+    character_tag_entries: characterTagEntries,
     // Looked up by the World's current free-text weather/time-slot label
     // (worlds.weather_tag_map/time_slot_tag_map, admin-configured per label
     // in WorldsPage.jsx) -- '' if that label has no tag mapped yet.

@@ -1623,7 +1623,13 @@ async function generateSceneImage(sessionId, sceneChangeDescription) {
   }
 
   const filePath = await saveGeneratedImage(sessionId, finalBuffer, format);
-  const generatedImage = createGeneratedImage({ roomSessionId: sessionId, type: 'scene', prompt, filePath });
+  const generatedImage = createGeneratedImage({
+    roomSessionId: sessionId,
+    type: 'scene',
+    prompt,
+    filePath,
+    characterTags: tagParts.character_tag_entries,
+  });
   setCurrentSceneImage(sessionId, generatedImage.id);
 
   const message = createMessage(sessionId, {
