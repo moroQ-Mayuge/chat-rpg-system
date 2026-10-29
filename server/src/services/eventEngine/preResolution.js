@@ -43,7 +43,9 @@ export async function resolvePregenerationEventOutcomes({ sessionId, playthrough
   const session = getRoomSession(sessionId);
   const turnNumber = countUserTurnsForPlaythrough(playthroughId);
   const flags = getAllFlags(playthroughId);
-  const defs = listActiveEventDefinitionsForRoomTemplate(roomTemplateId).filter(isPreResolvable);
+  // 買い物(アイテム/衣装)ができない部屋では、所持金は生成中に変わらないので has_money も事前解決に含める。
+  const moneyStable = !session.room_is_shop && session.room_outfit_acquisition_mode !== 'shop';
+  const defs = listActiveEventDefinitionsForRoomTemplate(roomTemplateId).filter((def) => isPreResolvable(def, { moneyStable }));
 
   // aiResponseTextはnull固定——isPreResolvableで弾いた条件種別は生成テキストを
   // 一切読まないため、これで正しい(読まれること自体が無い)。

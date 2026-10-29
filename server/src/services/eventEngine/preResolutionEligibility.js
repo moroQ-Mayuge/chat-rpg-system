@@ -17,12 +17,17 @@
 // 生成前の状態だけで安全に確定できる。
 const AIRESPONSE_DEPENDENT_TYPES = new Set(['llm_judge', 'has_pose', 'has_item', 'has_money', 'owns_outfit']);
 
-function isConditionPreResolvable(condition) {
+// has_money だけは、所持金が生成中に書き換わりうる経路(ショップ部屋の[ITEM_GRANT]・
+// [OUTFIT_GRANT])が無い部屋では、生成前の値がそのまま生成後も正しい——その部屋
+// (買い物できない部屋)に限って事前解決を許す(options.moneyStable)。賭け事のように
+// 「所持金の確認」と「結果の事前確定(台詞との一致)」を両立したいイベント向け。
+function isConditionPreResolvable(condition, options) {
+  if (condition.condition_type === 'has_money' && options.moneyStable) return true;
   if (AIRESPONSE_DEPENDENT_TYPES.has(condition.condition_type)) return false;
   if (condition.condition_type === 'keyword' && (condition.params?.target ?? 'any') !== 'user_message') return false;
   return true;
 }
 
-export function isPreResolvable(def) {
-  return (def.conditions ?? []).every(isConditionPreResolvable);
+export function isPreResolvable(def, options = {}) {
+  return (def.conditions ?? []).every((c) => isConditionPreResolvable(c, options));
 }
