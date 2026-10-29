@@ -43,6 +43,32 @@ export function getTagMatchMaxCount(worldId, roomTemplateId) {
   return row?.tag_match_max_count ?? null;
 }
 
+// 順位別の出現確率(0165)。JSON配列(各0〜1)、未設定/空はnull。
+export function getTagMatchProbabilities(worldId, roomTemplateId) {
+  const row = db
+    .prepare('SELECT tag_match_probabilities FROM world_room_templates WHERE world_id = ? AND room_template_id = ?')
+    .get(worldId, roomTemplateId);
+  if (!row?.tag_match_probabilities) return null;
+  try {
+    const parsed = JSON.parse(row.tag_match_probabilities);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed.map((v) => Math.min(1, Math.max(0, Number(v) || 0))) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setTagMatchProbabilities(worldId, roomTemplateId, probabilities) {
+  const cleaned = Array.isArray(probabilities) && probabilities.length > 0
+    ? probabilities.map((v) => Math.min(1, Math.max(0, Number(v) || 0)))
+    : null;
+  db.prepare('UPDATE world_room_templates SET tag_match_probabilities = ? WHERE world_id = ? AND room_template_id = ?').run(
+    cleaned ? JSON.stringify(cleaned) : null,
+    worldId,
+    roomTemplateId,
+  );
+  return { updated: true };
+}
+
 export function setTagMatchMaxCount(worldId, roomTemplateId, maxCount) {
   db.prepare('UPDATE world_room_templates SET tag_match_max_count = ? WHERE world_id = ? AND room_template_id = ?').run(
     maxCount,

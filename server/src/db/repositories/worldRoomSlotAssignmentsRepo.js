@@ -1,6 +1,6 @@
 import { db } from '../connection.js';
 import { parseAttributeTags, tagsOverlapOrWildcard } from '../../services/attributeTagMatching.js';
-import { getTagMatchMaxCount } from './worldRoomTemplatesRepo.js';
+import { getTagMatchMaxCount, getTagMatchProbabilities } from './worldRoomTemplatesRepo.js';
 import { isEligibleInRoute } from '../../services/routeScopedCharacters.js';
 import { resolveActiveRoomProfile } from './roomProfilesRepo.js';
 
@@ -244,8 +244,21 @@ function tagMatchedCharacterIds(worldId, roomTemplateId, playthroughId) {
     .map((c) => c.id);
 
   const maxCount = getTagMatchMaxCount(worldId, roomTemplateId);
-  if (maxCount == null || matched.length <= maxCount) return matched;
-  return pickWeightedWithoutReplacement(matched, maxCount);
+  const capped = maxCount == null || matched.length <= maxCount ? matched : pickWeightedWithoutReplacement(matched, maxCount);
+  return applyRankProbabilities(capped, getTagMatchProbabilities(worldId, roomTemplateId));
+}
+
+// 順位別の出現確率(0165、world_room_templates.tag_match_probabilities)。重み
+// (event_participation_weight)の大きい順に並べ、i番目を probs[i](配列より後ろは最後の値)の
+// 確率で残す。同じ重みの順位は毎回ランダムに入れ替える。未設定なら全員そのまま。
+// 日替わりプロファイルで決まる出演者(固有キャラ→モブの順に重みを付けておく)を、
+// 「1人目は必ず、2人目は80%…」のように揺らすために使う。
+function applyRankProbabilities(candidateIds, probs) {
+  if (!probs || probs.length === 0 || candidateIds.length === 0) return candidateIds;
+  const weightOf = (id) => db.prepare('SELECT event_participation_weight w FROM characters WHERE id = ?').get(id)?.w ?? 1;
+  const shuffled = [...candidateIds].sort(() => Math.random() - 0.5);
+  const ranked = shuffled.map((id) => ({ id, w: weightOf(id) })).sort((a, b) => b.w - a.w);
+  return ranked.filter((_, i) => Math.random() < probs[Math.min(i, probs.length - 1)]).map((r) => r.id);
 }
 
 // Resolves every "random" row (character_id IS NULL) eligible for the

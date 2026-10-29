@@ -48,6 +48,8 @@ export default function RoomWorldConfigPage() {
   // 触った分だけ保持(propIds/freePropsと同じ「未タッチはconfigを都度読む」方式)。
   const [subRoomPropEdits, setSubRoomPropEdits] = useState({});
   const [tagMatchMaxCount, setTagMatchMaxCount] = useState(undefined); // undefined = follow config
+  // 順位別の出現確率(0165)。入力欄は「100, 80, 60」のようなパーセントのカンマ区切り文字列で持つ。
+  const [tagMatchProbText, setTagMatchProbText] = useState(undefined); // undefined = follow config
   const [newConnectionTargetId, setNewConnectionTargetId] = useState('');
   const [newConnectionLabel, setNewConnectionLabel] = useState('');
   const [newConnectionCost, setNewConnectionCost] = useState(1);
@@ -79,6 +81,8 @@ export default function RoomWorldConfigPage() {
   const currentPropIds = propIds ?? config.props.map((p) => p.id);
   const currentFreeProps = freeProps ?? config.free_props.map((p) => p.description);
   const currentTagMatchMaxCount = tagMatchMaxCount !== undefined ? tagMatchMaxCount : config.tag_match_max_count;
+  const currentTagMatchProbText =
+    tagMatchProbText !== undefined ? tagMatchProbText : (config.tag_match_probabilities ?? []).map((p) => Math.round(p * 100)).join(', ');
 
   const candidateCategoryIds = new Set(config.candidate_prop_categories.map((c) => c.id));
   const candidateProps = allProps.filter((p) => candidateCategoryIds.has(p.category_id));
@@ -149,12 +153,17 @@ export default function RoomWorldConfigPage() {
         return { sub_room_id: sub.id, prop_ids: current.propIds, free_props: current.freeProps };
       }),
       tag_match_max_count: currentTagMatchMaxCount,
+      tag_match_probabilities: currentTagMatchProbText
+        .split(/[,、\s]+/)
+        .filter((v) => v !== '' && !Number.isNaN(Number(v)))
+        .map((v) => Math.min(100, Math.max(0, Number(v))) / 100),
     });
     setAssignments(null);
     setPropIds(null);
     setFreeProps(null);
     setSubRoomPropEdits({});
     setTagMatchMaxCount(undefined);
+    setTagMatchProbText(undefined);
   }
 
   async function handleAddConnection() {
@@ -206,6 +215,19 @@ export default function RoomWorldConfigPage() {
               />
               <span style={{ color: '#888', marginLeft: 6 }}>
                 超過時は重み付きランダムで抽選（部屋の属性キーに一致する全キャラが自動同席する仕組みの人数上限）
+              </span>
+            </label>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+              属性キー一致の順位別の出現確率（%・カンマ区切り、空欄=全員出現）
+              <input
+                type="text"
+                placeholder="例: 100, 80, 60, 50, 40"
+                style={{ width: 200, marginLeft: 6 }}
+                value={currentTagMatchProbText}
+                onChange={(e) => setTagMatchProbText(e.target.value)}
+              />
+              <span style={{ color: '#888', marginLeft: 6, display: 'block' }}>
+                出現するキャラを「重み」（キャラの出現の重み）の大きい順に並べ、1人目・2人目…がそれぞれの確率で出現します（配列より後ろは最後の値）。固有キャラの重みを大きく、モブを小さくしておくと、固有キャラが優先されます。
               </span>
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

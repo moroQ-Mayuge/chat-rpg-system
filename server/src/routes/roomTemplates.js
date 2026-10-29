@@ -18,6 +18,7 @@ import {
   attachRoomToWorld,
   detachRoomFromWorld,
   setTagMatchMaxCount,
+  setTagMatchProbabilities,
 } from '../db/repositories/worldRoomTemplatesRepo.js';
 import { replaceAssignmentsForSlot } from '../db/repositories/worldRoomSlotAssignmentsRepo.js';
 import { replacePropsForWorldRoom } from '../db/repositories/worldRoomPropsRepo.js';
@@ -114,6 +115,9 @@ roomTemplatesRouter.put('/:id/worlds/:worldId/config', (req, res) => {
   }
   if ('tag_match_max_count' in req.body) {
     setTagMatchMaxCount(worldId, roomTemplateId, req.body.tag_match_max_count ?? null);
+  }
+  if ('tag_match_probabilities' in req.body) {
+    setTagMatchProbabilities(worldId, roomTemplateId, req.body.tag_match_probabilities);
   }
   replacePropsForWorldRoom(worldId, roomTemplateId, {
     propIds: req.body.prop_ids ?? [],
