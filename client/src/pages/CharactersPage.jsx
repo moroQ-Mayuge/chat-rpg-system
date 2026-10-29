@@ -237,6 +237,8 @@ export default function CharactersPage() {
   const [imageGenError, setImageGenError] = useState(null);
   const [expressionGenMode, setExpressionGenMode] = useState('');
   const [batchExpressionProgress, setBatchExpressionProgress] = useState(null);
+  // 表情差分でチェックボックス選択中の表情タイプid(選択分だけまとめて再生成する用)。
+  const [selectedExpressionIds, setSelectedExpressionIds] = useState([]);
   const [generatingDetails, setGeneratingDetails] = useState(false);
   const [testPreview, setTestPreview] = useState(null);
   const [isTestGenerating, setIsTestGenerating] = useState(false);
@@ -528,6 +530,11 @@ export default function CharactersPage() {
   }
 
   const activeOutfit = form.outfits?.find((o) => o.id === activeOutfitId);
+
+  // 別の衣装・別のキャラへ切り替えたら、前の衣装の選択は持ち越さない。
+  useEffect(() => {
+    setSelectedExpressionIds([]);
+  }, [selectedId, activeOutfitId]);
   const linkedMaster =
     activeOutfit?.outfit_master_id != null ? allMasters?.find((m) => m.id === activeOutfit.outfit_master_id) : null;
 
@@ -672,16 +679,10 @@ export default function CharactersPage() {
   // one-by-one means a failure part way through leaves the successful ones in
   // place and re-running simply picks up where it stopped. Existing images are
   // never touched.
-  async function handleGenerateMissingExpressions() {
-    if (!activeOutfit || !confirmIfNoTags()) return;
-    const missing = expressionTypes.filter(
-      (et) => !activeOutfit.expression_images?.some((img) => img.expression_type_id === et.id),
-    );
-    if (missing.length === 0) return;
-
+  async function runExpressionBatch(targets) {
     setImageGenError(null);
-    for (const [index, et] of missing.entries()) {
-      setBatchExpressionProgress({ done: index, total: missing.length });
+    for (const [index, et] of targets.entries()) {
+      setBatchExpressionProgress({ done: index, total: targets.length });
       setGeneratingImageTarget(et.id);
       try {
         await outfitMutations.generateExpressionImage.mutateAsync({
@@ -698,6 +699,37 @@ export default function CharactersPage() {
       }
     }
     setBatchExpressionProgress(null);
+  }
+
+  async function handleGenerateMissingExpressions() {
+    if (!activeOutfit || !confirmIfNoTags()) return;
+    const missing = expressionTypes.filter(
+      (et) => !activeOutfit.expression_images?.some((img) => img.expression_type_id === et.id),
+    );
+    if (missing.length === 0) return;
+    await runExpressionBatch(missing);
+  }
+
+  // チェックボックスで選んだ表情だけを、既存画像があっても作り直す(上書き)。
+  // 順に1枚ずつ生成する理由・途中失敗時の挙動は上の未作成一括生成と同じ。
+  async function handleRegenerateSelectedExpressions() {
+    if (!activeOutfit) return;
+    const targets = expressionTypes.filter((et) => selectedExpressionIds.includes(et.id));
+    if (targets.length === 0) return;
+    const overwriting = targets.filter((et) => activeOutfit.expression_images?.some((img) => img.expression_type_id === et.id));
+    if (
+      overwriting.length > 0 &&
+      !window.confirm(`選択した${targets.length}件のうち${overwriting.length}件は既存の画像を上書きします（${overwriting.map((et) => et.name).join('、')}）。再生成しますか？`)
+    ) {
+      return;
+    }
+    if (!confirmIfNoTags()) return;
+    await runExpressionBatch(targets);
+    setSelectedExpressionIds([]);
+  }
+
+  function toggleExpressionSelected(id) {
+    setSelectedExpressionIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   }
 
   async function handleExportCharacter(id) {
@@ -1428,6 +1460,27 @@ export default function CharactersPage() {
                                   </button>
                                 );
                               })()}
+                              <button
+                                type="button"
+                                style={{ fontSize: 10 }}
+                                onClick={handleRegenerateSelectedExpressions}
+                                disabled={batchExpressionProgress != null || selectedExpressionIds.length === 0 || generatingImageTarget != null}
+                                title="チェックを入れた表情だけを順に再生成します（既存画像は上書きされます）"
+                              >
+                                {`選択をまとめて再生成（${selectedExpressionIds.length}）`}
+                              </button>
+                              <button
+                                type="button"
+                                style={{ fontSize: 10 }}
+                                onClick={() =>
+                                  setSelectedExpressionIds(
+                                    selectedExpressionIds.length === expressionTypes.length ? [] : expressionTypes.map((et) => et.id),
+                                  )
+                                }
+                                disabled={batchExpressionProgress != null}
+                              >
+                                {selectedExpressionIds.length === expressionTypes.length ? '選択解除' : '全選択'}
+                              </button>
                             <label style={{ fontSize: 10, color: '#888' }}>
                               生成方式:{' '}
                               <select
@@ -1463,6 +1516,15 @@ export default function CharactersPage() {
                                   >
                                     {!existingImage && et.name}
                                   </div>
+                                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 10, marginBottom: 2 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedExpressionIds.includes(et.id)}
+                                      onChange={() => toggleExpressionSelected(et.id)}
+                                      disabled={batchExpressionProgress != null}
+                                    />
+                                    {existingImage ? et.name : '選択'}
+                                  </label>
                                   <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
                                     <label>
                                       <input
