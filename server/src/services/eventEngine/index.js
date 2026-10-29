@@ -222,6 +222,16 @@ export async function computeEligibleEntries(defs, baseCtx, { playthroughId, roo
     const results = await Promise.all(
       triggerConditions.map((condition, i) => evaluateConditionCached(condition, conditionCtxs[i], conditionCache)),
     );
+    // 各キャラごとに発火するイベントでは、否定(negate)付きの条件を「対象のうち満たさないキャラが
+    // 1人以上いるか」で判定する。通常の評価(「対象の誰も持っていない」)のままだと、同席者の
+    // 一部だけが持っている時に、持っていないキャラが居るのに不成立になってしまうため。
+    if (def.per_character_firing) {
+      for (const [i, condition] of triggerConditions.entries()) {
+        if (!condition.params?.negate) continue;
+        const lacking = getMatchingCharacters(condition, conditionCtxs[i]);
+        if (lacking !== null) results[i] = lacking.length > 0;
+      }
+    }
     const passed = def.condition_logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
     if (!passed) continue;
 

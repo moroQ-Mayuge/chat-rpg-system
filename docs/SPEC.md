@@ -277,7 +277,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "reference": "playthrough_start", "comparison": ">=", "turns": 20 }
 ```
 - `reference`: `"playthrough_start"`（所属ルート開始からの累計ターン数。部屋を移動してもリセットされない）/ `"flag_set"`（特定フラグが立ってから。`flag_key`を追加指定）/ `"last_fire_of_this_event"`（前回自身が発火してから）
-- `comparison`: `">="` `"=="` `">"`
+- `comparison`: `">="` `"<="` `"=="` `">"` `"<"` `"!="`（`<=` `<` `!=` は後から追加。従来の`>=` `==` `>`はそのまま）
 - `turns`: int
 - イベント条件のターン数はルート単位の累計であり、3.3の`turns_per_time_slot`（部屋単位・時間帯自動進行専用のターン数）とは別のカウンタ
 
@@ -289,6 +289,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 - `match_mode`: `"any"`（いずれか一致） / `"all"`（すべて含む）
 - `target`: `"user_message"`（直近のユーザー発言） / `"ai_response"`（直近のAI応答全体） / `"any"`（両方）
 - `case_sensitive`: bool（デフォルトfalse）
+- `negate`: bool（デフォルトfalse）。trueで「含まない時に成立」（`any`なら「どの語も含まない」、`all`なら「全部は含まない」）。`keywords`が空の間は、`negate`に関わらず不成立
 
 **relationship_threshold** - 関係性閾値
 ```json
@@ -296,7 +297,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```
 - `character_id`: 対象キャラID（`"any_present"`で同席者のうち誰か1人でも満たせば真、`"mentioned"`でそのターンにチャットで@メンションされたキャラのうち誰か1人でも満たせば真、も許容。`"mentioned"`時は`mentioned_limit`（int、nullable）でメンション順の先頭何人までを対象にするか絞り込める。has_status/has_outfitも同じ`"any_present"`/`"mentioned"`/`mentioned_limit`の扱いに対応）
 - `axis_id`: RelationshipAxisのID
-- `comparison`: `">="` `"<="` `"=="` `">"` `"<"`
+- `comparison`: `">="` `"<="` `"=="` `">"` `"<"` `"!="`（`!=`は後から追加）
 - `value`: int
 
 **flag_state** - フラグ状態
@@ -304,7 +305,7 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 { "flag_key": "confession_done", "comparison": "==", "value": "true" }
 ```
 - `flag_key`: string
-- `comparison`: `"=="` `"!="` `"exists"` `"not_exists"`（exists系は`value`不要）
+- `comparison`: `"=="` `"!="` `">"` `">="` `"<"` `"<="` `"exists"` `"not_exists"`（exists系は`value`不要）。`>` `>=` `<` `<=` は数値同士の比較だけ（フラグが無い・数値として読めない時は不成立）
 - `value`: string（比較対象。数値もstring格納し数値変換して比較）
 - `character_id`: nullable（未指定=ルート全体のグローバルフラグ、`session_flags`を参照。指定時はキャラ別フラグ`character_flags`を参照）。`"any_present"`で同席者のうち誰か1人でも満たせば真、`"mentioned"`でそのターンに@メンションされたキャラのうち誰か1人でも満たせば真、も許容（`mentioned_limit`で人数を絞り込み可）
 - `scope`: `"playthrough"`（ルート永続）/ `"session"`（セッション内一時）。`character_id`指定時のみ有効、デフォルト`"playthrough"`
@@ -313,15 +314,34 @@ Worldの既定設定（3.1）をそのまま継承するか、ルートごとに
 ```json
 { "comparison": "<=", "value": 1 }
 ```
-- `comparison`: `">="` `"<="` `"=="`
+- `comparison`: `">="` `"<="` `"=="` `">"` `"<"` `"!="`（`>` `<` `!=` は後から追加）
 - `value`: int
 
 **has_money** - 所持金判定（2026-07-20追加）
 ```json
 { "comparison": ">=", "value": 5000 }
 ```
-- `playthroughs.money`と比較する。`comparison`は`relationship_threshold`と同じ演算子集合（`">="` `"<="` `"=="` `">"` `"<"`）
+- `playthroughs.money`と比較する。`comparison`は`relationship_threshold`と同じ演算子集合（`">="` `"<="` `"=="` `">"` `"<"` `"!="`）
 - `value`: int
+
+**character_age** - 対象キャラの年齢
+```json
+{ "character_id": "mentioned", "comparison": ">=", "value": 18 }
+```
+- 対象キャラの`age_real`を比較する。`comparison`は`">="`（既定）`"<="` `"=="` `">"` `"<"` `"!="`。従来の`{ "min_age": 18 }`だけの指定は「`>= min_age`」として動く
+- 他の条件と違い、**対象全員が満たした時だけ成立**。年齢が空・数値でない場合、対象が0人の場合は、どの比較でも不成立（安全側）
+
+**in_sub_room** - 現在のサブ部屋位置
+```json
+{ "sub_room_ids": [12, null], "negate": false }
+```
+- `sub_room_ids`のいずれかに今いるか（`null`は親部屋本体=サブ部屋の外）。`negate: true`で「それら以外にいる時」。リストが空の時は`negate`に関わらず不成立
+- 従来の`{ "sub_room_id": 12 }`だけの指定（`null`=親部屋本体）も、`negate`を含めてそのまま使える
+- イベントのエクスポート/インポートでは、サブ部屋は「部屋名＋サブ部屋名」で引き直す（`set_sub_room`アクションも同様）
+
+**llm_judge** - LLMによるyes/no判定: `negate: true`で「noと判定された時に成立」。LLMが判定できなかった時（通信エラー等）は、`negate`に関わらず不成立
+
+**否定（`negate`）付きの条件と「各キャラごとに発火」**: `has_status` `has_outfit` `has_pose` `companion_state` `character_attribute`の否定は、各キャラごとに発火するイベント（`per_character_firing`）では「対象（同席者全員/@メンション/指定キャラ）のうち、条件を満たさないキャラ」ごとに発火する。満たさないキャラが1人以上いれば成立し、そのキャラだけが対象になる。対象を決められない（`character_id`未指定）場合は、従来どおり絞り込みに使わない
 
 #### 3.6.4 アクション（Action）パラメータ仕様
 

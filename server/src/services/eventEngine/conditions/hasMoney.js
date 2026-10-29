@@ -1,13 +1,6 @@
 import { getMoney } from '../../../db/repositories/playthroughsRepo.js';
 
-function compare(value, comparison, target) {
-  if (comparison === '>=') return value >= target;
-  if (comparison === '<=') return value <= target;
-  if (comparison === '==') return value === target;
-  if (comparison === '>') return value > target;
-  if (comparison === '<') return value < target;
-  return false;
-}
+import { compareNumber as compare } from './compare.js';
 
 // { comparison, value } — checks playthroughs.money against value. Used to
 // gate paid events (e.g. 有料イチャコラ) so they simply don't fire when the

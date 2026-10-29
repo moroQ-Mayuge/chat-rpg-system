@@ -1,6 +1,7 @@
 import { getEventDefinition, createEventDefinition, updateEventDefinition, listEventDefinitions } from '../db/repositories/eventDefinitionsRepo.js';
 import { listCharacters } from '../db/repositories/charactersRepo.js';
 import { listRoomTemplates } from '../db/repositories/roomTemplatesRepo.js';
+import { getSubRoom, listSubRoomsForRoom } from '../db/repositories/roomSubRoomsRepo.js';
 import { listAllStatuses, getStatus } from '../db/repositories/characterStatusesRepo.js';
 import { listOutfitsForCharacter, getOutfit } from '../db/repositories/outfitsRepo.js';
 
@@ -127,6 +128,26 @@ export function exportEventDefinitionJson(id) {
     for (const t of listRoomTemplates()) if (inRoomIds.has(t.id)) roomNames[t.id] = t.name;
   }
 
+  // in_sub_room条件・set_sub_roomアクションのサブ部屋idも、idのままだと別環境で無関係な区画を指すので、
+  // 「部屋名＋サブ部屋名」を併せて出す(サブ部屋は部屋ごとに名前を持つ)。
+  const subRoomIds = new Set();
+  for (const c of def.conditions) {
+    if (c.condition_type !== 'in_sub_room') continue;
+    if (Array.isArray(c.params.sub_room_ids)) c.params.sub_room_ids.forEach((id) => id != null && subRoomIds.add(id));
+    else if (c.params.sub_room_id != null) subRoomIds.add(c.params.sub_room_id);
+  }
+  for (const a of def.actions) {
+    if (a.action_type === 'set_sub_room' && a.params.sub_room_id != null) subRoomIds.add(a.params.sub_room_id);
+  }
+  const subRoomRefs = {};
+  if (subRoomIds.size > 0) {
+    const roomNameById = new Map(listRoomTemplates().map((r) => [r.id, r.name]));
+    for (const id of subRoomIds) {
+      const sub = getSubRoom(id);
+      if (sub) subRoomRefs[id] = { room_name: roomNameById.get(sub.room_template_id) ?? null, name: sub.name };
+    }
+  }
+
   const { id: _id, room_template_id, prerequisite_event_definition_id, ...rest } = def;
 
   return {
@@ -136,6 +157,7 @@ export function exportEventDefinitionJson(id) {
     data: rest,
     room_template_name: roomTemplateName,
     room_names: roomNames,
+    sub_room_refs: subRoomRefs,
     prerequisite_event_name: prerequisiteEventName,
     character_names: characterNames,
     status_names: statusNames,
@@ -198,6 +220,13 @@ export function importEventDefinitionJson(json, options = {}) {
     }
     return resolvedId;
   };
+  const resolveSubRoomRef = (oldId) => {
+    const ref = json.sub_room_refs?.[oldId];
+    if (!ref?.room_name) return null;
+    const room =
+      (options.preferredRoomTemplates ?? []).find((r) => r.name === ref.room_name) ?? listRoomTemplates().find((r) => r.name === ref.room_name);
+    return room ? (listSubRoomsForRoom(room.id).find((s) => s.name === ref.name)?.id ?? null) : null;
+  };
   const resolveOutfitRef = (value, newCharacterId) => {
     if (typeof value !== 'number') return value;
     const ref = outfitRefByOldId.get(value);
@@ -224,6 +253,31 @@ export function importEventDefinitionJson(json, options = {}) {
     if (c.condition_type === 'has_outfit') {
       c.params.character_id = resolveCharacterRef(c.params.character_id, nameByOldId, idByName, unresolvedCharacters);
     }
+    if (c.condition_type === 'in_sub_room' && json.sub_room_refs) {
+      // 解決できなかったサブ部屋は外す。リストが空になった条件は(negateに関わらず)不成立になる。
+      // 従来の sub_room_id 単独の指定は、解決できなければ空のリスト(=不成立)の形へ直す——
+      // idを null にすると「親部屋本体」を意味してしまうため。
+      if (Array.isArray(c.params.sub_room_ids)) {
+        // null は「親部屋本体」を表す有効な値なので、解決失敗(これも null が返る)とは区別して扱う。
+        const resolved = [];
+        for (const oldId of c.params.sub_room_ids) {
+          if (oldId == null) {
+            if (!resolved.includes(null)) resolved.push(null);
+            continue;
+          }
+          const id = resolveSubRoomRef(oldId);
+          if (id != null && !resolved.includes(id)) resolved.push(id);
+        }
+        c.params.sub_room_ids = resolved;
+      } else if (c.params.sub_room_id != null) {
+        const resolved = resolveSubRoomRef(c.params.sub_room_id);
+        if (resolved != null) c.params.sub_room_id = resolved;
+        else {
+          delete c.params.sub_room_id;
+          c.params.sub_room_ids = [];
+        }
+      }
+    }
     if (c.condition_type === 'in_room') {
       // 解決できなかった部屋は外す。全て外れて空になった場合、条件は(negateに関わらず)不成立になる。
       c.params.room_template_ids = (c.params.room_template_ids ?? [])
@@ -243,6 +297,10 @@ export function importEventDefinitionJson(json, options = {}) {
     }
   }
   for (const a of data.actions ?? []) {
+    if (a.action_type === 'set_sub_room' && json.sub_room_refs && a.params.sub_room_id != null) {
+      // 解決できなければ存在しないid(-1)にして、実行時に何もしない(sub_room_not_in_room)ようにする。
+      a.params.sub_room_id = resolveSubRoomRef(a.params.sub_room_id) ?? -1;
+    }
     if (a.action_type === 'insert_dialogue') {
       a.params.character_id = resolveCharacterRef(a.params.character_id, nameByOldId, idByName, unresolvedCharacters);
     }

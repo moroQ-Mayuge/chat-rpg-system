@@ -150,7 +150,7 @@ function conditionDefaults(type) {
     case 'llm_judge':
       return { question: '' };
     case 'in_sub_room':
-      return { sub_room_id: null };
+      return { sub_room_ids: [], negate: false };
     case 'character_age':
       return { character_id: 'mentioned', min_age: 18 };
     case 'companion_state':
@@ -454,6 +454,9 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               <option value=">=">{'>='}</option>
               <option value="==">{'=='}</option>
               <option value=">">{'>'}</option>
+              <option value="<=">{'<='}</option>
+              <option value="<">{'<'}</option>
+              <option value="!=">{'!='}</option>
             </select>
           </label>
           <label>
@@ -520,6 +523,15 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               <span style={{ fontSize: 12 }}>大文字小文字を区別</span>
             </label>
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>含まない時に成立（否定）</span>
+          </label>
+          {p.negate && (
+            <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+              「いずれか一致」なら「どの語も含まない」時、「すべて含む」なら「全部は含まない」時に成立します。キーワードが空の間は、否定でも不成立です。
+            </p>
+          )}
         </div>
       )}
 
@@ -559,7 +571,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
             <label style={{ flex: 1 }}>
               <span style={label11}>比較</span>
               <select value={p.comparison} onChange={(e) => setParams({ comparison: e.target.value })}>
-                {['>=', '<=', '==', '>', '<'].map((c) => (
+                {['>=', '<=', '==', '>', '<', '!='].map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -629,6 +641,10 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
             <select value={p.comparison} onChange={(e) => setParams({ comparison: e.target.value })}>
               <option value="==">{'=='}</option>
               <option value="!=">{'!='}</option>
+              <option value=">">{'>（数値）'}</option>
+              <option value=">=">{'>=（数値）'}</option>
+              <option value="<">{'<（数値）'}</option>
+              <option value="<=">{'<=（数値）'}</option>
               <option value="exists">存在する</option>
               <option value="not_exists">存在しない</option>
             </select>
@@ -681,6 +697,9 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               <option value=">=">{'>='}</option>
               <option value="<=">{'<='}</option>
               <option value="==">{'=='}</option>
+              <option value=">">{'>'}</option>
+              <option value="<">{'<'}</option>
+              <option value="!=">{'!='}</option>
             </select>
           </label>
           <label style={{ flex: 1 }}>
@@ -700,6 +719,7 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               <option value="==">{'=='}</option>
               <option value=">">{'>'}</option>
               <option value="<">{'<'}</option>
+              <option value="!=">{'!='}</option>
             </select>
           </label>
           <label style={{ flex: 1 }}>
@@ -1007,6 +1027,13 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
             直近のユーザー発言とAI応答を読み、この質問にyes/noで判定させます。判定コストがかかるため多用は避けてください。
             同席者の実名一覧も自動でLLMに伝わるので、${'{target1}'}等のプレースホルダーで名指しできます。
           </p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <input type="checkbox" checked={p.negate ?? false} onChange={(e) => setParams({ negate: e.target.checked })} />
+            <span style={{ fontSize: 12 }}>「no」と判定された時に成立（否定）</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0' }}>
+            LLMが判定できなかった時（通信エラー等）は、否定でも不成立のままです。
+          </p>
           <PlaceholderReferenceDetails />
         </div>
       )}
@@ -1032,25 +1059,58 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
               ))}
             </select>
           </label>
-          <label>
-            <span style={label11}>最低年齢</span>
-            <input type="number" min={0} value={p.min_age ?? 18} onChange={(e) => setParams({ min_age: Number(e.target.value) })} />
-          </label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <label style={{ flex: 1 }}>
+              <span style={label11}>年齢の比較</span>
+              <select value={p.comparison ?? '>='} onChange={(e) => setParams({ comparison: e.target.value })}>
+                {['>=', '<=', '==', '>', '<', '!='].map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ flex: 1 }}>
+              <span style={label11}>年齢</span>
+              <input
+                type="number"
+                min={0}
+                value={p.value ?? p.min_age ?? 18}
+                onChange={(e) => setParams({ value: Number(e.target.value), min_age: undefined })}
+              />
+            </label>
+          </div>
           <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
-            対象キャラの年齢（キャラの「年齢」欄）が最低年齢以上かを判定します。他の条件と違い、対象全員が満たした時だけ成立します（1人でも下回る・年齢が空や数値でないキャラがいれば不成立）。婚約・結婚など、キャラを指定しない汎用イベントを成人限定にするための年齢ガードです。
+            対象キャラの年齢（キャラの「年齢」欄）を比較します（既定は「18 以上」＝成人の年齢ガード。「未満」「ちょうど」「でない」も選べます）。他の条件と違い、対象全員が満たした時だけ成立します（1人でも満たさない・年齢が空や数値でないキャラがいれば不成立）。婚約・結婚など、キャラを指定しない汎用イベントを成人限定にするための年齢ガードです。
           </p>
         </div>
       )}
 
       {condition.condition_type === 'in_sub_room' && (
-        <div>
+        <div style={grid3}>
           <label>
-            <span style={label11}>現在位置</span>
+            <span style={label11}>判定</span>
+            <select value={p.negate ? 'except' : 'only'} onChange={(e) => setParams({ negate: e.target.value === 'except' })}>
+              <option value="only">選んだ位置のいずれかにいる時だけ</option>
+              <option value="except">選んだ位置以外にいる時だけ</option>
+            </select>
+          </label>
+          <label style={{ gridColumn: 'span 2' }}>
+            <span style={label11}>現在位置（複数選択。Ctrl/Shiftで複数）</span>
             <select
-              value={p.sub_room_id ?? ''}
-              onChange={(e) => setParams({ sub_room_id: e.target.value ? Number(e.target.value) : null })}
+              multiple
+              size={8}
+              style={{ width: '100%' }}
+              // 従来の単一指定(sub_room_id)のイベントも、1件のリストとして表示する(編集すると新しい形に置き換わる)。
+              value={(Array.isArray(p.sub_room_ids) ? p.sub_room_ids : [p.sub_room_id ?? null]).map((id) => (id == null ? 'main' : String(id)))}
+              onChange={(e) =>
+                setParams({
+                  sub_room_ids: Array.from(e.target.selectedOptions, (o) => (o.value === 'main' ? null : Number(o.value))),
+                  sub_room_id: undefined,
+                })
+              }
             >
-              <option value="">親部屋本体（サブ部屋の外）</option>
+              <option value="main">親部屋本体（サブ部屋の外）</option>
               {(roomTemplates ?? [])
                 .flatMap((rt) => (rt.sub_rooms ?? []).map((sub) => ({ ...sub, roomName: rt.name })))
                 .map((sub) => (
@@ -1060,8 +1120,8 @@ function ConditionEditor({ condition, characters, axes, items, statuses, poseMas
                 ))}
             </select>
           </label>
-          <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0' }}>
-            プレイヤーの現在のサブ部屋位置が一致するかを判定します。scope=room_templateのイベントと組み合わせ、部屋の中の特定の区画（窓際の席・カウンター等）だけで発火する条件を表現できます。
+          <p style={{ fontSize: 11, color: '#888', gridColumn: 'span 3', margin: 0 }}>
+            プレイヤーの現在のサブ部屋位置で判定します。scope=room_templateのイベントと組み合わせ、部屋の中の特定の区画（窓際の席・カウンター等）だけ、または「この区画以外」で発火する条件を表現できます。「親部屋本体」はサブ部屋の外にいる状態です。位置を1つも選ばない場合は、どちらの判定でも不成立です。
           </p>
         </div>
       )}

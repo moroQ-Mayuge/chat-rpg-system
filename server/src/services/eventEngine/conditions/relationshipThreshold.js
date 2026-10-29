@@ -1,14 +1,7 @@
 import { getValue } from '../../../db/repositories/relationshipStatesRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 
-function compare(value, comparison, target) {
-  if (comparison === '>=') return value >= target;
-  if (comparison === '<=') return value <= target;
-  if (comparison === '==') return value === target;
-  if (comparison === '>') return value > target;
-  if (comparison === '<') return value < target;
-  return false;
-}
+import { compareNumber as compare } from './compare.js';
 
 // { character_id: number | "any_present" | "mentioned", axis_id, comparison, value, mentioned_limit? }
 // character_id is required here (unlike flag_state), so this is always

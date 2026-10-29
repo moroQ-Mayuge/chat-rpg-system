@@ -1,12 +1,24 @@
 import { getCharacterFlag } from '../../../db/repositories/characterFlagsRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
 
+import { compareNumber } from './compare.js';
+
 // Numeric-looking flag values are compared numerically; otherwise as strings.
+// > >= < <= は数値同士の比較だけ(どちらかが数値として読めない・フラグが無い時は不成立)。
+const ORDERING_COMPARISONS = new Set(['>', '>=', '<', '<=']);
+
 function compareFlagValue(current, comparison, value) {
   const exists = current !== undefined && current !== null;
 
   if (comparison === 'exists') return exists;
   if (comparison === 'not_exists') return !exists;
+  if (ORDERING_COMPARISONS.has(comparison)) {
+    if (!exists) return false;
+    const currentNum = Number(current);
+    const valueNum = Number(value);
+    if (Number.isNaN(currentNum) || Number.isNaN(valueNum)) return false;
+    return compareNumber(currentNum, comparison, valueNum);
+  }
   if (!exists) return comparison === '!=';
 
   const currentNum = Number(current);
@@ -17,7 +29,7 @@ function compareFlagValue(current, comparison, value) {
   return comparison === '==' ? equal : !equal;
 }
 
-// { flag_key, comparison: "=="|"!="|"exists"|"not_exists", value?,
+// { flag_key, comparison: "=="|"!="|">"|">="|"<"|"<="|"exists"|"not_exists", value?,
 //   character_id?: number|"any_present"|"mentioned", mentioned_limit?,
 //   scope?: "playthrough"|"session" (default "playthrough") }
 // character_id unset -> unchanged global session_flags lookup (ctx.flags).

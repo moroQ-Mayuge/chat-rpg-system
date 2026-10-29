@@ -1,8 +1,9 @@
 import { getCharacter } from '../../../db/repositories/charactersRepo.js';
 import { resolveMentionedList } from '../mentionResolution.js';
+import { compareNumber } from './compare.js';
 
-// { character_id: number|"any_present"|"mentioned", min_age: number, mentioned_limit? }
-// 対象キャラの年齢(characters.age_real)が min_age 以上か。婚約・結婚のように成人限定にしたい
+// { character_id: number|"any_present"|"mentioned", comparison?, value? | min_age?, mentioned_limit? }
+// 対象キャラの年齢(characters.age_real)が条件を満たすか(既定は min_age 以上)。婚約・結婚のように成人限定にしたい
 // 汎用イベント(キャラ指定なし、@メンション対象)の年齢ガード用。
 // 他の条件(relationship_threshold等)は「対象のうち誰か1人が満たせば成立」だが、これは
 // **対象全員が満たした時だけ成立**する——未成年が1人でも対象に混ざったら不成立にして、
@@ -13,10 +14,13 @@ function parseAge(raw) {
   return digits == null ? null : Number.parseInt(digits, 10);
 }
 
+// 比較は { comparison, value }(">="|"<="|"=="|">"|"<"|"!=")。従来の { min_age } だけの指定は
+// 「>= min_age」として扱う(既存イベントはそのまま動く)。「N歳未満」「ちょうどN歳」「N歳でない」も表せる。
 export function evaluateCharacterAge(params, ctx) {
-  const { character_id, min_age, mentioned_limit } = params;
-  const minAge = Number(min_age);
-  if (!Number.isFinite(minAge)) return false;
+  const { character_id, mentioned_limit } = params;
+  const comparison = params.comparison ?? '>=';
+  const threshold = Number(params.value ?? params.min_age);
+  if (!Number.isFinite(threshold)) return false;
   const characterIds =
     character_id === 'any_present'
       ? ctx.participants.map((p) => p.character_id)
@@ -28,6 +32,6 @@ export function evaluateCharacterAge(params, ctx) {
   if (characterIds.length === 0) return false;
   return characterIds.every((id) => {
     const age = parseAge(getCharacter(id)?.age_real);
-    return age != null && age >= minAge;
+    return age != null && compareNumber(age, comparison, threshold);
   });
 }

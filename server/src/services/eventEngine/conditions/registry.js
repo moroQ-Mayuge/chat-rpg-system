@@ -18,6 +18,7 @@ import { evaluateCharacterAttribute, matchingCharactersForCharacterAttribute } f
 import { evaluateCharacterPresent } from './characterPresent.js';
 import { evaluateOwnsOutfit } from './ownsOutfit.js';
 import { evaluateInRoom } from './inRoom.js';
+import { resolveMentionedList } from '../mentionResolution.js';
 
 export const conditionRegistry = {
   probability: evaluateProbability,
@@ -62,14 +63,31 @@ const characterMatcherRegistry = {
   character_attribute: matchingCharactersForCharacterAttribute,
 };
 
+// 否定(negate)条件が対象にするキャラの候補集合(character_idの解決結果)。character_idが
+// 数値/"any_present"/"mentioned"以外(未指定等)の時は null(候補を決められない)。
+function resolveCandidateIds(params, ctx) {
+  const { character_id } = params;
+  if (character_id === 'any_present') return (ctx.participants ?? []).map((p) => p.character_id);
+  if (character_id === 'mentioned') return resolveMentionedList(ctx.mentionedCharacterIds, params.mentioned_limit);
+  return typeof character_id === 'number' ? [character_id] : null;
+}
+
 // Returns the array of character ids this one condition is about, or null if
 // the condition type/params don't name any particular character. Sync only
-// (unlike evaluateCondition) -- none of the four matcher-bearing types touch
+// (unlike evaluateCondition) -- none of the matcher-bearing types touch
 // the LLM, so per_character_firing's candidate computation never awaits.
+//
+// negate付きの条件(has_status/has_outfit等)は、「対象(同席者/@メンション/指定キャラ)の
+// うち、その条件を満たさないキャラ」を返す(例: 「この状態を持っていないキャラ」ごとに発火)。
+// 対象を決められない時(character_id未指定等)は null。
 export function getMatchingCharacters(condition, ctx) {
-  if (condition.params?.negate) return null;
   const matcher = characterMatcherRegistry[condition.condition_type];
-  return matcher ? matcher(condition.params, ctx) : null;
+  if (!matcher) return null;
+  if (!condition.params?.negate) return matcher(condition.params, ctx);
+  const candidates = resolveCandidateIds(condition.params, ctx);
+  if (candidates === null) return null;
+  const matched = new Set(matcher({ ...condition.params, negate: false }, ctx) ?? []);
+  return candidates.filter((id) => !matched.has(id));
 }
 
 // Awaited unconditionally — most evaluators are sync and resolve

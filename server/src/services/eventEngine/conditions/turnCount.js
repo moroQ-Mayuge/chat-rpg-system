@@ -1,11 +1,6 @@
 import { getLastFireTurn } from '../../../db/repositories/eventFireHistoryRepo.js';
 
-function compare(elapsed, comparison, turns) {
-  if (comparison === '>=') return elapsed >= turns;
-  if (comparison === '==') return elapsed === turns;
-  if (comparison === '>') return elapsed > turns;
-  return false;
-}
+import { compareNumber as compare } from './compare.js';
 
 // { reference: "playthrough_start" | "flag_set" | "last_fire_of_this_event", comparison, turns, flag_key? }
 export function evaluateTurnCount(params, ctx) {

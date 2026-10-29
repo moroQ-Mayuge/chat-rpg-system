@@ -2,7 +2,7 @@ import { generateChatCompletion } from '../../koboldClient.js';
 import { resolvePlaceholderText } from '../placeholderResolution.js';
 import { withDisambiguatedNames } from '../../participantNaming.js';
 
-// { question } — a yes/no question judged against the just-generated turn
+// { question, negate? } — a yes/no question judged against the just-generated turn
 // (user_message + ai_response), for event outcome checks that a
 // deterministic condition type can't express (SPEC.md chat enhancement
 // backlog item 5: combine with the existing deterministic condition types,
@@ -22,8 +22,16 @@ import { withDisambiguatedNames } from '../../participantNaming.js';
 //    generation) — temperature=0.05 was stable across 5/5 runs each for
 //    both a clearly-friendly and clearly-hostile test input.
 export async function evaluateLlmJudge(params, ctx) {
+  const answer = await judge(params, ctx);
+  // 失敗(null)は negate に関わらず不成立のまま——「〜でない」が通信エラーで成立してしまわないように。
+  if (answer === null) return false;
+  return params.negate ? !answer : answer;
+}
+
+// true/false = yes/noの判定結果、null = 判定できなかった(質問なし・通信エラー等)。
+async function judge(params, ctx) {
   const { question } = params;
-  if (!question) return false;
+  if (!question) return null;
 
   // Same gap insert_dialogue's generated mode had: without a cast list the
   // model has no way to know who "${target1}" or a bare name in the
@@ -58,6 +66,6 @@ export async function evaluateLlmJudge(params, ctx) {
     return normalized.includes('yes') || normalized.includes('はい');
   } catch (err) {
     console.error('llm_judge condition failed:', err);
-    return false;
+    return null;
   }
 }
