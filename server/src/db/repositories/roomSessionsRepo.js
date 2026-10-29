@@ -546,7 +546,8 @@ export function switchRoomWithinSession(sessionId, toRoomTemplateId) {
     `UPDATE room_sessions
      SET room_template_id = ?, current_location_text = ?, current_location_tags = ?,
          current_atmosphere_text = ?, current_atmosphere_tags = ?, current_scene_situation = '',
-         sub_room_id = ?, updated_at = datetime('now')
+         sub_room_id = ?, updated_at = datetime('now'),
+         image_prompt_reuse_floor_id = (SELECT COALESCE(MAX(id), 0) FROM generated_images)
      WHERE id = ?`,
   ).run(
     toRoomTemplateId,

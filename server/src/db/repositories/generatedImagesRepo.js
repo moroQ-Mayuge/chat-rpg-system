@@ -25,7 +25,9 @@ function recordCharacterTags(imageId, entries) {
 }
 
 // このセッションで、そのキャラが写った直近の画像(プロンプトとそのキャラの前回のキャラタグ付き)。
-// 記録が無い(0162より前に生成された画像のみ・まだ1枚も無い)場合は null。
+// 部屋間移動(継続セッション)より前の画像は対象外(room_sessions.image_prompt_reuse_floor_id、0163)——
+// 部屋に入った直後は参照できる画像が無く、従来どおりの組み立てになる。
+// 記録が無い(0162より前に生成された画像のみ・まだ1枚も無い)場合も null。
 export function findLatestImageWithCharacter(roomSessionId, characterId) {
   return (
     db
@@ -34,8 +36,9 @@ export function findLatestImageWithCharacter(roomSessionId, characterId) {
          FROM generated_images gi
          JOIN generated_image_character_tags gict ON gict.generated_image_id = gi.id
          WHERE gi.room_session_id = ? AND gict.character_id = ?
+           AND gi.id > (SELECT image_prompt_reuse_floor_id FROM room_sessions WHERE id = ?)
          ORDER BY gi.id DESC LIMIT 1`,
       )
-      .get(roomSessionId, characterId) ?? null
+      .get(roomSessionId, characterId, roomSessionId) ?? null
   );
 }
