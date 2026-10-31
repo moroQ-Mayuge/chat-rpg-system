@@ -11,6 +11,7 @@ import {
   useRoomWorldMutations,
 } from '../hooks/useRoomTemplates.js';
 import TagChips from '../components/ui/TagChips.jsx';
+import ZoomableBackground from '../components/ui/ZoomableBackground.jsx';
 import { roomTemplatesApi } from '../api/roomTemplates.js';
 
 function tagsToArray(text) {
@@ -547,10 +548,10 @@ export default function RoomTemplateEditPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
             <p style={{ marginBottom: 4 }}>背景イメージ</p>
-            <div
+            <ZoomableBackground
+              src={form.background_image_path}
               style={{
                 aspectRatio: '16 / 9',
-                background: form.background_image_path ? `url(${form.background_image_path}) center/cover` : '#eee',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -560,7 +561,7 @@ export default function RoomTemplateEditPage() {
               }}
             >
               {!form.background_image_path && '未設定'}
-            </div>
+            </ZoomableBackground>
             {!isNew && realAttachedWorlds.length > 0 && (
               <label style={{ display: 'block', marginBottom: 6, fontSize: 12 }}>
                 どのWorldのスタイルで生成するか
@@ -848,13 +849,9 @@ export default function RoomTemplateEditPage() {
                     placeholder="+ 雰囲気タグを追加"
                   />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                    <div
-                      style={{
-                        width: 64,
-                        height: 36,
-                        borderRadius: 4,
-                        background: sub.background_image_path ? `url(${sub.background_image_path}) center/cover` : '#eee',
-                      }}
+                    <ZoomableBackground
+                      src={sub.background_image_path}
+                      style={{ width: 64, height: 36, borderRadius: 4, flexShrink: 0 }}
                     />
                     <span style={{ fontSize: 11, color: '#888' }}>背景画像（未設定なら部屋本体のまま）</span>
                     {isNew ? (
