@@ -165,9 +165,15 @@ roomTemplatesRouter.get('/:id/export-bundle', async (req, res) => {
 // world_id: a room-master admin action has no playthrough in scope, so the
 // caller explicitly says which of the room's attached Worlds' style preset
 // to generate with (see roomBackgroundImageGenerator.js).
+// location_tags/atmosphere_tags: 画面で入力中(未保存)のタグ。渡された時は保存済みの値より優先して
+// プロンプトに使う——タグを直してすぐ試し生成できるように(キャラの衣装画像生成のタグ上書きと同じ考え方)。
 roomTemplatesRouter.post('/:id/generate-background-image', (req, res) => {
-  const template = getRoomTemplate(req.params.id);
-  if (!template) return res.status(404).json({ error: 'not_found' });
+  const stored = getRoomTemplate(req.params.id);
+  if (!stored) return res.status(404).json({ error: 'not_found' });
+  const template = { ...stored };
+  for (const key of ['location_tags', 'atmosphere_tags']) {
+    if (typeof req.body[key] === 'string') template[key] = req.body[key];
+  }
   const mode = req.body.mode === 'refine' ? 'refine' : 'fresh';
 
   enqueueImageJob(async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useWorlds } from '../hooks/useWorlds.js';
 import { useAllPropCategories } from '../hooks/usePropCategories.js';
@@ -78,8 +78,14 @@ export default function RoomTemplateEditPage() {
   const [bgGenerateWorldId, setBgGenerateWorldId] = useState('');
   const [attachWorldId, setAttachWorldId] = useState('');
 
+  // フォームは「この部屋を最初に読み込んだ時」にだけ取得結果から作る。画像の生成・アップロード
+  // などで部屋の取得結果が更新されても(再取得・ウィンドウの再フォーカス等を含む)、入力中の
+  // 内容を保存前の値に巻き戻さないため。別の部屋を開いた時(idが変わった時)は作り直す。
+  const seededRoomIdRef = useRef(null);
   useEffect(() => {
     if (!existing) return;
+    if (seededRoomIdRef.current === existing.id) return;
+    seededRoomIdRef.current = existing.id;
     setForm({
       name: existing.name,
       worldview_mode: existing.worldview_mode,
@@ -339,7 +345,9 @@ export default function RoomTemplateEditPage() {
   async function handleBackgroundUpload(e) {
     const file = e.target.files[0];
     if (!file || isNew) return;
-    await uploadBackgroundImage.mutateAsync({ id, file });
+    const updated = await uploadBackgroundImage.mutateAsync({ id, file });
+    // 画像だけを反映する(他の入力中の内容には触れない)。
+    setForm((f) => ({ ...f, background_image_path: updated.background_image_path }));
   }
 
   async function handleGenerateBackground(mode) {
@@ -347,7 +355,14 @@ export default function RoomTemplateEditPage() {
     setBgGenerating(true);
     setBgGenerateError(null);
     try {
-      await generateBackgroundImage.mutateAsync({ id, mode, worldId: bgGenerateWorldId ? Number(bgGenerateWorldId) : null });
+      // 画面で入力中のタグ(未保存でも)でプロンプトを作る。結果は画像だけを反映し、他の入力中の内容には触れない。
+      const updated = await generateBackgroundImage.mutateAsync({
+        id,
+        mode,
+        worldId: bgGenerateWorldId ? Number(bgGenerateWorldId) : null,
+        tags: { location_tags: tagsToText(form.location_tags), atmosphere_tags: tagsToText(form.atmosphere_tags) },
+      });
+      setForm((f) => ({ ...f, background_image_path: updated.background_image_path }));
     } catch (err) {
       setBgGenerateError(err.message);
     } finally {

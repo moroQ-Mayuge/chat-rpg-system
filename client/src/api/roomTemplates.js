@@ -17,8 +17,9 @@ export const roomTemplatesApi = {
     formData.append('image', file);
     return api.post(`/room-templates/${id}/sub-room-background-image`, formData);
   },
-  generateBackgroundImage: (id, mode, extraHint, worldId) =>
-    api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint, world_id: worldId }),
+  // tags: 画面で入力中(未保存)の { location_tags, atmosphere_tags }(テキスト)。あれば保存済みより優先される。
+  generateBackgroundImage: (id, mode, extraHint, worldId, tags = {}) =>
+    api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint, world_id: worldId, ...tags }),
   listWorlds: (id) => api.get(`/room-templates/${id}/worlds`),
   attachWorld: (id, worldId) => api.post(`/room-templates/${id}/worlds`, { world_id: worldId }),
   detachWorld: (id, worldId) => api.del(`/room-templates/${id}/worlds/${worldId}`),
