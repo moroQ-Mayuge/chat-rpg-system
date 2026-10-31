@@ -18,6 +18,16 @@ export const roomTemplatesApi = {
     return api.post(`/room-templates/${id}/sub-room-background-image`, formData);
   },
   // tags: 画面で入力中(未保存)の { location_tags, atmosphere_tags }(テキスト)。あれば保存済みより優先される。
+  // サブ部屋の背景を生成する(パスだけが返り、DBへは部屋の保存時に反映される)。
+  generateSubRoomBackgroundImage: (id, { mode, worldId, locationTags, atmosphereTags, sourceImagePath, extraHint }) =>
+    api.post(`/room-templates/${id}/generate-sub-room-background-image`, {
+      mode,
+      world_id: worldId,
+      location_tags: locationTags,
+      atmosphere_tags: atmosphereTags,
+      source_image_path: sourceImagePath,
+      extra_hint: extraHint,
+    }),
   generateBackgroundImage: (id, mode, extraHint, worldId, tags = {}) =>
     api.post(`/room-templates/${id}/generate-background-image`, { mode, extra_hint: extraHint, world_id: worldId, ...tags }),
   listWorlds: (id) => api.get(`/room-templates/${id}/worlds`),

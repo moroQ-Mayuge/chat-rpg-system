@@ -85,6 +85,41 @@ roomTemplatesRouter.post('/:id/sub-room-background-image', upload.single('image'
   res.json({ background_image_path: `/images/rooms/${req.file.filename}` });
 });
 
+// サブ部屋の背景画像の生成。アップロード(上)と同じく、画像を保存してパスだけを返し、DBへの
+// 反映は部屋の保存(PUT /:id、sub_rooms[].background_image_path)に相乗りする——保存前の
+// 編集内容が再取得で消えないよう、ここでは部屋もサブ部屋も更新しない(未保存の新規サブ部屋にも使える)。
+// location_tags/atmosphere_tags: 画面が解決した「このサブ部屋の実効タグ」(サブ部屋のタグが空なら
+// 部屋本体のタグ、実行時の場所タグの解決と同じ)。source_image_path: 「現在の画像から調整」(refine)の
+// 元にするサブ部屋自身の背景(/images/rooms/ 配下のみ受け付ける)。
+roomTemplatesRouter.post('/:id/generate-sub-room-background-image', (req, res) => {
+  const room = getRoomTemplate(req.params.id);
+  if (!room) return res.status(404).json({ error: 'not_found' });
+  const { location_tags, atmosphere_tags, source_image_path, extra_hint, world_id } = req.body;
+  const mode = req.body.mode === 'refine' ? 'refine' : 'fresh';
+  if (mode === 'refine' && (!/^\/images\/rooms\/[\w.-]+$/.test(source_image_path ?? '') || source_image_path.includes('..'))) {
+    return res.status(400).json({ error: 'invalid_source_image_path' });
+  }
+
+  enqueueImageJob(async () => {
+    try {
+      const imagePath = await generateRoomBackgroundImage(
+        {
+          id: room.id,
+          location_tags: typeof location_tags === 'string' ? location_tags : '',
+          atmosphere_tags: typeof atmosphere_tags === 'string' ? atmosphere_tags : '',
+          background_image_path: mode === 'refine' ? source_image_path : null,
+        },
+        mode,
+        extra_hint,
+        world_id ?? null,
+      );
+      res.json({ background_image_path: imagePath });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+});
+
 // Which Worlds this room master is attached to, and attaching/detaching it.
 roomTemplatesRouter.get('/:id/worlds', (req, res) => {
   res.json(listWorldsForRoomTemplate(req.params.id));

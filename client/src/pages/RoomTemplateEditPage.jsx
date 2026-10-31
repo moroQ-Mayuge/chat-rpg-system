@@ -76,6 +76,9 @@ export default function RoomTemplateEditPage() {
   const [bgGenerating, setBgGenerating] = useState(false);
   const [bgGenerateError, setBgGenerateError] = useState(null);
   const [bgGenerateWorldId, setBgGenerateWorldId] = useState('');
+  // サブ部屋の背景生成中のサブ部屋(フォーム上の位置)と、直近のエラー。
+  const [subBgGeneratingIndex, setSubBgGeneratingIndex] = useState(null);
+  const [subBgError, setSubBgError] = useState(null);
   const [attachWorldId, setAttachWorldId] = useState('');
 
   // フォームは「この部屋を最初に読み込んだ時」にだけ取得結果から作る。画像の生成・アップロード
@@ -240,6 +243,31 @@ export default function RoomTemplateEditPage() {
     const result = await roomTemplatesApi.uploadSubRoomBackgroundImage(id, file);
     updateSubRoom(index, { background_image_path: result.background_image_path });
     e.target.value = '';
+  }
+
+  // サブ部屋の背景画像を生成する。プロンプトのタグは、実行時の場所タグの解決と同じく
+  // 「サブ部屋のタグが空でなければそれ、空なら部屋本体のタグ」(どちらも画面の入力中の値)。
+  // 結果はフォームの画像パスだけに反映し、DBへは部屋の保存時に反映される。
+  async function handleGenerateSubRoomBackground(index, mode) {
+    if (isNew) return;
+    const sub = form.sub_rooms[index];
+    const pick = (own, parent) => (tagsToText(own).trim() ? tagsToText(own) : tagsToText(parent));
+    setSubBgGeneratingIndex(index);
+    setSubBgError(null);
+    try {
+      const result = await roomTemplatesApi.generateSubRoomBackgroundImage(id, {
+        mode,
+        worldId: bgGenerateWorldId ? Number(bgGenerateWorldId) : null,
+        locationTags: pick(sub.location_tags, form.location_tags),
+        atmosphereTags: pick(sub.atmosphere_tags, form.atmosphere_tags),
+        sourceImagePath: mode === 'refine' ? sub.background_image_path : undefined,
+      });
+      updateSubRoom(index, { background_image_path: result.background_image_path });
+    } catch (err) {
+      setSubBgError({ index, message: err.message });
+    } finally {
+      setSubBgGeneratingIndex(null);
+    }
   }
 
   function toggleSubRoomItemCategory(index, categoryId) {
@@ -838,6 +866,32 @@ export default function RoomTemplateEditPage() {
                       <button onClick={() => updateSubRoom(i, { background_image_path: '' })}>画像を外す</button>
                     )}
                   </div>
+                  {!isNew && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        style={{ fontSize: 12 }}
+                        onClick={() => handleGenerateSubRoomBackground(i, 'fresh')}
+                        disabled={subBgGeneratingIndex != null}
+                        title="このサブ部屋の場所・雰囲気タグ（空なら部屋本体のタグ）から、背景画像を新規に生成します"
+                      >
+                        {subBgGeneratingIndex === i ? '生成中...' : '背景を新規生成'}
+                      </button>
+                      <button
+                        type="button"
+                        style={{ fontSize: 12 }}
+                        onClick={() => handleGenerateSubRoomBackground(i, 'refine')}
+                        disabled={subBgGeneratingIndex != null || !sub.background_image_path}
+                        title={!sub.background_image_path ? '既存の背景画像がある場合のみ使用できます' : '現在の画像を基に調整して再生成'}
+                      >
+                        現在の画像から調整
+                      </button>
+                      <span style={{ fontSize: 11, color: '#888' }}>
+                        スタイルは上の「どのWorldのスタイルで生成するか」の選択に従います。生成した画像は、部屋を保存すると反映されます。
+                      </span>
+                    </div>
+                  )}
+                  {subBgError?.index === i && <p style={{ color: 'red', fontSize: 11, margin: '2px 0 0' }}>エラー: {subBgError.message}</p>}
 
                   <p style={{ fontSize: 11, color: '#888', margin: '8px 0 2px', borderTop: '1px solid #eee', paddingTop: 6 }}>
                     商取引の上書き（未設定なら部屋本体のまま。「この店は食料しか置かない」のような店ごとの違いを表現できます）
